@@ -1,0 +1,567 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>文件解析预览</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f6f5;
+      --panel: #ffffff;
+      --panel-soft: #eef4f1;
+      --text: #17211d;
+      --muted: #64716d;
+      --line: #d9e2de;
+      --accent: #087f6f;
+      --accent-dark: #066b5d;
+      --danger: #b13f3f;
+      --ok: #2a7d46;
+      --shadow: 0 16px 36px rgba(23, 33, 29, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      height: 100%;
+    }
+
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+      font-size: 14px;
+      letter-spacing: 0;
+    }
+
+    button,
+    input,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      border-radius: 6px;
+      min-height: 38px;
+      padding: 0 14px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    button:hover {
+      background: var(--accent-dark);
+    }
+
+    button.secondary {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--text);
+    }
+
+    button.secondary:hover {
+      background: var(--panel-soft);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.65;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .app {
+      height: 100vh;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 14px;
+      padding: 16px;
+      overflow: hidden;
+    }
+
+    .topbar {
+      min-height: 58px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 12px 16px;
+    }
+
+    .title-block {
+      min-width: 0;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.35;
+    }
+
+    .subtitle {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .entry-nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      justify-content: flex-end;
+      margin-left: auto;
+      font-size: 12px;
+    }
+
+    .entry-nav a {
+      min-height: 30px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      padding: 0 10px;
+      text-decoration: none;
+    }
+
+    .entry-nav a:hover {
+      border-color: rgba(8, 127, 111, 0.35);
+      background: #f5faf8;
+      text-decoration: none;
+    }
+
+    .entry-nav a.active {
+      border-color: rgba(8, 127, 111, 0.48);
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+    }
+
+    .workspace {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 340px minmax(0, 1fr);
+      gap: 14px;
+      overflow: hidden;
+    }
+
+    .panel {
+      min-width: 0;
+      min-height: 0;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .side {
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      overflow: hidden;
+    }
+
+    .section {
+      padding: 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .section:last-child {
+      border-bottom: 0;
+    }
+
+    .upload-box {
+      border: 1px dashed #aebdb7;
+      background: #f9fbfa;
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .upload-box.dragging {
+      border-color: var(--accent);
+      background: #edf7f4;
+    }
+
+    .file-input {
+      width: 100%;
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      padding: 8px;
+      color: var(--text);
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.7;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .status {
+      min-height: 20px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .status.ok {
+      color: var(--ok);
+    }
+
+    .status.error {
+      color: var(--danger);
+    }
+
+    .meta-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .meta-row {
+      display: grid;
+      grid-template-columns: 82px minmax(0, 1fr);
+      gap: 8px;
+      align-items: start;
+      font-size: 13px;
+    }
+
+    .meta-label {
+      color: var(--muted);
+    }
+
+    .meta-value {
+      word-break: break-all;
+    }
+
+    .format-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    .format-tag {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--muted);
+      padding: 4px 7px;
+      font-size: 12px;
+    }
+
+    .viewer {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      overflow: hidden;
+    }
+
+    .viewer-head {
+      min-height: 56px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel-soft);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+    }
+
+    .viewer-title {
+      font-weight: 700;
+    }
+
+    .viewer-subtitle {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .text-view {
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      border: 0;
+      resize: none;
+      padding: 16px;
+      color: var(--text);
+      background: #fff;
+      outline: none;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      overflow: auto;
+      font-family: "Consolas", "Microsoft YaHei", monospace;
+      font-size: 13px;
+    }
+
+    @media (max-width: 900px) {
+      body {
+        overflow: auto;
+      }
+
+      .app {
+        height: auto;
+        min-height: 100vh;
+        overflow: visible;
+      }
+
+      .workspace {
+        grid-template-columns: 1fr;
+        overflow: visible;
+      }
+
+      .viewer {
+        min-height: 520px;
+      }
+
+      .topbar,
+      .viewer-head {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="title-block">
+        <h1>文件解析预览</h1>
+        <div class="subtitle">上传资料后查看解析文本，确认无误后再进入知识库导入流程。</div>
+      </div>
+      <nav class="entry-nav">
+        <a href="/session-rag-chat">生成私信</a>
+        <a href="/admin-vue">后台管理</a>
+        <a class="active" href="/file-parser">文件解析</a>
+      </nav>
+    </header>
+
+    <section class="workspace">
+      <aside class="panel side">
+        <div class="section">
+          <div class="upload-box" id="dropZone">
+            <input class="file-input" id="fileInput" type="file" accept=".txt,.md,.log,.json,.xml,.html,.css,.js,.py,.java,.csv,.docx,.pdf,.xls,.xlsx">
+            <div class="actions">
+              <button id="parseBtn" type="button">解析文件</button>
+              <button class="secondary" id="clearBtn" type="button">清空</button>
+            </div>
+            <div class="hint">支持 txt、markdown、csv、json、xml、html、word(docx)、pdf、excel(xls/xlsx) 等资料。PDF 会先提取文本，提取不到时自动尝试 OCR。</div>
+            <div class="status" id="status">请选择一个文件。</div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="meta-list">
+            <div class="meta-row">
+              <div class="meta-label">文件名</div>
+              <div class="meta-value" id="metaName">-</div>
+            </div>
+            <div class="meta-row">
+              <div class="meta-label">文件类型</div>
+              <div class="meta-value" id="metaExt">-</div>
+            </div>
+            <div class="meta-row">
+              <div class="meta-label">字符数</div>
+              <div class="meta-value" id="metaChars">-</div>
+            </div>
+            <div class="meta-row">
+              <div class="meta-label">行数</div>
+              <div class="meta-value" id="metaLines">-</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="hint">常用格式</div>
+          <div class="format-list">
+            <span class="format-tag">TXT</span>
+            <span class="format-tag">Word DOCX</span>
+            <span class="format-tag">PDF</span>
+            <span class="format-tag">Excel XLSX</span>
+            <span class="format-tag">CSV</span>
+            <span class="format-tag">JSON</span>
+            <span class="format-tag">Markdown</span>
+          </div>
+        </div>
+      </aside>
+
+      <section class="panel viewer">
+        <header class="viewer-head">
+          <div>
+            <div class="viewer-title">解析文本</div>
+            <div class="viewer-subtitle" id="viewerInfo">解析结果会显示在这里。</div>
+          </div>
+          <div class="actions">
+            <button class="secondary" id="copyBtn" type="button">复制文本</button>
+            <button class="secondary" id="downloadBtn" type="button">下载 TXT</button>
+          </div>
+        </header>
+        <textarea class="text-view" id="contentView" spellcheck="false" placeholder="暂无解析内容"></textarea>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const fileInput = document.getElementById("fileInput");
+    const parseBtn = document.getElementById("parseBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const copyBtn = document.getElementById("copyBtn");
+    const downloadBtn = document.getElementById("downloadBtn");
+    const statusEl = document.getElementById("status");
+    const dropZone = document.getElementById("dropZone");
+    const contentView = document.getElementById("contentView");
+    const viewerInfo = document.getElementById("viewerInfo");
+    const metaName = document.getElementById("metaName");
+    const metaExt = document.getElementById("metaExt");
+    const metaChars = document.getElementById("metaChars");
+    const metaLines = document.getElementById("metaLines");
+
+    let parsedFileName = "";
+
+    function setStatus(message, type = "") {
+      statusEl.textContent = message;
+      statusEl.className = "status" + (type ? " " + type : "");
+    }
+
+    function updateMeta(data = {}) {
+      metaName.textContent = data.file_name || "-";
+      metaExt.textContent = data.extension || "-";
+      metaChars.textContent = Number.isFinite(data.content_chars) ? String(data.content_chars) : "-";
+      metaLines.textContent = Number.isFinite(data.line_count) ? String(data.line_count) : "-";
+    }
+
+    function resetPage() {
+      fileInput.value = "";
+      parsedFileName = "";
+      contentView.value = "";
+      viewerInfo.textContent = "解析结果会显示在这里。";
+      updateMeta();
+      setStatus("请选择一个文件。");
+    }
+
+    async function parseSelectedFile() {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) {
+        setStatus("请先选择要解析的文件。", "error");
+        return;
+      }
+
+      const form = new FormData();
+      form.append("file", file);
+      parseBtn.disabled = true;
+      setStatus("正在解析文件...");
+      viewerInfo.textContent = "解析中，请稍候。";
+
+      try {
+        const response = await fetch("/api/files/parse", {
+          method: "POST",
+          body: form
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.error || "解析失败");
+        }
+
+        const data = payload.data || {};
+        parsedFileName = data.file_name || file.name;
+        contentView.value = data.content || "";
+        updateMeta(data);
+        viewerInfo.textContent = data.content_chars ? "已解析完成，可复制或下载文本。" : "文件已解析，但没有提取到文本；如果是扫描件，请检查 OCR 依赖或图片清晰度。";
+        setStatus(data.content_chars ? "解析完成。" : "解析完成，但文本为空。", data.content_chars ? "ok" : "error");
+      } catch (error) {
+        viewerInfo.textContent = "解析失败，请检查文件格式或运行环境依赖。";
+        setStatus(error.message || "解析失败", "error");
+      } finally {
+        parseBtn.disabled = false;
+      }
+    }
+
+    async function copyParsedText() {
+      if (!contentView.value) {
+        setStatus("当前没有可复制的解析文本。", "error");
+        return;
+      }
+      await navigator.clipboard.writeText(contentView.value);
+      setStatus("文本已复制。", "ok");
+    }
+
+    function downloadParsedText() {
+      if (!contentView.value) {
+        setStatus("当前没有可下载的解析文本。", "error");
+        return;
+      }
+      const baseName = (parsedFileName || "parsed").replace(/\.[^.]+$/, "");
+      const blob = new Blob([contentView.value], {type: "text/plain;charset=utf-8"});
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = baseName + ".parsed.txt";
+      document.body.appendChild(link);
+      link.click();
+      URL.revokeObjectURL(link.href);
+      link.remove();
+      setStatus("已生成下载文件。", "ok");
+    }
+
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (file) {
+        setStatus("已选择：" + file.name);
+      }
+    });
+
+    parseBtn.addEventListener("click", parseSelectedFile);
+    clearBtn.addEventListener("click", resetPage);
+    copyBtn.addEventListener("click", copyParsedText);
+    downloadBtn.addEventListener("click", downloadParsedText);
+
+    ["dragenter", "dragover"].forEach((eventName) => {
+      dropZone.addEventListener(eventName, (event) => {
+        event.preventDefault();
+        dropZone.classList.add("dragging");
+      });
+    });
+
+    ["dragleave", "drop"].forEach((eventName) => {
+      dropZone.addEventListener(eventName, (event) => {
+        event.preventDefault();
+        dropZone.classList.remove("dragging");
+      });
+    });
+
+    dropZone.addEventListener("drop", (event) => {
+      const files = event.dataTransfer && event.dataTransfer.files;
+      if (files && files.length) {
+        fileInput.files = files;
+        setStatus("已选择：" + files[0].name);
+      }
+    });
+  </script>
+</body>
+</html>

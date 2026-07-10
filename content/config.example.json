@@ -1,0 +1,42 @@
+{
+  "ES_CONFIG": {
+    "hosts": [
+      "http://127.0.0.1:9200"
+    ],
+    "use_ssl": false,
+    "verify_certs": false,
+    "timeout": 60,
+    "auth": ["elastic", ""]
+  },
+  "MCP_SERVICES": [
+    {
+      "url": "http://127.0.0.1:5000/mcp",
+      "description": ""
+    }
+  ],
+  "AIDED_LLM_CONF": {
+    "url": "http://127.0.0.1:11434/api/chat",
+    "key": "",
+    "func_name": "ollama_chat",
+    "model_name": "qwen3:30b",
+    "max_len_input": "20000"
+  },
+  "DUCK_URL": "http://127.0.0.1:1603/",
+  "VISION_LLM_CONF": {
+    "url": "http://127.0.0.1:11434/api/chat",
+    "model_name": "qwen2.5vl:7b"
+  },
+  "DEFAULT_REDIS": {
+    "host": "127.0.0.1",
+    "port": 6379,
+    "password": "",
+    "db": 11
+  },
+  "DB_URI": "mysql://user:password@127.0.0.1:3306/aisec?charset=utf8mb4",
+  "MINIO_CNF": {
+    "endpoint": "127.0.0.1:9000",
+    "access_key": "",
+    "secret_key": "",
+    "secure": false
+  }
+}

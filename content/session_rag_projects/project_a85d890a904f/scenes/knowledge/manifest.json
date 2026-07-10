@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "documents": [
+    {
+      "doc_id": "company_positioning",
+      "title": "公司定位",
+      "category": "company",
+      "relative_path": "knowledge/files/公司定位.md",
+      "description": "说明公司总体定位、服务对象、业务闭环和五大聚焦方向。",
+      "keywords": [
+        "公司",
+        "定位",
+        "介绍",
+        "平台",
+        "大健康",
+        "AI",
+        "跨境",
+        "服务对象",
+        "解决方案"
+      ]
+    },
+    {
+      "doc_id": "healthcare_medical",
+      "title": "大健康医疗板块",
+      "category": "三大核心业务板块",
+      "relative_path": "knowledge/files/三大核心业务板块/大健康医疗板块.md",
+      "description": "大健康医疗核心主业，覆盖关节健康、干细胞、PRP、产品体系、合作渠道与合规优势。",
+      "keywords": [
+        "大健康",
+        "医疗",
+        "关节",
+        "膝骨关节",
+        "骨积液",
+        "软骨修复",
+        "口服",
+        "贴剂",
+        "注射",
+        "理疗仪",
+        "非变二型骨胶原肽",
+        "干细胞",
+        "PRP",
+        "医院",
+        "门诊",
+        "诊所",
+        "康养",
+        "养老",
+        "社区健康"
+      ]
+    },
+    {
+      "doc_id": "ai_technology_hardware",
+      "title": "AI技术与智能硬件板块",
+      "category": "三大核心业务板块",
+      "relative_path": "knowledge/files/三大核心业务板块/AI技术与智能硬件板块.md",
+      "description": "AI内容生产、智能硬件、私信引流、舆论管控、数据采集和AI Agent自动化调度能力。",
+      "keywords": [
+        "AI",
+        "智能硬件",
+        "内容生产",
+        "文生视频",
+        "批量剪辑",
+        "自动发布",
+        "评论采集",
+        "数据统计",
+        "录音背夹",
+        "可穿戴",
+        "录音转纪要",
+        "远程小主机",
+        "边缘计算",
+        "私信",
+        "引私域",
+        "舆论管控",
+        "分布式爬虫",
+        "千万级数据",
+        "Agent",
+        "自动化调度"
+      ]
+    },
+    {
+      "doc_id": "cross_border_services",
+      "title": "跨境与综合业务板块",
+      "category": "三大核心业务板块",
+      "relative_path": "knowledge/files/三大核心业务板块/跨境与综合业务板块.md",
+      "description": "跨境电商、AI选品、内容托管、自动化运营、留学移民和企业资源对接。",
+      "keywords": [
+        "跨境",
+        "综合业务",
+        "跨境电商",
+        "全平台运营",
+        "AI选品",
+        "内容托管",
+        "自动化运营",
+        "留学",
+        "移民",
+        "企业服务",
+        "资源对接"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,273 @@
+{
+    "9db6f070faf911ef94841ad83519f5f7": {
+        "file_name": "DataClassifierAnalysis",
+        "description": "用于得出数据的分类分级",
+        "basis_list": [
+            "DataClassifierAnalysis"
+        ],
+        "knowledge": [],
+        "options": {
+            "temperature": 0.4,
+            "top_p": 0.6,
+            "top_k": 40,
+            "presence_penalty": 0.5,
+            "frequency_penalty": 0.5,
+            "format": "json"
+        }
+    },
+    "24d56d90f8a011ef90e71ad83519f5f7": {
+        "file_name": "PhishingEmails",
+        "description": "用于分析邮件是否为钓鱼邮件",
+        "basis_list": [],
+        "knowledge": [],
+        "options": {
+            "temperature": 0.4,
+            "top_p": 0.6,
+            "top_k": 40,
+            "presence_penalty": 0.5,
+            "frequency_penalty": 0.5
+        }
+    },
+    "57c0bfb6faf811ef935c1ad83519f5f7": {
+        "file_name": "CodeAuditGeneral",
+        "description": "用于代码审计-通用",
+        "basis_list": [],
+        "knowledge": [],
+        "options": {
+            "temperature": 0.4,
+            "top_p": 0.6,
+            "top_k": 40,
+            "presence_penalty": 0.5,
+            "frequency_penalty": 0.5
+        }
+    },
+    "87c476c4f8c011efa45a1ad83519f5f7": {
+        "file_name": "WebShell",
+        "description": "webshell威胁检测",
+        "basis_list": [],
+        "knowledge": [],
+        "options": {
+            "temperature": 0.4,
+            "top_p": 0.6,
+            "top_k": 40,
+            "presence_penalty": 0.5,
+            "frequency_penalty": 0.5
+        }
+    },
+    "c93b8efcf8ad11efa34b1ad83519f5f7": {
+        "file_name": "ComponentAnalysis",
+        "description": "组件分析",
+        "basis_list": [],
+        "knowledge": [],
+        "options": {
+            "temperature": 0.4,
+            "top_p": 0.6,
+            "top_k": 40,
+            "presence_penalty": 0.5,
+            "frequency_penalty": 0.5
+        }
+    },
+    "ae42108cf8bf11efa3ae1ad83519f5f7": {
+        "file_name": "EmergencyResponseAnalysis",
+        "description": "主机应急响应安全分析",
+        "basis_list": [],
+        "knowledge": [],
+        "options": {
+            "temperature": 0.4,
+            "top_p": 0.6,
+            "top_k": 40,
+            "presence_penalty": 0.5,
+            "frequency_penalty": 0.5
+        }
+    },
+    "1b24cfbefb3111efb2294ebb6d5c5820": {
+        "file_name": "LogAnalysis",
+        "description": "日志分析",
+        "basis_list": [],
+        "knowledge": [],
+        "options": {
+            "temperature": 0.4,
+            "top_p": 0.6,
+            "top_k": 40,
+            "presence_penalty": 0.5,
+            "frequency_penalty": 0.5
+        }
+    },
+    "c59d2978f8ac11ef97811ad83519f5f7": {
+        "file_name": "TrafficAnalysis",
+        "description": "流量分析",
+        "basis_list": [],
+        "knowledge": [],
+        "options": {
+            "temperature": 0.4,
+            "top_p": 0.6,
+            "top_k": 40,
+            "presence_penalty": 0.5,
+            "frequency_penalty": 0.5
+        }
+    },
+    "6edc92eeff3311efb8d12a0ceb41b79d": {
+        "file_name": "ChatLLM",
+        "description": "通用的聊天模型",
+        "basis_list": [],
+        "knowledge": [],
+        "options": {
+            "temperature": 0.4,
+            "top_p": 0.6,
+            "top_k": 40,
+            "presence_penalty": 0.5,
+            "frequency_penalty": 0.5
+        }
+    },
+    "8e3ce4fcfa6711efab8d1ad83519f5f7": {
+        "file_name": "SiftAgents",
+        "description": "选择使用哪个能力的prompt",
+        "basis_list": [],
+        "knowledge": [],
+        "options": {
+            "temperature": 0.4,
+            "top_p": 0.6,
+            "top_k": 40,
+            "presence_penalty": 0.5,
+            "frequency_penalty": 0.5
+        }
+    },
+    "154ea244fef711efae962a0ceb41b79d": {
+        "file_name": "GetAdvice",
+        "description": "获取追问建议的prompt",
+        "basis_list": [],
+        "knowledge": [],
+        "options": {
+            "temperature": 0.4,
+            "top_p": 0.6,
+            "top_k": 40,
+            "presence_penalty": 0.5,
+            "frequency_penalty": 0.5,
+            "format": "json"
+        }
+    },
+    "154ea244fef711efae962a0ceb41b89d": {
+        "file_name": "MarkCode",
+        "description": "根据部分文件内容，生成分析代码的指令",
+        "basis_list": [],
+        "knowledge": [],
+        "options": {
+            "temperature": 0.4,
+            "top_p": 0.6,
+            "top_k": 40,
+            "presence_penalty": 0.5,
+            "frequency_penalty": 0.5,
+            "seed": 26
+        }
+    },
+    "754ea243fef711efae662a0ceb41b89d": {
+        "file_name": "AssetsDetect",
+        "description": "资产识别",
+        "basis_list": [],
+        "knowledge": [],
+        "options": {
+            "temperature": 0.4,
+            "top_p": 0.6,
+            "top_k": 40,
+            "presence_penalty": 0.5,
+            "frequency_penalty": 0.5,
+            "seed": 26
+        }
+    },
+    "146ea243fef711efae322a0ceb41b89d": {
+        "file_name": "GenerateSQLAssets",
+        "description": "漏洞表生成资产表SQL",
+        "basis_list": [],
+        "knowledge": [],
+        "options": {
+            "temperature": 0.4,
+            "top_p": 0.6,
+            "top_k": 40,
+            "presence_penalty": 0.5,
+            "frequency_penalty": 0.5,
+            "seed": 26
+        }
+    },
+    "146ea243fef711efae322a0ceb41b88d": {
+        "file_name": "GenerateSQLAssets",
+        "description": "资产表生成漏洞表SQL",
+        "basis_list": [],
+        "knowledge": [],
+        "options": {
+            "temperature": 0.4,
+            "top_p": 0.6,
+            "top_k": 40,
+            "presence_penalty": 0.5,
+            "frequency_penalty": 0.5,
+            "seed": 26
+        }
+    },
+    "116ea243fef711efae311a0ceb41b88d": {
+        "file_name": "ExtractVulnFeatures",
+        "description": "漏洞提取特征",
+        "basis_list": [],
+        "knowledge": [],
+        "options": {
+            "temperature": 0.4,
+            "top_p": 0.6,
+            "top_k": 40,
+            "presence_penalty": 0.5,
+            "frequency_penalty": 0.5,
+            "seed": 26
+        }
+    },
+    "222ea243fef711efae311a0ceb41b88d": {
+        "file_name": "SemanticSplit",
+        "description": "语义拆分",
+        "basis_list": [],
+        "knowledge": [],
+        "options": {
+            "temperature": 0.4,
+            "top_p": 0.6,
+            "top_k": 40,
+            "presence_penalty": 0.5,
+            "frequency_penalty": 0.5
+        }
+    },
+    "333ea243fef711efae311a0ceb41b88d": {
+        "file_name": "SiftReportTemplate",
+        "description": "筛选报告模板",
+        "basis_list": [],
+        "knowledge": [],
+        "options": {
+            "temperature": 0.1,
+            "top_p": 0.3,
+            "top_k": 40,
+            "presence_penalty": 0.5,
+            "frequency_penalty": 0.5,
+            "format": "json"
+        }
+    },
+    "849ea243fef711efae311a0ceb41b88d": {
+        "file_name": "PaddingTemplate",
+        "description": "生成填充模板的json",
+        "basis_list": [],
+        "knowledge": [],
+        "options": {
+            "temperature": 0.6,
+            "top_p": 0.3,
+            "top_k": 40,
+            "presence_penalty": 0.5,
+            "frequency_penalty": 0.5,
+            "format": "json"
+        }
+    },
+    "7edc92eeff3311efb8d12a0ceb41b79d": {
+        "file_name": "RobotVoice",
+        "description": "机器人语音对话",
+        "basis_list": [],
+        "knowledge": [],
+        "options": {
+            "temperature": 0.6,
+            "top_p": 0.3,
+            "top_k": 40,
+            "presence_penalty": 0.5,
+            "frequency_penalty": 0.5
+        }
+    }
+}

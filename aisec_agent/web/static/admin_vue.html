@@ -1,0 +1,1242 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>智能体后台管理</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f6f5;
+      --panel: #ffffff;
+      --soft: #eef4f1;
+      --text: #17211d;
+      --muted: #64716d;
+      --line: #d9e2de;
+      --accent: #087f6f;
+      --danger: #a73535;
+      --ok: #2a7d46;
+      --shadow: 0 16px 36px rgba(23, 33, 29, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+    html, body, #app { height: 100%; }
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+      font-size: 14px;
+      letter-spacing: 0;
+    }
+    button, input, select, textarea { font: inherit; }
+    button {
+      border: 0;
+      border-radius: 6px;
+      min-height: 36px;
+      padding: 0 13px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    button.secondary {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--text);
+    }
+    button.danger {
+      background: var(--danger);
+    }
+    button:disabled { opacity: 0.62; cursor: not-allowed; }
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      min-height: 36px;
+      padding: 8px 10px;
+      outline: none;
+    }
+    textarea {
+      resize: none;
+      line-height: 1.65;
+      font-family: "Consolas", "Microsoft YaHei", monospace;
+      font-size: 13px;
+    }
+    label {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .layout {
+      height: 100vh;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 248px minmax(0, 1fr);
+      gap: 14px;
+      padding: 14px;
+      overflow: hidden;
+    }
+    .sidebar, .main {
+      min-height: 0;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .sidebar {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+    .brand {
+      padding: 16px;
+      border-bottom: 1px solid var(--line);
+      background: var(--soft);
+    }
+    .brand h1 {
+      margin: 0;
+      font-size: 18px;
+    }
+    .brand .sub {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+    .menu {
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+      align-content: start;
+      overflow: auto;
+    }
+    .menu button {
+      width: 100%;
+      min-height: 44px;
+      text-align: left;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--text);
+    }
+    .menu button.active {
+      border-color: rgba(8,127,111,.42);
+      background: #eaf7f3;
+      color: #065c50;
+      font-weight: 700;
+    }
+    .topbar-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+      min-width: min(420px, 48%);
+    }
+    .entry-nav {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 6px;
+      font-size: 12px;
+    }
+    .entry-nav a {
+      min-height: 30px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      padding: 0 10px;
+      text-decoration: none;
+    }
+    .entry-nav a:hover {
+      border-color: rgba(8,127,111,.35);
+      background: #f5faf8;
+      text-decoration: none;
+    }
+    .entry-nav a.active {
+      border-color: rgba(8,127,111,.48);
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+    }
+    .main {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+    .topbar {
+      min-height: 68px;
+      border-bottom: 1px solid var(--line);
+      background: var(--soft);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .page-title {
+      font-size: 18px;
+      font-weight: 800;
+    }
+    .page-sub {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .status {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .status.ok { color: var(--ok); }
+    .status.error { color: var(--danger); }
+    .content {
+      min-height: 0;
+      overflow: auto;
+      padding: 14px;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 14px;
+      min-height: 0;
+    }
+    .grid-main-side {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 380px;
+      gap: 14px;
+      min-height: 0;
+    }
+    .card {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 8px;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .card-head {
+      min-height: 48px;
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--line);
+      background: #fafcfb;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .card-title {
+      font-weight: 800;
+    }
+    .card-body {
+      padding: 12px;
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: end;
+    }
+    .two {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .compact-fields {
+      align-items: end;
+    }
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    button.mini {
+      min-height: 30px;
+      padding: 0 9px;
+      font-size: 12px;
+    }
+    .json-editor, .large-text {
+      height: 520px;
+      min-height: 360px;
+    }
+    .module-text {
+      height: 430px;
+      min-height: 300px;
+    }
+    .list {
+      display: grid;
+      gap: 8px;
+    }
+    .item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      background: #fbfcfb;
+      display: grid;
+      gap: 5px;
+    }
+    .item.selected {
+      border-color: rgba(8,127,111,.46);
+      background: #eef9f5;
+    }
+    .item-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .item-title { font-weight: 800; line-height: 1.45; }
+    .item-meta { color: var(--muted); font-size: 12px; line-height: 1.5; word-break: break-all; }
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+    .tag {
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      padding: 2px 6px;
+      color: var(--muted);
+      font-size: 12px;
+      background: #fff;
+    }
+    .module-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .module-tabs button {
+      min-height: 30px;
+      padding: 0 9px;
+      background: #fff;
+      color: var(--text);
+      border: 1px solid var(--line);
+      font-size: 12px;
+    }
+    .module-tabs button.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .chat-box {
+      border: 1px solid var(--line);
+      background: #fbfcfb;
+      border-radius: 8px;
+      padding: 12px;
+      min-height: 180px;
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }
+    .bubble {
+      max-width: 82%;
+      border-radius: 8px;
+      padding: 10px 12px;
+      line-height: 1.65;
+      white-space: pre-wrap;
+    }
+    .bubble.user {
+      justify-self: end;
+      background: #fff7e6;
+      border: 1px solid #e4b95f;
+    }
+    .bubble.ai {
+      justify-self: start;
+      background: #effaf6;
+      border: 1px solid rgba(8,127,111,.32);
+    }
+    .empty {
+      color: var(--muted);
+      font-size: 13px;
+      padding: 10px;
+    }
+    [v-cloak] { display: none; }
+    @media (max-width: 1180px) {
+      body { overflow: auto; }
+      .layout { height: auto; min-height: 100vh; grid-template-columns: 1fr; overflow: visible; }
+      .main, .sidebar { min-height: auto; }
+      .grid-2, .grid-main-side { grid-template-columns: 1fr; }
+      .json-editor, .large-text, .module-text { height: 360px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app" v-cloak>
+    <div class="layout" v-if="vueReady">
+      <aside class="sidebar">
+        <div class="brand">
+          <h1>智能体后台</h1>
+          <div class="sub">Vue3 管理页：知识库、场景模板、prompt还原、私信生成。</div>
+        </div>
+        <nav class="menu">
+          <button v-for="item in menus" :key="item.key" :class="{active: activeMenu === item.key}" @click="activeMenu = item.key">
+            {{ item.label }}
+          </button>
+        </nav>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <div class="page-title">{{ currentMenu.label }}</div>
+            <div class="page-sub">{{ currentMenu.desc }}</div>
+          </div>
+          <div class="topbar-right">
+            <nav class="entry-nav">
+              <a href="/session-rag-chat">生成私信</a>
+              <a class="active" href="/admin-vue">后台管理</a>
+              <a href="/file-parser">文件解析</a>
+            </nav>
+            <div class="status" :class="statusType">{{ status }}</div>
+          </div>
+        </header>
+
+        <section class="content">
+          <section v-if="activeMenu === 'knowledge'" class="grid-main-side">
+            <div class="card">
+              <div class="card-head">
+                <div>
+                  <div class="card-title">总文档描述 JSON</div>
+                  <div class="item-meta">每次上传会自动追加。可人工修改标签、描述、领域/板块结构。</div>
+                </div>
+                <div class="actions">
+                  <button class="secondary" @click="reloadDescriptionText">还原</button>
+                  <button @click="saveKnowledgeJson">保存 JSON</button>
+                </div>
+              </div>
+              <div class="card-body">
+                <textarea class="json-editor" v-model="knowledgeJsonText" spellcheck="false"></textarea>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <div class="card-title">上传文档</div>
+              </div>
+              <div class="card-body">
+                <div>
+                  <label>所属项目</label>
+                  <select v-model="projectId" @change="loadState">
+                    <option v-for="project in projects" :key="project.project_id" :value="project.project_id">
+                      {{ project.name || project.project_id }}
+                    </option>
+                  </select>
+                </div>
+                <div>
+                  <label>知识库</label>
+                  <input v-model="upload.knowledge_base" list="knowledge-base-options" placeholder="例如：公司私信知识库、招聘知识库">
+                  <datalist id="knowledge-base-options">
+                    <option v-for="name in knowledgeBaseOptions" :key="name" :value="name"></option>
+                  </datalist>
+                </div>
+                <div>
+                  <label>领域 / 业务板块</label>
+                  <input v-model="upload.domain" placeholder="例如：大健康医疗、AI技术与智能硬件">
+                </div>
+                <div>
+                  <label>板块 / 子目录</label>
+                  <input v-model="upload.section" placeholder="例如：售前资料、合规边界、产品说明">
+                </div>
+                <div>
+                  <label>资料文件</label>
+                  <input type="file" @change="onUploadFile">
+                </div>
+                <label class="actions">
+                  <input type="checkbox" v-model="upload.useAi" style="width:auto;min-height:0">
+                  <span>使用当前模型生成文件描述和标签</span>
+                </label>
+                <button @click="uploadKnowledge">上传并更新描述 JSON</button>
+                <div class="item-meta">文件会保存到当前项目的 knowledge/files/知识库/领域/板块/ 下，JSON 中记录相对位置。</div>
+              </div>
+            </div>
+
+            <div class="card" style="grid-column: 1 / -1;">
+              <div class="card-head">
+                <div class="card-title">文档概览</div>
+                <button @click="saveKnowledgeDescriptionsFromForm">保存文档描述</button>
+              </div>
+              <div class="card-body">
+                <div class="list">
+                  <div class="item" v-for="doc in flatDocuments" :key="doc.doc_id">
+                    <div class="item-head">
+                      <div class="item-title">{{ doc.title }}</div>
+                      <div class="actions">
+                        <button class="secondary mini" @click="openFileLocation(doc)" :disabled="!doc.relative_path">打开文件位置</button>
+                        <button class="danger mini" @click="deleteKnowledgeDocument(doc)" :disabled="!doc.doc_id && !doc.relative_path">删除文件</button>
+                      </div>
+                    </div>
+                    <div class="item-meta">{{ doc.knowledge_base }} / {{ doc.domain }} / {{ doc.section }} · {{ doc.relative_path }}</div>
+                    <div class="two compact-fields">
+                      <div>
+                        <label>人员身份</label>
+                        <input v-model="doc.sender_identity" placeholder="例如：xx健康顾问助理、xx运营顾问">
+                      </div>
+                      <div>
+                        <label>文档描述</label>
+                        <input v-model="doc.description" placeholder="这份资料什么时候应该被读取">
+                      </div>
+                    </div>
+                    <div>{{ doc.description || doc.summary }}</div>
+                    <div class="tags"><span class="tag" v-for="tag in doc.tags" :key="tag">{{ tag }}</span></div>
+                  </div>
+                  <div class="empty" v-if="!flatDocuments.length">暂无文档，先上传资料。</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section v-if="activeMenu === 'templates'" class="grid-main-side">
+            <div class="card">
+              <div class="card-head">
+                <div>
+                  <div class="card-title">{{ isEditingTemplate ? '编辑场景模板' : '新建场景模板' }}</div>
+                  <div class="item-meta">输入目的后可以让 AI 自动生成标题、适用场景、标签、处理步骤。</div>
+                </div>
+                <div class="actions">
+                  <button class="secondary" v-if="isEditingTemplate" @click="returnTemplateList">返回列表</button>
+                  <button class="secondary" @click="newTemplate">新建</button>
+                  <button @click="saveTemplate">保存</button>
+                </div>
+              </div>
+              <div class="card-body">
+                <div>
+                  <label>目的</label>
+                  <textarea rows="4" v-model="templateForm.purpose" placeholder="例如：首次私信用户，期望回复；当前账号=xx品牌客服；平台=抖音；评论时间=几月几；活动=xx评估名额；承接方式=xx草料码/企业名片/微信号xxx"></textarea>
+                </div>
+                <div class="actions">
+                  <button class="secondary" @click="generateTemplate">生成完整模板</button>
+                </div>
+                <div>
+                  <label>标题</label>
+                  <input v-model="templateForm.title">
+                </div>
+                <div>
+                  <label>适用场景</label>
+                  <textarea rows="4" v-model="templateForm.applicable_scene"></textarea>
+                </div>
+                <div>
+                  <label>标签，逗号分隔</label>
+                  <input v-model="templateTagsText" placeholder="大健康, 售前, 私信">
+                </div>
+                <div>
+                  <label>处理步骤，每行一步</label>
+                  <textarea rows="8" v-model="templateStepsText"></textarea>
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-head"><div class="card-title">模板列表</div></div>
+              <div class="card-body">
+                <div class="list">
+                  <div class="item" :class="{selected: templateForm.template_id === tpl.template_id}" v-for="tpl in sceneTemplates.templates" :key="tpl.template_id">
+                    <div class="item-title">{{ tpl.title }}</div>
+                    <div class="item-meta">{{ tpl.purpose }}</div>
+                    <div class="tags"><span class="tag" v-for="tag in tpl.tags" :key="tag">{{ tag }}</span></div>
+                    <div class="actions">
+                      <button class="secondary" @click="editTemplate(tpl)">编辑</button>
+                      <button class="danger" @click="deleteTemplate(tpl)">删除</button>
+                    </div>
+                  </div>
+                  <div class="empty" v-if="!sceneTemplates.templates.length">暂无模板。</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section v-if="activeMenu === 'activities'" class="grid-main-side">
+            <div class="card">
+              <div class="card-head">
+                <div>
+                  <div class="card-title">{{ isEditingActivity ? '编辑活动' : '新建活动' }}</div>
+                  <div class="item-meta">用于告诉智能体当前可用活动，例如义诊、优惠券、体验名额、资料领取。</div>
+                </div>
+                <div class="actions">
+                  <button class="secondary" v-if="isEditingActivity" @click="newActivity">返回列表</button>
+                  <button class="secondary" @click="newActivity">新建</button>
+                  <button @click="saveActivity">保存</button>
+                </div>
+              </div>
+              <div class="card-body">
+                <label class="actions">
+                  <input type="checkbox" v-model="activityForm.enabled" style="width:auto;min-height:0">
+                  <span>启用这个活动</span>
+                </label>
+                <div class="two">
+                  <div>
+                    <label>活动名称</label>
+                    <input v-model="activityForm.title" placeholder="例如：睡眠状态免费初评活动">
+                  </div>
+                  <div>
+                    <label>活动类型</label>
+                    <select v-model="activityForm.activity_type">
+                      <option>活动</option>
+                      <option>义诊</option>
+                      <option>优惠券</option>
+                      <option>体验名额</option>
+                      <option>资料包</option>
+                      <option>预约咨询</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label>适用场景</label>
+                  <textarea rows="4" v-model="activityForm.applicable_scene" placeholder="例如：用户评论睡不好、压力大、想先了解方向时可用。"></textarea>
+                </div>
+                <div>
+                  <label>活动说明</label>
+                  <textarea rows="4" v-model="activityForm.description" placeholder="例如：面向近期睡眠质量下降的用户，提供一次轻量睡眠状态初评。"></textarea>
+                </div>
+                <div>
+                  <label>利益点 / 甜头</label>
+                  <textarea rows="3" v-model="activityForm.benefit" placeholder="例如：免费初评、自测表、资料包、体验券、一次样例试跑。"></textarea>
+                </div>
+                <div>
+                  <label>领取 / 承接方式</label>
+                  <textarea rows="3" v-model="activityForm.claim_method" placeholder="例如：私信里直接发送微信号、草料码入口、预约入口，或先问一个低门槛问题。"></textarea>
+                </div>
+                <div class="two">
+                  <div>
+                    <label>名额 / 限制</label>
+                    <input v-model="activityForm.quota" placeholder="例如：这批名额不多；不确定可留空">
+                  </div>
+                  <div>
+                    <label>截止 / 有效期</label>
+                    <input v-model="activityForm.deadline" placeholder="例如：本周内；不确定可留空">
+                  </div>
+                </div>
+                <div>
+                  <label>标签，逗号分隔</label>
+                  <input v-model="activityTagsText" placeholder="睡眠, 大健康, 初评, 优惠券">
+                </div>
+                <div>
+                  <label>合规备注</label>
+                  <textarea rows="3" v-model="activityForm.compliance_note" placeholder="例如：不要承诺疗效，不要编造具体剩余名额，需以实际页面为准。"></textarea>
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-head"><div class="card-title">活动列表</div></div>
+              <div class="card-body">
+                <div class="list">
+                  <div class="item" :class="{selected: activityForm.activity_id === act.activity_id}" v-for="act in activitySettings.activities" :key="act.activity_id">
+                    <div class="item-head">
+                      <div class="item-title">{{ act.title }}</div>
+                      <span class="tag">{{ act.enabled === false ? '停用' : '启用' }}</span>
+                    </div>
+                    <div class="item-meta">{{ act.activity_type }} · {{ act.applicable_scene }}</div>
+                    <div>{{ act.benefit || act.description }}</div>
+                    <div class="tags"><span class="tag" v-for="tag in act.tags" :key="tag">{{ tag }}</span></div>
+                    <div class="actions">
+                      <button class="secondary" @click="editActivity(act)">编辑</button>
+                      <button class="danger" @click="deleteActivity(act)">删除</button>
+                    </div>
+                  </div>
+                  <div class="empty" v-if="!activitySettings.activities.length">暂无活动。配置后，生成 prompt 时会按评论自动匹配。</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section v-if="activeMenu === 'prompt'" class="grid-main-side">
+            <div class="card">
+              <div class="card-head">
+                <div class="card-title">prompt 组装还原</div>
+                <button @click="restorePrompt">还原组装</button>
+              </div>
+              <div class="card-body">
+                <div>
+                  <label>用户评论 / 私信</label>
+                  <textarea rows="4" v-model="promptForm.question" placeholder="例如：膝盖积液疼痛怎么办，能不能先了解一下"></textarea>
+                </div>
+                <div>
+                  <label>视频概述</label>
+                  <textarea rows="4" v-model="promptForm.video_overview" placeholder="例如：视频讲的是膝盖积液、上下楼疼、关节养护方法，评论区用户多在问是否适合自己"></textarea>
+                </div>
+                <div>
+                  <label>上下文</label>
+                  <textarea rows="4" v-model="promptForm.context" placeholder="可粘贴同一会话历史、压缩记忆或用户补充信息；没有可留空"></textarea>
+                </div>
+                <div>
+                  <label>场景模板</label>
+                  <select v-model="promptForm.template_id">
+                    <option value="">自动匹配</option>
+                    <option v-for="tpl in sceneTemplates.templates" :key="tpl.template_id" :value="tpl.template_id">{{ tpl.title }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label>活动设置</label>
+                  <select v-model="promptForm.activity_id">
+                    <option value="">自动匹配</option>
+                    <option v-for="act in enabledActivities" :key="act.activity_id" :value="act.activity_id">{{ act.title }}</option>
+                  </select>
+                </div>
+                <label class="actions">
+                  <input type="checkbox" v-model="promptForm.use_ai_selector" style="width:auto;min-height:0">
+                  <span>使用模型进行第一步文档路由</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head"><div class="card-title">组装结果</div></div>
+              <div class="card-body">
+                <div class="item" v-if="promptResult.selector">
+                  <div class="item-title">选中文档</div>
+                  <div class="item-meta">{{ promptResult.selector.document_ids.join(', ') || '无' }}</div>
+                  <div>{{ promptResult.selector.reason }}</div>
+                </div>
+                <div class="module-tabs">
+                  <button v-for="mod in promptResult.prompt_modules" :key="mod.key" :class="{active: activeModuleKey === mod.key}" @click="activeModuleKey = mod.key">
+                    {{ mod.title }}
+                  </button>
+                </div>
+                <textarea class="module-text" :value="activeModule.content || ''" spellcheck="false" readonly></textarea>
+                <div class="status">{{ activeModule.title || '暂无模块' }} {{ activeModule.chars ? '· ' + activeModule.chars + ' 字符' : '' }}</div>
+              </div>
+            </div>
+          </section>
+
+          <section v-if="activeMenu === 'dm'" class="grid-main-side">
+            <div class="card">
+              <div class="card-head">
+                <div class="card-title">生成私信</div>
+                <button @click="generateDm">生成</button>
+              </div>
+              <div class="card-body">
+                <div>
+                  <label>模拟用户评论 / 私信</label>
+                  <textarea rows="4" v-model="dmForm.question"></textarea>
+                </div>
+                <div>
+                  <label>视频概述</label>
+                  <textarea rows="4" v-model="dmForm.video_overview" placeholder="简要说明用户评论所在视频讲了什么、展示了什么、核心卖点或争议点"></textarea>
+                </div>
+                <div class="two">
+                  <div>
+                    <label>阶段</label>
+                    <select v-model="dmForm.conversation_stage">
+                      <option value="first_comment">用户评论 -> 首次私信</option>
+                      <option value="private_followup">用户私信 -> 私信维护</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label>场景模板</label>
+                    <select v-model="dmForm.template_id">
+                      <option value="">自动匹配</option>
+                      <option v-for="tpl in sceneTemplates.templates" :key="tpl.template_id" :value="tpl.template_id">{{ tpl.title }}</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label>活动设置</label>
+                  <select v-model="dmForm.activity_id">
+                    <option value="">自动匹配</option>
+                    <option v-for="act in enabledActivities" :key="act.activity_id" :value="act.activity_id">{{ act.title }}</option>
+                  </select>
+                </div>
+                <div><label>session_id</label><input v-model="dmForm.session_id"></div>
+                <div class="two">
+                  <div><label>当前平台</label><input v-model="dmForm.source_platform"></div>
+                  <div><label>引流目标</label><input v-model="dmForm.conversion_target"></div>
+                </div>
+                <div><label>目标补充</label><textarea rows="3" v-model="dmForm.target_note"></textarea></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-head"><div class="card-title">对话模拟</div></div>
+              <div class="card-body">
+                <div class="chat-box">
+                  <div class="bubble user" v-if="dmForm.question">{{ dmForm.question }}</div>
+                  <div class="bubble ai" v-if="dmAnswer">{{ dmAnswer }}</div>
+                  <div class="empty" v-if="!dmForm.question && !dmAnswer">输入评论后点击生成。</div>
+                </div>
+                <div class="item" v-if="dmMeta.project">
+                  <div class="item-title">识别场景：{{ dmMeta.project.scene_name }}</div>
+                  <div class="item-meta">文档：{{ (dmMeta.project_documents && dmMeta.project_documents.document_ids || []).join(', ') }}</div>
+                  <div class="item-meta">模板：{{ dmMeta.scene_template && dmMeta.scene_template.title || '自动匹配/未匹配' }}</div>
+                  <div class="item-meta">活动：{{ dmMeta.activity_settings && dmMeta.activity_settings.title || '自动匹配/未匹配' }}</div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+    <div v-else class="empty">Vue3 未加载，请检查网络或本地静态资源。</div>
+  </div>
+
+  <script src="/static/vendor/vue.global.prod.js"></script>
+  <script>
+    const { createApp } = window.Vue || {};
+    if (!createApp) {
+      document.getElementById("app").innerHTML = '<div class="empty">Vue3 未加载，请检查网络连接。</div>';
+    } else {
+      createApp({
+        data() {
+          return {
+            vueReady: true,
+            status: "正在加载...",
+            statusType: "",
+            activeMenu: "knowledge",
+            projectId: "",
+            projects: [],
+            documentDescriptions: {knowledge_bases: [], domains: []},
+            knowledgeJsonText: "",
+            sceneTemplates: {templates: []},
+            activitySettings: {activities: []},
+            upload: {knowledge_base: "公司私信知识库", domain: "", section: "", file: null, useAi: true},
+            templateForm: {template_id: "", title: "", purpose: "", applicable_scene: "", tags: [], steps: []},
+            templateTagsText: "",
+            templateStepsText: "",
+            activityForm: {
+              activity_id: "",
+              title: "",
+              activity_type: "活动",
+              applicable_scene: "",
+              description: "",
+              benefit: "",
+              claim_method: "",
+              deadline: "",
+              quota: "",
+              compliance_note: "",
+              tags: [],
+              enabled: true
+            },
+            activityTagsText: "",
+            promptForm: {
+              question: "",
+              video_overview: "",
+              context: "",
+              template_id: "",
+              activity_id: "",
+              use_ai_selector: false
+            },
+            promptResult: {prompt_modules: []},
+            activeModuleKey: "final_prompt",
+            dmForm: {
+              question: "",
+              video_overview: "",
+              conversation_stage: "first_comment",
+              template_id: "",
+              activity_id: "",
+              session_id: this.uuid(),
+              source_platform: "抖音",
+              conversion_target: "",
+              target_note: ""
+            },
+            dmAnswer: "",
+            dmMeta: {}
+          };
+        },
+        computed: {
+          menus() {
+            return [
+              {key: "knowledge", label: "知识库", desc: "文档上传、AI 描述、标签和总文档描述 JSON 管理。"},
+              {key: "templates", label: "场景模板", desc: "自定义场景标题、适用场景、标签、处理步骤和目的。"},
+              {key: "activities", label: "活动设置", desc: "配置活动、义诊、优惠券、体验名额，并组装进 prompt。"},
+              {key: "prompt", label: "prompt组装还原", desc: "还原用户评论/上下文、场景模板、活动设置、检索知识库和最终 prompt。"},
+              {key: "dm", label: "生成私信", desc: "模拟评论生成首次私信或后续私信维护。"}
+            ];
+          },
+          currentMenu() {
+            return this.menus.find(item => item.key === this.activeMenu) || this.menus[0];
+          },
+          knowledgeBaseOptions() {
+            const names = ["公司私信知识库", "招聘知识库"];
+            for (const base of this.documentDescriptions.knowledge_bases || []) {
+              const name = (base && base.name || "").trim();
+              if (name && !names.includes(name)) names.push(name);
+            }
+            return names;
+          },
+          flatDocuments() {
+            const docs = [];
+            const bases = (this.documentDescriptions.knowledge_bases && this.documentDescriptions.knowledge_bases.length)
+              ? this.documentDescriptions.knowledge_bases
+              : [{name: "公司私信知识库", domains: this.documentDescriptions.domains || []}];
+            for (const base of bases) {
+              for (const domain of base.domains || []) {
+                for (const section of domain.sections || []) {
+                  for (const doc of section.documents || []) {
+                    doc.knowledge_base = base.name || doc.knowledge_base || "公司私信知识库";
+                    doc.domain = domain.name;
+                    doc.section = section.name;
+                    docs.push(doc);
+                  }
+                }
+              }
+            }
+            return docs;
+          },
+          activeModule() {
+            return (this.promptResult.prompt_modules || []).find(item => item.key === this.activeModuleKey)
+              || (this.promptResult.prompt_modules || [])[0]
+              || {};
+          },
+          isEditingTemplate() {
+            return !!(this.templateForm && this.templateForm.template_id);
+          },
+          isEditingActivity() {
+            return !!(this.activityForm && this.activityForm.activity_id);
+          },
+          enabledActivities() {
+            return (this.activitySettings.activities || []).filter(item => item.enabled !== false);
+          }
+        },
+        mounted() {
+          const saved = this.savedChatConfig();
+          this.dmForm.source_platform = saved.sourcePlatform || "抖音";
+          this.dmForm.conversion_target = saved.conversionTarget || "";
+          this.dmForm.target_note = saved.targetNote || "";
+          this.loadState();
+        },
+        methods: {
+          uuid() {
+            if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID().replaceAll("-", "");
+            return Date.now().toString(16) + Math.random().toString(16).slice(2);
+          },
+          setStatus(text, type = "") {
+            this.status = text || "";
+            this.statusType = type;
+          },
+          savedChatConfig() {
+            try { return JSON.parse(localStorage.getItem("session-rag-chat-config") || "{}"); }
+            catch (_) { return {}; }
+          },
+          modelConfigPayload() {
+            const saved = this.savedChatConfig();
+            const provider = saved.provider || "minimax";
+            const providerConfig = saved.providers && saved.providers[provider] ? saved.providers[provider] : {};
+            return {
+              provider,
+              api_key: providerConfig.apiKey || "",
+              url: providerConfig.url || saved.url || "",
+              model_name: providerConfig.modelName || saved.modelName || "",
+              func_name: providerConfig.funcName || saved.funcName || "",
+              max_len_input: Number(providerConfig.maxLenInput || saved.maxLenInput || 16000)
+            };
+          },
+          async fetchJson(url, options = {}) {
+            const response = await fetch(url, options);
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok || !body.ok) throw new Error(body.error || response.statusText || "请求失败");
+            return body.data || {};
+          },
+          async loadState() {
+            this.setStatus("正在读取后台数据...");
+            try {
+              const url = "/api/admin/state" + (this.projectId ? "?project_id=" + encodeURIComponent(this.projectId) : "");
+              const data = await this.fetchJson(url);
+              this.projects = data.projects || [];
+              this.projectId = data.project && data.project.project_id || this.projectId || (this.projects[0] && this.projects[0].project_id) || "";
+              this.documentDescriptions = data.document_descriptions || {knowledge_bases: [], domains: []};
+              this.sceneTemplates = data.scene_templates || {templates: []};
+              this.activitySettings = data.activity_settings || {activities: []};
+              this.reloadDescriptionText();
+              this.setStatus("已加载：" + ((data.project && data.project.name) || this.projectId), "ok");
+            } catch (error) {
+              this.setStatus(error.message || "加载失败", "error");
+            }
+          },
+          reloadDescriptionText() {
+            this.knowledgeJsonText = JSON.stringify(this.documentDescriptions, null, 2);
+          },
+          onUploadFile(event) {
+            this.upload.file = event.target.files && event.target.files[0] || null;
+          },
+          async uploadKnowledge() {
+            if (!this.upload.file) {
+              this.setStatus("请先选择文件", "error");
+              return;
+            }
+            const form = new FormData();
+            form.append("file", this.upload.file);
+            form.append("project_id", this.projectId);
+            form.append("knowledge_base", this.upload.knowledge_base);
+            form.append("domain", this.upload.domain);
+            form.append("section", this.upload.section);
+            if (this.upload.useAi) {
+              const conf = this.modelConfigPayload();
+              Object.entries(conf).forEach(([key, value]) => form.append(key, value == null ? "" : String(value)));
+            }
+            this.setStatus("正在上传并生成文档描述...");
+            try {
+              const data = await this.fetchJson("/api/admin/knowledge/upload", {method: "POST", body: form});
+              this.documentDescriptions = data.document_descriptions || this.documentDescriptions;
+              this.reloadDescriptionText();
+              this.setStatus("已上传：" + (data.document && data.document.title || this.upload.file.name), "ok");
+            } catch (error) {
+              this.setStatus(error.message || "上传失败", "error");
+            }
+          },
+          async saveKnowledgeJson() {
+            try {
+              const parsed = JSON.parse(this.knowledgeJsonText);
+              const data = await this.fetchJson("/api/admin/knowledge/save", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({project_id: this.projectId, document_descriptions: parsed})
+              });
+              this.documentDescriptions = data.document_descriptions;
+              this.reloadDescriptionText();
+              this.setStatus("文档描述 JSON 已保存", "ok");
+            } catch (error) {
+              this.setStatus(error.message || "JSON 保存失败", "error");
+            }
+          },
+          async saveKnowledgeDescriptionsFromForm() {
+            this.knowledgeJsonText = JSON.stringify(this.documentDescriptions, null, 2);
+            await this.saveKnowledgeJson();
+          },
+          async openFileLocation(doc) {
+            if (!doc || !doc.relative_path) {
+              this.setStatus("该文档没有记录文件位置", "error");
+              return;
+            }
+            this.setStatus("正在打开文件位置...");
+            try {
+              const data = await this.fetchJson("/api/admin/open-file-location", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({project_id: this.projectId, relative_path: doc.relative_path})
+              });
+              this.setStatus("已打开：" + (data.relative_path || doc.relative_path), "ok");
+            } catch (error) {
+              this.setStatus(error.message || "打开文件位置失败", "error");
+            }
+          },
+          async deleteKnowledgeDocument(doc) {
+            if (!doc || (!doc.doc_id && !doc.relative_path)) {
+              this.setStatus("该文档缺少删除标识", "error");
+              return;
+            }
+            const name = doc.title || doc.relative_path || doc.doc_id;
+            if (!window.confirm("确定删除“" + name + "”吗？这会删除文件、文档描述和知识库索引记录。")) {
+              return;
+            }
+            this.setStatus("正在删除文件...");
+            try {
+              const data = await this.fetchJson("/api/admin/knowledge/delete", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                  project_id: this.projectId,
+                  doc_id: doc.doc_id || "",
+                  relative_path: doc.relative_path || ""
+                })
+              });
+              this.documentDescriptions = data.document_descriptions || this.documentDescriptions;
+              this.reloadDescriptionText();
+              this.setStatus("已删除：" + name, "ok");
+            } catch (error) {
+              this.setStatus(error.message || "删除文件失败", "error");
+            }
+          },
+          newTemplate() {
+            this.templateForm = {template_id: "", title: "", purpose: "", applicable_scene: "", tags: [], steps: []};
+            this.templateTagsText = "";
+            this.templateStepsText = "";
+          },
+          returnTemplateList() {
+            this.newTemplate();
+            this.setStatus("已返回模板列表", "ok");
+          },
+          editTemplate(tpl) {
+            this.templateForm = JSON.parse(JSON.stringify(tpl));
+            this.templateTagsText = (tpl.tags || []).join(", ");
+            this.templateStepsText = (tpl.steps || []).join("\n");
+            this.setStatus("正在编辑：" + (tpl.title || "未命名模板"));
+          },
+          templatePayload() {
+            return {
+              ...this.templateForm,
+              tags: this.templateTagsText.split(/[,，]/).map(item => item.trim()).filter(Boolean),
+              steps: this.templateStepsText.split(/\n+/).map(item => item.trim()).filter(Boolean)
+            };
+          },
+          async generateTemplate() {
+            if (!this.templateForm.purpose.trim()) {
+              this.setStatus("请先输入目的", "error");
+              return;
+            }
+            this.setStatus("正在生成场景模板...");
+            try {
+              const data = await this.fetchJson("/api/admin/scene-template/generate", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({purpose: this.templateForm.purpose, use_ai_selector: true, ...this.modelConfigPayload()})
+              });
+              this.editTemplate(data.template);
+              this.setStatus("模板已生成，可人工修改后保存", "ok");
+            } catch (error) {
+              this.setStatus(error.message || "模板生成失败", "error");
+            }
+          },
+          async saveTemplate() {
+            const template = this.templatePayload();
+            try {
+              const data = await this.fetchJson("/api/admin/scene-template/save", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({project_id: this.projectId, template})
+              });
+              this.sceneTemplates = data.scene_templates;
+              this.editTemplate(data.template);
+              this.setStatus("场景模板已保存", "ok");
+            } catch (error) {
+              this.setStatus(error.message || "保存失败", "error");
+            }
+          },
+          async deleteTemplate(tpl) {
+            try {
+              const data = await this.fetchJson("/api/admin/scene-template/delete", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({project_id: this.projectId, template_id: tpl.template_id})
+              });
+              this.sceneTemplates = data.scene_templates;
+              this.newTemplate();
+              this.setStatus("场景模板已删除", "ok");
+            } catch (error) {
+              this.setStatus(error.message || "删除失败", "error");
+            }
+          },
+          newActivity() {
+            this.activityForm = {
+              activity_id: "",
+              title: "",
+              activity_type: "活动",
+              applicable_scene: "",
+              description: "",
+              benefit: "",
+              claim_method: "",
+              deadline: "",
+              quota: "",
+              compliance_note: "",
+              tags: [],
+              enabled: true
+            };
+            this.activityTagsText = "";
+          },
+          editActivity(act) {
+            this.activityForm = JSON.parse(JSON.stringify(act));
+            if (this.activityForm.enabled === undefined) this.activityForm.enabled = true;
+            this.activityTagsText = (act.tags || []).join(", ");
+            this.setStatus("正在编辑活动：" + (act.title || "未命名活动"));
+          },
+          activityPayload() {
+            return {
+              ...this.activityForm,
+              tags: this.activityTagsText.split(/[,，]/).map(item => item.trim()).filter(Boolean)
+            };
+          },
+          async saveActivity() {
+            const activity = this.activityPayload();
+            if (!activity.title.trim()) {
+              this.setStatus("请填写活动名称", "error");
+              return;
+            }
+            try {
+              const data = await this.fetchJson("/api/admin/activity/save", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({project_id: this.projectId, activity})
+              });
+              this.activitySettings = data.activity_settings || {activities: []};
+              this.editActivity(data.activity);
+              this.setStatus("活动设置已保存", "ok");
+            } catch (error) {
+              this.setStatus(error.message || "活动保存失败", "error");
+            }
+          },
+          async deleteActivity(act) {
+            if (!window.confirm("确定删除活动“" + (act.title || act.activity_id) + "”吗？")) return;
+            try {
+              const data = await this.fetchJson("/api/admin/activity/delete", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({project_id: this.projectId, activity_id: act.activity_id})
+              });
+              this.activitySettings = data.activity_settings || {activities: []};
+              this.newActivity();
+              this.setStatus("活动设置已删除", "ok");
+            } catch (error) {
+              this.setStatus(error.message || "活动删除失败", "error");
+            }
+          },
+          async restorePrompt() {
+            if (!this.promptForm.question.trim()) {
+              this.setStatus("请输入用户评论", "error");
+              return;
+            }
+            this.setStatus("正在还原 prompt 组装...");
+            try {
+              const data = await this.fetchJson("/api/admin/prompt/restore", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                  project_id: this.projectId,
+                  question: this.promptForm.question,
+                  video_overview: this.promptForm.video_overview,
+                  context: this.promptForm.context,
+                  template_id: this.promptForm.template_id,
+                  activity_id: this.promptForm.activity_id,
+                  use_ai_selector: this.promptForm.use_ai_selector,
+                  ...this.modelConfigPayload()
+                })
+              });
+              this.promptResult = data;
+              this.activeModuleKey = "final_prompt";
+              this.setStatus("prompt 组装已还原", "ok");
+            } catch (error) {
+              this.setStatus(error.message || "还原失败", "error");
+            }
+          },
+          async generateDm() {
+            if (!this.dmForm.question.trim()) {
+              this.setStatus("请输入模拟评论或私信", "error");
+              return;
+            }
+            this.setStatus("正在生成私信...");
+            try {
+              const data = await this.fetchJson("/api/chat", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                  ...this.modelConfigPayload(),
+                  question: this.dmForm.question,
+                  video_overview: this.dmForm.video_overview,
+                  project_id: this.projectId,
+                  session_id: this.dmForm.session_id || this.uuid(),
+                  conversation_stage: this.dmForm.conversation_stage,
+                  template_id: this.dmForm.template_id,
+                  activity_id: this.dmForm.activity_id,
+                  source_platform: this.dmForm.source_platform,
+                  conversion_target: this.dmForm.conversion_target,
+                  target_note: this.dmForm.target_note
+                })
+              });
+              this.dmAnswer = data.result && data.result.answer || "";
+              this.dmMeta = data;
+              this.setStatus("私信已生成", "ok");
+            } catch (error) {
+              this.setStatus(error.message || "生成失败，请先检查模型配置", "error");
+            }
+          }
+        }
+      }).mount("#app");
+    }
+  </script>
+</body>
+</html>

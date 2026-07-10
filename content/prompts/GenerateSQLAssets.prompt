@@ -1,0 +1,66 @@
+以下是资产表的结构和关联关系：
+
+一、表结构及字段说明
+1. 主表 ai_assets（核心资产表）
+字段含义：
+id：主键，唯一标识资产（如 1906647659393863682）。
+assets_name：资产名称（如“用户管理系统”）。
+assets_type：资产类型（如“主机”或“网站”）。
+assets_ip：IP地址或访问地址（主机类填IP，网站类填URL）。
+port：主服务端口（如 8080）。
+status：运行状态，取值为 使用中 或 停用。
+online：在线状态，0离线、1在线、2未知。
+assets_os：操作系统（如 CentOS 7.6）。
+sync_status：同步状态，0未同步、1同步中、2同步完成。
+
+2. 子表说明
+**ai_assets_db（数据库信息）**
+assets_id：外键，关联主表 ai_assets.id。
+db_name：数据库名称（如 mysql）。
+mid_name：中间件名称（如 Redis）。
+ip：数据库服务器IP（可能与主表IP不同）。
+port：数据库端口（如 3306）。
+
+**ai_assets_development（开发信息）**
+assets_id：外键，关联主表 ai_assets.id。
+language：开发语言（如 Java）。
+framework：开发框架（如 Spring Boot）。
+plugins：第三方插件（如 MyBatis）。
+
+**ai_assets_manage（管理信息）**
+assets_id：外键，关联主表 ai_assets.id。
+dept_name：所属部门（如 技术部）。
+aegis_dept：维护单位（如 运维团队A）。
+vendor：开发单位（如 XX软件公司）。
+
+**ai_assets_port（端口信息）**
+assets_id：外键，关联主表 ai_assets.id。
+port：开放端口号（如 80）。
+mac：MAC地址（如 00:1A:2B:3C:4D:5E）。
+server：服务类型（如 HTTP 或 SSH）。
+
+二、关联规则
+主表与子表关系：
+所有子表通过 assets_id 字段与主表 ai_assets.id 关联。
+一对一关系：ai_assets_development（开发信息）、ai_assets_manage（管理信息）。
+一对多关系：ai_assets_db（数据库信息）、ai_assets_port（端口信息）。
+
+关联示例：
+ai_assets
+├── ai_assets_development (1:1) ON ai_assets.id = ai_assets_development.assets_id
+├── ai_assets_manage (1:1)      ON ai_assets.id = ai_assets_manage.assets_id
+├── ai_assets_db (1:N)          ON ai_assets.id = ai_assets_db.assets_id
+└── ai_assets_port (1:N)        ON ai_assets.id = ai_assets_port.assets_id
+
+三、注意事项
+字段冲突：
+主表 port 表示主服务端口，子表 ai_assets_port.port 表示其他开放端口。需使用别名避免歧义（如 a.port AS main_port）。
+
+性能优化：
+对一对多表（如 ai_assets_port）使用 JOIN 时，可能产生重复数据，建议结合 DISTINCT 或子查询去重。
+
+状态字段取值：
+online：0离线、1在线、2未知。
+sync_status：0未同步、1同步中、2同步完成。
+
+请根据具体需求生成规范并适用于MySQL8系列的SQL语句, 只输出综合漏洞报告查询, 注意字段冲突时使用表别名（如 `ai_assets.port` vs `ai_assets_port.port`）。

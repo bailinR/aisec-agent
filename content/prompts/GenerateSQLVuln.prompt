@@ -1,0 +1,71 @@
+以下是国家漏洞库表的结构和字段说明：
+一、表结构及字段说明
+ai_vuln_database（国家漏洞库）
+字段含义：
+id：主键，唯一标识记录（如 1906647660140449796）。
+vuln_no：关联的资产id，漏洞编号。
+vuln_name：漏洞名称（如"SQL注入漏洞"）。
+vuln_level：漏洞等级（如"高危"、"中危"、"低危"）。
+similarity：相似度评分。
+attribute：漏洞属性。
+scan_type：扫描类型（识别来源）。
+vuln_type_name：漏洞类型名称（如"注入类"、"逻辑类"）。
+vuln_desc：漏洞详细描述（文本字段）。
+repair_suggest：修复建议（文本字段）。
+create_time：创建时间。
+updateTime：更新时间。
+sync_id：漏洞管理平台上记录的id。
+sync_status：同步状态（如0未同步、1同步中、2同步完成）。
+sync_time：同步时间。
+二、数据类型说明
+字符型字段：
+vuln_no: varchar(50)，关联资产ID
+vuln_name: varchar(255)，漏洞名称
+vuln_level: varchar(10)，漏洞等级
+similarity: varchar(10)，相似度
+attribute: varchar(50)，漏洞属性
+scan_type: varchar(50)，扫描方式
+vuln_type_name: varchar(20)，漏洞类型
+sync_id: varchar(128)，外部系统ID
+文本型字段：
+vuln_desc: text，漏洞详细描述
+repair_suggest: text，修复建议
+数值型字段：
+id: bigint，自增主键
+sync_status: tinyint，同步状态码
+日期时间型字段：
+create_time: datetime，创建时间
+updateTime: datetime，更新时间
+sync_time: datetime，同步时间
+三、业务规则说明
+字段关系：
+vuln_no 用于关联外部资产系统
+vuln_level 表示漏洞危险等级，用于风险评估
+sync_status 表示与外部漏洞管理平台的同步状态：
+可能的取值为：0(未同步)、1(同步中)、2(同步完成)
+数据操作注意事项：
+查询时可以按漏洞等级(vuln_level)进行分类统计
+可基于create_time和updateTime进行时间段查询
+vuln_desc和repair_suggest为长文本字段，查询结果展示时可能需要截断处理
+插入新记录时，id字段为自增主键，无需手动指定
+四、示例查询
+按漏洞等级统计：
+SELECT vuln_level, COUNT() as count
+FROM ai_vuln_database
+GROUP BY vuln_level
+ORDER BY count DESC;
+查询特定类型的漏洞：
+SELECT id, vuln_name, vuln_level, create_time
+FROM ai_vuln_database
+WHERE vuln_type_name = '注入类'
+ORDER BY create_time DESC;
+查询未同步的漏洞记录：
+SELECT id, vuln_name, vuln_level
+FROM ai_vuln_database
+WHERE sync_status = 0 OR sync_status IS NULL;
+五、字段值说明
+vuln_level: 可能的取值包括"高危"、"中危"、"低危"、"信息"等
+sync_status: 0(未同步)、1(同步中)、2(同步完成)
+attribute: 漏洞特征属性，可用于分类和筛选
+scan_type: 表示漏洞发现的方式，如"自动扫描"、"人工测试"等
+请根据具体需求生成规范的SQL语句，注意TEXT类型字段在查询时可能影响性能，建议使用适当的WHERE条件限制结果集大小。

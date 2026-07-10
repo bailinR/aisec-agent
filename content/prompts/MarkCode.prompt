@@ -1,0 +1,139 @@
+# [网络安全日志智能分析器]
+# 模式：自适应日志格式分析
+# 输入：日志内容将通过log_content变量传入
+# 输出：可执行Python分析脚本
+# 背景：你输出的代码我会保存为变量code,然后我直接用exec(code)执行这份代码,最后直接从report_str取结果
+
+'''
+你是有20年经验的网络安全分析师兼全栈开发专家。按以下要求生成分析代码：
+
+## 代码格式要求：
+1. 直接使用log_content变量，假设它已存在于执行环境中
+2. 不要使用占位符或格式化语法
+3. 实现灵活的日志解析，能适应多种日志格式
+4. 使用多种解析策略，确保能提取出有用信息
+5. 不再使用print打印信息，将所有信息以字符串的形式赋值到report_str这个变量（必须存在）
+
+## 日志解析要求：
+1. 尝试多种分隔符（空格、制表符、逗号等）
+2. 使用多种启发式算法识别日志格式
+3. 至少实现3种不同的解析策略
+4. 使用正则表达式匹配常见的安全日志模式（CVE ID、IP地址等）
+5. 即使无法完全解析，也应提取出可能的风险信息
+
+## 输出要求：
+- 纯文本格式的详细分析报告
+- 在解析失败时也能提供有用的输出和统计
+
+## 示例代码结构：
+```python
+import re
+import ipaddress
+from collections import defaultdict
+
+# 以下代码假设log_content变量已存在
+
+# 1. 确保输入是字符串
+if not isinstance(log_content, str):
+    log_content = str(log_content)
+
+# 2. 尝试多种解析策略
+def parse_strategy_1(text):
+    # 基于行分割和关键字识别的解析
+    results = []
+    patterns = [
+        (r'(?i)vulnerability|漏洞|弱点', 'vuln_type'),
+        (r'(?i)high|medium|low|高危|中危|低危', 'severity'),
+        (r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', 'ip_address'),
+        (r'CVE-\d{4}-\d{4,7}', 'cve_id')
+    ]
+
+    for line in text.split('\\n'):
+        if not line.strip():
+            continue
+
+        entry = {}
+        for pattern, field in patterns:
+            matches = re.findall(pattern, line)
+            if matches:
+                entry[field] = matches
+
+        if entry:  # 只添加非空条目
+            results.append(entry)
+
+    return results
+
+def parse_strategy_2(text):
+    # 基于整个文本的模式匹配
+    # 另一种解析方法实现...
+    pass
+
+def parse_strategy_3(text):
+    # 基于关键字分隔的解析
+    # 第三种解析方法实现...
+    pass
+
+# 3. 执行解析并整合结果
+parsed_results = parse_strategy_1(log_content)
+# 如果第一种策略返回的结果太少，尝试其他策略
+if len(parsed_results) < 3:
+    # 尝试其他策略...
+    pass
+
+# 4. 分析结果
+vulnerabilities = defaultdict(int)
+severities = defaultdict(int)
+ips = set()
+cves = set()
+
+for entry in parsed_results:
+    # 收集统计信息...
+    if 'vuln_type' in entry:
+        for v in entry['vuln_type']:
+            vulnerabilities[v] += 1
+
+    if 'severity' in entry:
+        for s in entry['severity']:
+            severities[s] += 1
+
+    if 'ip_address' in entry:
+        ips.update(entry['ip_address'])
+
+    if 'cve_id' in entry:
+        cves.update(entry['cve_id'])
+
+# 5. 生成报告
+report = []
+report.append("安全日志分析报告")
+report.append("=" * 30)
+report.append(f"分析条目数: {len(parsed_results)}")
+report.append(f"检测到的IP地址: {len(ips)}")
+report.append(f"检测到的CVE ID: {len(cves)}")
+report.append("")
+
+if vulnerabilities:
+    report.append("漏洞类型分布:")
+    for vuln, count in sorted(vulnerabilities.items(), key=lambda x: x[1], reverse=True):
+        report.append(f"  - {vuln}: {count}")
+    report.append("")
+
+if severities:
+    report.append("风险等级分布:")
+    for sev, count in sorted(severities.items(), key=lambda x: x[1], reverse=True):
+        report.append(f"  - {sev}: {count}")
+    report.append("")
+
+if ips:
+    report.append("受影响的IP地址:")
+    for ip in sorted(ips):
+        report.append(f"  - {ip}")
+    report.append("")
+
+if cves:
+    report.append("相关CVE编号:")
+    for cve in sorted(cves):
+        report.append(f"  - {cve}")
+
+report_str = "\\n".join(report)
+```
+'''

@@ -1,0 +1,2125 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>本地会话 RAG</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f6f5;
+      --panel: #ffffff;
+      --panel-2: #eef4f1;
+      --text: #18201d;
+      --muted: #66736f;
+      --line: #dbe3df;
+      --accent: #087f6f;
+      --accent-2: #c4512d;
+      --danger: #a73535;
+      --shadow: 0 16px 36px rgba(24, 32, 29, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      height: 100%;
+    }
+
+    body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+      font-size: 14px;
+      letter-spacing: 0;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      border-radius: 6px;
+      background: var(--accent);
+      color: #fff;
+      min-height: 36px;
+      padding: 0 14px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    button.secondary {
+      background: #e3ebe7;
+      color: var(--text);
+      border: 1px solid var(--line);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.65;
+    }
+
+    label {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      min-height: 36px;
+      padding: 8px 10px;
+      outline: none;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(8, 127, 111, 0.12);
+    }
+
+    .app {
+      height: 100vh;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr) 380px;
+      gap: 16px;
+      padding: 16px;
+      overflow: hidden;
+    }
+
+    .app.config-collapsed {
+      grid-template-columns: 260px minmax(0, 1fr) 54px;
+    }
+
+    .sessions,
+    .chat,
+    .config {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      min-width: 0;
+      height: calc(100vh - 32px);
+      min-height: 0;
+    }
+
+    .sessions {
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .sessions-head {
+      padding: 14px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel-2);
+      display: grid;
+      gap: 10px;
+    }
+
+    .sessions-title {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .sessions-list {
+      overflow: auto;
+      min-height: 0;
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+      align-content: start;
+    }
+
+    .session-item {
+      text-align: left;
+      width: 100%;
+      color: var(--text);
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 6px;
+      min-height: 62px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .session-item.active {
+      border-color: rgba(8, 127, 111, 0.45);
+      background: #eef8f5;
+    }
+
+    .session-main {
+      min-width: 0;
+      min-height: 48px;
+      padding: 6px;
+      border: 0;
+      background: transparent;
+      color: var(--text);
+      text-align: left;
+      display: grid;
+      gap: 4px;
+      align-content: center;
+    }
+
+    .session-main:hover {
+      background: rgba(8, 127, 111, 0.06);
+    }
+
+    .session-delete {
+      width: 34px;
+      min-height: 34px;
+      padding: 0;
+      background: #fff4f2;
+      color: var(--danger);
+      border: 1px solid rgba(167, 53, 53, 0.25);
+      font-size: 12px;
+    }
+
+    .session-delete:hover {
+      background: #ffe7e2;
+    }
+
+    .session-name,
+    .session-snippet {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .session-name {
+      font-weight: 700;
+    }
+
+    .session-snippet {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .chat {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      overflow: hidden;
+    }
+
+    .chat-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel-2);
+    }
+
+    .title {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .title-block {
+      min-width: 0;
+      display: grid;
+      gap: 4px;
+    }
+
+    .head-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      justify-content: flex-end;
+      font-size: 12px;
+    }
+
+    .head-links a {
+      min-height: 30px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      padding: 0 10px;
+      text-decoration: none;
+    }
+
+    .head-links a:hover {
+      border-color: rgba(8, 127, 111, 0.35);
+      background: #f5faf8;
+      text-decoration: none;
+    }
+
+    .head-links a.active {
+      border-color: rgba(8, 127, 111, 0.48);
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+    }
+
+    .head-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 8px;
+      min-width: min(420px, 48%);
+    }
+
+    .session-pill {
+      max-width: 48%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--muted);
+      font-size: 12px;
+      border: 1px solid var(--line);
+      background: #fff;
+      padding: 6px 8px;
+      border-radius: 6px;
+    }
+
+    .messages {
+      overflow: auto;
+      min-height: 0;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      overscroll-behavior: contain;
+    }
+
+    .empty {
+      margin: auto;
+      color: var(--muted);
+      border: 1px dashed var(--line);
+      padding: 18px 20px;
+      border-radius: 8px;
+      background: #fbfcfb;
+    }
+
+    .message {
+      display: flex;
+      flex-direction: column;
+      max-width: 78%;
+      gap: 6px;
+    }
+
+    .message.user {
+      align-self: flex-end;
+      align-items: flex-end;
+    }
+
+    .message.assistant {
+      align-self: flex-start;
+      align-items: flex-start;
+    }
+
+    .message.comment,
+    .message.private_in {
+      align-self: flex-end;
+      align-items: flex-end;
+      max-width: 74%;
+    }
+
+    .message.private_first,
+    .message.private_out {
+      align-self: flex-start;
+      align-items: flex-start;
+      max-width: 78%;
+    }
+
+    .role-label {
+      font-size: 12px;
+      color: var(--muted);
+      padding: 0 2px;
+    }
+
+    .role-label.bottom {
+      color: var(--accent-2);
+      font-size: 12px;
+    }
+
+    .message-actions {
+      display: flex;
+      justify-content: flex-end;
+      width: 100%;
+      margin-top: -2px;
+    }
+
+    .prompt-link {
+      min-height: 24px;
+      padding: 0 8px;
+      border: 1px solid rgba(8, 127, 111, 0.22);
+      background: #fff;
+      color: var(--accent);
+      font-size: 12px;
+    }
+
+    .prompt-link:hover {
+      background: #f3faf7;
+      border-color: rgba(8, 127, 111, 0.4);
+    }
+
+    .message.comment .role-label.top,
+    .message.private_in .role-label.top {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .bubble {
+      border-radius: 8px;
+      padding: 10px 12px;
+      line-height: 1.65;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .user .bubble {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .assistant .bubble {
+      background: #f7faf8;
+      border: 1px solid var(--line);
+    }
+
+    .comment .bubble {
+      background: #fff7e6;
+      border: 1px solid #e4b95f;
+      color: #3f2c08;
+    }
+
+    .private_in .bubble {
+      background: #e8f0ff;
+      border: 1px solid #a9bfeb;
+      color: #17345f;
+    }
+
+    .private_first .bubble {
+      background: #effaf6;
+      border: 1px solid rgba(8, 127, 111, 0.38);
+      color: #16332d;
+    }
+
+    .private_out .bubble {
+      background: #effaf6;
+      border: 1px solid rgba(8, 127, 111, 0.28);
+      color: #16332d;
+    }
+
+    .asset-stack {
+      display: grid;
+      gap: 8px;
+      width: min(360px, 100%);
+    }
+
+    .asset-card {
+      width: 100%;
+      overflow: hidden;
+      border: 1px solid rgba(8, 127, 111, 0.22);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 8px 18px rgba(24, 32, 29, 0.08);
+      white-space: normal;
+    }
+
+    .asset-card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 10px;
+      font-size: 12px;
+      color: #fff;
+      background: var(--accent);
+    }
+
+    .asset-card-title {
+      padding: 12px 12px 4px;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.45;
+    }
+
+    .asset-card-desc {
+      padding: 0 12px 12px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .asset-card-action {
+      margin: 0 12px 12px;
+      min-height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      color: #fff;
+      background: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .asset-card-main {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 10px;
+      padding: 12px;
+      align-items: center;
+    }
+
+    .asset-avatar {
+      width: 42px;
+      height: 42px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #e5f5f0;
+      color: var(--accent);
+      font-weight: 800;
+    }
+
+    .asset-name {
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.35;
+    }
+
+    .asset-sub {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .asset-contact {
+      margin-top: 5px;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.4;
+      word-break: break-all;
+    }
+
+    .asset-qr-body {
+      display: grid;
+      grid-template-columns: 72px minmax(0, 1fr);
+      gap: 12px;
+      padding: 12px;
+      align-items: center;
+    }
+
+    .asset-qr {
+      width: 72px;
+      height: 72px;
+      border: 6px solid #fff;
+      outline: 1px solid var(--line);
+      background:
+        linear-gradient(90deg, #111 10px, transparent 10px 14px, #111 14px 20px, transparent 20px 28px, #111 28px 34px, transparent 34px),
+        linear-gradient(#111 8px, transparent 8px 14px, #111 14px 22px, transparent 22px 30px, #111 30px 38px, transparent 38px);
+      background-color: #fff;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .tag {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 3px 6px;
+      background: #fff;
+    }
+
+    .tag.warn {
+      color: var(--accent-2);
+      border-color: rgba(196, 81, 45, 0.35);
+      background: #fff8f5;
+    }
+
+    .composer {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 58px;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      border-top: 1px solid var(--line);
+      background: #f8fbf9;
+    }
+
+    .composer textarea {
+      height: 58px;
+      min-height: 58px;
+      max-height: 128px;
+      resize: none;
+      padding: 17px 14px;
+      line-height: 22px;
+      border-color: rgba(8, 127, 111, 0.35);
+      background: #fff;
+      box-shadow: inset 0 1px 2px rgba(24, 32, 29, 0.04);
+      overflow-y: auto;
+    }
+
+    .composer textarea::placeholder {
+      color: #8a9893;
+    }
+
+    .composer textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(8, 127, 111, 0.12), inset 0 1px 2px rgba(24, 32, 29, 0.04);
+    }
+
+    .composer button {
+      width: 58px;
+      height: 58px;
+      min-height: 58px;
+      padding: 0;
+      align-self: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      background: #0a8b78;
+    }
+
+    .composer button:hover:not(:disabled) {
+      background: #087f6f;
+    }
+
+    .composer button:disabled {
+      background: #8fb7af;
+      opacity: 1;
+    }
+
+    .config {
+      overflow: auto;
+      padding: 16px;
+    }
+
+    .config-body {
+      display: grid;
+      gap: 14px;
+    }
+
+    .config-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .config h2 {
+      font-size: 16px;
+      margin: 0;
+    }
+
+    .config-toggle {
+      min-height: 32px;
+      padding: 0 10px;
+    }
+
+    .app.config-collapsed .config {
+      padding: 10px 8px;
+      overflow: hidden;
+    }
+
+    .app.config-collapsed .config-head {
+      display: grid;
+      justify-items: center;
+      gap: 8px;
+      margin: 0;
+    }
+
+    .app.config-collapsed .config h2 {
+      writing-mode: vertical-rl;
+      font-size: 14px;
+      line-height: 1;
+    }
+
+    .app.config-collapsed .config-toggle {
+      width: 36px;
+      min-height: 36px;
+      padding: 0;
+    }
+
+    .app.config-collapsed .config-body {
+      display: none;
+    }
+
+    .group {
+      display: grid;
+      gap: 12px;
+      padding: 14px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .group:first-of-type {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: end;
+    }
+
+    .two {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .check-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text);
+    }
+
+    .check-row input {
+      width: auto;
+      min-height: 0;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .status {
+      color: var(--muted);
+      min-height: 18px;
+      font-size: 12px;
+    }
+
+    .status.error {
+      color: var(--danger);
+    }
+
+    .status.success {
+      color: var(--accent);
+    }
+
+    .field-note {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .model-settings {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfb;
+      padding: 0;
+    }
+
+    .model-settings summary {
+      cursor: pointer;
+      color: var(--text);
+      font-weight: 700;
+      padding: 12px 14px;
+      margin: 0;
+      list-style-position: inside;
+    }
+
+    .model-settings-content {
+      display: grid;
+      gap: 12px;
+      padding: 0 14px 14px;
+    }
+
+    .model-settings:not([open]) .model-settings-content {
+      display: none;
+    }
+
+    .hidden-config {
+      display: none !important;
+    }
+
+    .prompt-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(24, 32, 29, 0.42);
+    }
+
+    .prompt-modal.open {
+      display: flex;
+    }
+
+    .prompt-modal-card {
+      width: min(980px, 96vw);
+      max-height: 86vh;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .prompt-modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel-2);
+    }
+
+    .prompt-modal-title {
+      margin: 0;
+      font-size: 15px;
+    }
+
+    .prompt-modal-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .prompt-modal-body {
+      margin: 0;
+      padding: 14px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: Consolas, "Microsoft YaHei", monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      color: #1d2a26;
+      background: #fbfcfb;
+    }
+
+    @media (max-width: 1180px) {
+      body {
+        min-height: 100vh;
+        overflow: auto;
+      }
+
+      .app {
+        height: auto;
+        min-height: 100vh;
+        grid-template-columns: 1fr;
+        overflow: visible;
+      }
+
+      .sessions,
+      .chat,
+      .config {
+        height: auto;
+        min-height: auto;
+      }
+
+      .chat {
+        height: 62vh;
+        min-height: 420px;
+      }
+
+      .message {
+        max-width: 94%;
+      }
+
+      .session-pill {
+        max-width: 42%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sessions">
+      <header class="sessions-head">
+        <h2 class="sessions-title">会话窗口</h2>
+        <button type="button" id="newSessionMain">新建会话</button>
+      </header>
+      <section class="sessions-list" id="sessionsList"></section>
+    </aside>
+
+    <main class="chat">
+      <header class="chat-head">
+        <div class="title-block">
+          <h1 class="title">评论转私信智能体</h1>
+        </div>
+        <div class="head-right">
+          <nav class="head-links">
+            <a class="active" href="/session-rag-chat">生成私信</a>
+            <a href="/admin-vue">后台管理</a>
+            <a href="/file-parser">文件解析</a>
+          </nav>
+          <div class="session-pill" id="sessionView"></div>
+        </div>
+      </header>
+
+      <section class="messages" id="messages">
+        <div class="empty" id="empty">输入第一条用户评论，AI 将生成首次私信</div>
+      </section>
+
+      <form class="composer" id="chatForm">
+        <textarea id="question" placeholder="输入抖音评论内容"></textarea>
+        <button id="sendBtn" type="submit">发送</button>
+      </form>
+    </main>
+
+    <aside class="config" id="configPanel">
+      <header class="config-head">
+        <h2>配置</h2>
+        <button class="secondary config-toggle" type="button" id="toggleConfigPanel">收起</button>
+      </header>
+
+      <div class="config-body" id="configBody">
+        <section class="group">
+          <div>
+            <label for="videoOverview">视频概述</label>
+            <textarea id="videoOverview" rows="5" placeholder="例如：视频讲的是膝盖积液、上下楼疼和日常养护建议"></textarea>
+            <div class="field-note">用于补充评论发生的内容背景，会和用户评论一起传给 AI。</div>
+          </div>
+          <div>
+            <label for="globalPrompt">全局提示词</label>
+            <textarea id="globalPrompt" rows="8" placeholder="项目统一口吻、边界和回复规则"></textarea>
+            <div class="field-note">来自当前项目 global_prompt.md，可在本页临时调整并参与本次生成。</div>
+          </div>
+          <div>
+            <label for="templateId">场景模板选择</label>
+            <select id="templateId"></select>
+            <div class="field-note" id="templateHint">默认自动匹配；选择具体模板时，会优先按该模板生成回复。</div>
+          </div>
+        </section>
+
+        <details class="model-settings" id="modelSettings">
+          <summary>模型设置</summary>
+          <div class="model-settings-content">
+            <div>
+              <label for="provider">Provider</label>
+              <select id="provider"></select>
+            </div>
+            <div class="row">
+              <div>
+                <label for="apiKey">API Key</label>
+                <input id="apiKey" type="password" autocomplete="off">
+              </div>
+              <button class="secondary" type="button" id="toggleKey">显示</button>
+            </div>
+            <div>
+              <label for="url">URL</label>
+              <input id="url" autocomplete="off">
+            </div>
+            <div class="two">
+              <div>
+                <label for="modelName">模型</label>
+                <input id="modelName" autocomplete="off">
+              </div>
+              <div>
+                <label for="funcName">函数</label>
+                <input id="funcName" autocomplete="off">
+              </div>
+            </div>
+            <div>
+              <label for="maxLenInput">max_len_input</label>
+              <input id="maxLenInput" type="number" min="1000" step="1000">
+            </div>
+            <div class="actions">
+              <button class="secondary" type="button" id="testConfigBtn">测试配置</button>
+              <button type="button" id="saveConfigBtn">保存配置</button>
+              <button class="secondary" type="button" id="resetProviderBtn">重置当前模型</button>
+            </div>
+          </div>
+        </details>
+
+        <div class="hidden-config" aria-hidden="true">
+          <input id="sessionId" autocomplete="off">
+          <button class="secondary" type="button" id="newSession">新会话</button>
+          <input id="userId" autocomplete="off">
+          <select id="projectId"></select>
+          <select id="sceneId" disabled></select>
+          <input id="sourcePlatform">
+          <input id="conversionTarget">
+          <textarea id="targetNote"></textarea>
+          <input id="enableKnowledge" type="checkbox">
+          <input id="topics">
+          <input id="summaryMaxChars" type="number" min="500" step="500">
+          <input id="rawMaxChars" type="number" min="1000" step="1000">
+          <input id="knowledgeSize" type="number" min="1" max="20">
+          <input id="importFile" type="file" accept=".docx,.pdf,.xls,.xlsx,.csv,.md,.txt,.log,.xml,.json,.html,.css,.js,.py,.java,.zip,.jar">
+          <button class="secondary" type="button" id="importFileBtn">解析入库</button>
+        </div>
+
+        <div class="status" id="status"></div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="prompt-modal" id="promptModal" aria-hidden="true">
+    <div class="prompt-modal-card" role="dialog" aria-modal="true" aria-labelledby="promptModalTitle">
+      <header class="prompt-modal-head">
+        <h2 class="prompt-modal-title" id="promptModalTitle">最终发给 AI 的完整 Prompt</h2>
+        <div class="prompt-modal-actions">
+          <button class="secondary" type="button" id="copyPromptBtn">复制</button>
+          <button type="button" id="closePromptBtn">关闭</button>
+        </div>
+      </header>
+      <pre class="prompt-modal-body" id="promptModalBody"></pre>
+    </div>
+  </div>
+
+  <script>
+    const storageKey = "session-rag-chat-config";
+    const app = document.querySelector(".app");
+    const fields = {
+      provider: document.getElementById("provider"),
+      apiKey: document.getElementById("apiKey"),
+      url: document.getElementById("url"),
+      modelName: document.getElementById("modelName"),
+      funcName: document.getElementById("funcName"),
+      maxLenInput: document.getElementById("maxLenInput"),
+      videoOverview: document.getElementById("videoOverview"),
+      globalPrompt: document.getElementById("globalPrompt"),
+      templateId: document.getElementById("templateId"),
+      sessionId: document.getElementById("sessionId"),
+      userId: document.getElementById("userId"),
+      projectId: document.getElementById("projectId"),
+      sceneId: document.getElementById("sceneId"),
+      sourcePlatform: document.getElementById("sourcePlatform"),
+      conversionTarget: document.getElementById("conversionTarget"),
+      targetNote: document.getElementById("targetNote"),
+      enableKnowledge: document.getElementById("enableKnowledge"),
+      topics: document.getElementById("topics"),
+      summaryMaxChars: document.getElementById("summaryMaxChars"),
+      rawMaxChars: document.getElementById("rawMaxChars"),
+      knowledgeSize: document.getElementById("knowledgeSize"),
+      importFile: document.getElementById("importFile")
+    };
+    const messages = document.getElementById("messages");
+    const empty = document.getElementById("empty");
+    const sessionView = document.getElementById("sessionView");
+    const status = document.getElementById("status");
+    const sendBtn = document.getElementById("sendBtn");
+    const testConfigBtn = document.getElementById("testConfigBtn");
+    const importFileBtn = document.getElementById("importFileBtn");
+    const sessionsList = document.getElementById("sessionsList");
+    const templateHint = document.getElementById("templateHint");
+    const promptModal = document.getElementById("promptModal");
+    const promptModalBody = document.getElementById("promptModalBody");
+    const copyPromptBtn = document.getElementById("copyPromptBtn");
+    const closePromptBtn = document.getElementById("closePromptBtn");
+    let presets = {};
+    let projects = [];
+    let sceneTemplates = [];
+    let sessions = [];
+    let activeSessionId = "";
+    let serverModelConfigs = {};
+
+    function uuid() {
+      if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID().replaceAll("-", "");
+      return Date.now().toString(16) + Math.random().toString(16).slice(2);
+    }
+
+    function savedConfig() {
+      try {
+        return JSON.parse(localStorage.getItem(storageKey) || "{}");
+      } catch (_) {
+        return {};
+      }
+    }
+
+    function normalizeStore(raw) {
+      const store = raw && typeof raw === "object" ? raw : {};
+      if (!store.providers) store.providers = {};
+      if (!Array.isArray(store.sessions)) store.sessions = [];
+      if (!store.sessions.length) {
+        store.sessions.push({
+          id: store.sessionId || uuid(),
+          title: "新会话",
+          messages: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        });
+      }
+      store.activeSessionId = store.activeSessionId || store.sessionId || store.sessions[0].id;
+      if (!store.sessions.some(item => item.id === store.activeSessionId)) {
+        store.activeSessionId = store.sessions[0].id;
+      }
+      if (store.provider && !store.providers[store.provider]) {
+        store.providers[store.provider] = {
+          url: store.url || "",
+          modelName: store.modelName || "",
+          funcName: store.funcName || "",
+          maxLenInput: store.maxLenInput || ""
+        };
+      }
+      return store;
+    }
+
+    function currentProviderConfig() {
+      return {
+        apiKey: fields.apiKey.value,
+        url: fields.url.value,
+        modelName: fields.modelName.value,
+        funcName: fields.funcName.value,
+        maxLenInput: fields.maxLenInput.value
+      };
+    }
+
+    function currentCommonConfig() {
+      return {
+        provider: fields.provider.value,
+        sessionId: fields.sessionId.value,
+        activeSessionId,
+        userId: fields.userId.value,
+        projectId: fields.projectId.value,
+        sceneId: "auto",
+        templateId: fields.templateId.value,
+        videoOverview: fields.videoOverview.value,
+        globalPrompt: fields.globalPrompt.value,
+        summaryMaxChars: fields.summaryMaxChars.value,
+        rawMaxChars: fields.rawMaxChars.value,
+        knowledgeSize: fields.knowledgeSize.value,
+        configCollapsed: app.classList.contains("config-collapsed")
+      };
+    }
+
+    function writeStore(store) {
+      if (sessions.length) store.sessions = sessions;
+      if (activeSessionId) {
+        store.activeSessionId = activeSessionId;
+        store.sessionId = activeSessionId;
+      }
+      localStorage.setItem(storageKey, JSON.stringify(store));
+      updateSessionView();
+    }
+
+    function saveCommonConfig() {
+      const store = normalizeStore(savedConfig());
+      Object.assign(store, currentCommonConfig());
+      writeStore(store);
+    }
+
+    async function saveProviderConfig(showMessage = true) {
+      try {
+        const store = normalizeStore(savedConfig());
+        Object.assign(store, currentCommonConfig());
+        store.providers[fields.provider.value] = currentProviderConfig();
+        writeStore(store);
+        const response = await fetch("/api/v1/model/config/save", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(modelConfigPayload())
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok || !body.ok) {
+          throw new Error(body.error || response.statusText || "model config save failed");
+        }
+        serverModelConfigs = (body.data && body.data.configs && body.data.configs.providers) || serverModelConfigs;
+        if (showMessage) setStatus("??????API ?????????? key", "success");
+        return true;
+      } catch (error) {
+        if (showMessage) setStatus("???????" + (error.message || String(error)), "error");
+        return false;
+      }
+    }
+
+    function updateSessionView() {
+      sessionView.textContent = fields.sessionId.value || "";
+    }
+
+    function setStatus(text, type = "") {
+      status.textContent = text || "";
+      const isError = type === true || type === "error";
+      const isSuccess = type === "success";
+      status.classList.toggle("error", isError);
+      status.classList.toggle("success", isSuccess);
+    }
+
+    function modelConfigPayload() {
+      return {
+        provider: fields.provider.value,
+        api_key: fields.apiKey.value,
+        url: fields.url.value,
+        model_name: fields.modelName.value,
+        func_name: fields.funcName.value,
+        max_len_input: Number(fields.maxLenInput.value || 16000)
+      };
+    }
+
+    async function testProviderConfig() {
+      testConfigBtn.disabled = true;
+      setStatus("正在测试当前模型配置...");
+      try {
+        const response = await fetch("/api/v1/model/test", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(modelConfigPayload())
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok || !body.ok) {
+          throw new Error(body.error || response.statusText || "配置测试失败");
+        }
+        const data = body.data || {};
+        const reply = data.reply ? `，模型返回：${data.reply}` : "";
+        setStatus(`配置测试成功：${data.model_name || fields.modelName.value}${reply}`, "success");
+      } catch (error) {
+        setStatus("配置测试失败：" + (error.message || String(error)), "error");
+      } finally {
+        testConfigBtn.disabled = false;
+      }
+    }
+
+    async function importProjectFile() {
+      const file = fields.importFile.files && fields.importFile.files[0];
+      if (!file) {
+        setStatus("请先选择资料文件", true);
+        return;
+      }
+
+      const form = new FormData();
+      form.append("file", file);
+      form.append("project_id", fields.projectId.value || "");
+      form.append("provider", fields.provider.value || "");
+      form.append("api_key", fields.apiKey.value || "");
+      form.append("url", fields.url.value || "");
+      form.append("model_name", fields.modelName.value || "");
+      form.append("func_name", fields.funcName.value || "");
+      form.append("max_len_input", fields.maxLenInput.value || "16000");
+
+      importFileBtn.disabled = true;
+      setStatus("正在解析资料文件...");
+      try {
+        const response = await fetch("/api/project-documents/import", {
+          method: "POST",
+          body: form
+        });
+        const body = await response.json();
+        if (!response.ok || !body.ok) {
+          throw new Error(body.error || response.statusText);
+        }
+        const data = body.data || {};
+        fields.importFile.value = "";
+        setStatus(`已入库：${data.title || data.doc_id}，切片 ${data.chunk_count || 0} 条`);
+      } catch (error) {
+        setStatus(error.message || String(error), true);
+      } finally {
+        importFileBtn.disabled = false;
+      }
+    }
+
+    function populateProjects(selectedProjectId = "") {
+      fields.projectId.innerHTML = "";
+      projects.forEach(project => {
+        const option = document.createElement("option");
+        option.value = project.project_id;
+        option.textContent = project.name || project.project_id;
+        fields.projectId.appendChild(option);
+      });
+      if (selectedProjectId && projects.some(project => project.project_id === selectedProjectId)) {
+        fields.projectId.value = selectedProjectId;
+      } else if (projects.length) {
+        fields.projectId.value = projects[0].project_id;
+      }
+      populateScenes("auto");
+    }
+
+    function activeProject() {
+      return projects.find(project => project.project_id === fields.projectId.value) || projects[0] || null;
+    }
+
+    function populateScenes(selectedSceneId = "auto") {
+      const project = activeProject();
+      fields.sceneId.innerHTML = "";
+      const scenes = project ? project.scenes || [] : [];
+      scenes.forEach(scene => {
+        const option = document.createElement("option");
+        option.value = scene.scene_id;
+        option.textContent = scene.name || scene.scene_id;
+        fields.sceneId.appendChild(option);
+      });
+      if (selectedSceneId && scenes.some(scene => scene.scene_id === selectedSceneId)) {
+        fields.sceneId.value = selectedSceneId;
+      } else if (scenes.some(scene => scene.scene_id === "auto")) {
+        fields.sceneId.value = "auto";
+      } else if (scenes.length) {
+        fields.sceneId.value = scenes[0].scene_id;
+      }
+    }
+
+    function populateSceneTemplates(selectedTemplateId = "") {
+      fields.templateId.innerHTML = "";
+      const autoOption = document.createElement("option");
+      autoOption.value = "";
+      autoOption.textContent = "自动匹配";
+      fields.templateId.appendChild(autoOption);
+
+      sceneTemplates.forEach(template => {
+        const option = document.createElement("option");
+        option.value = template.template_id || "";
+        option.textContent = template.title || template.name || template.template_id || "未命名模板";
+        fields.templateId.appendChild(option);
+      });
+
+      if (selectedTemplateId && sceneTemplates.some(template => template.template_id === selectedTemplateId)) {
+        fields.templateId.value = selectedTemplateId;
+      } else {
+        fields.templateId.value = "";
+      }
+
+      templateHint.textContent = sceneTemplates.length
+        ? "默认自动匹配；选择具体模板时，会优先按该模板生成回复。"
+        : "当前项目还没有场景模板，可在后台管理的“场景模板”中新增。";
+    }
+
+    async function loadSceneTemplates(selectedTemplateId = "") {
+      if (!fields.projectId.value) {
+        sceneTemplates = [];
+        populateSceneTemplates(selectedTemplateId);
+        return;
+      }
+      try {
+        const response = await fetch(`/api/admin/state?project_id=${encodeURIComponent(fields.projectId.value)}`);
+        const body = await response.json();
+        if (!response.ok || !body.ok) {
+          throw new Error(body.error || response.statusText || "场景模板加载失败");
+        }
+        const data = body.data || {};
+        sceneTemplates = (data.scene_templates && data.scene_templates.templates) || [];
+        populateSceneTemplates(selectedTemplateId);
+      } catch (error) {
+        sceneTemplates = [];
+        populateSceneTemplates("");
+        setStatus("场景模板加载失败：" + (error.message || String(error)), "error");
+      }
+    }
+
+    async function loadProjectGlobalPrompt(savedPrompt = "") {
+      if (/不是群发|不是打扰|不是机器人/.test(savedPrompt || "")) {
+        savedPrompt = "";
+      }
+      if (savedPrompt) {
+        fields.globalPrompt.value = savedPrompt;
+        return;
+      }
+      if (!fields.projectId.value) return;
+      try {
+        const response = await fetch(`/api/project-materials?project_id=${encodeURIComponent(fields.projectId.value)}`);
+        const body = await response.json();
+        if (!response.ok || !body.ok) {
+          throw new Error(body.error || response.statusText || "全局提示词加载失败");
+        }
+        const files = (body.data && body.data.files) || [];
+        const globalFile = files.find(file => file.relative_path === "global_prompt.md" || file.type === "global_prompt");
+        fields.globalPrompt.value = globalFile ? (globalFile.content || "") : "";
+        saveCommonConfig();
+      } catch (error) {
+        setStatus("全局提示词加载失败：" + (error.message || String(error)), "error");
+      }
+    }
+
+    function activeSession() {
+      let session = sessions.find(item => item.id === activeSessionId);
+      if (!session) {
+        session = createSessionRecord(activeSessionId || uuid());
+        sessions.unshift(session);
+        activeSessionId = session.id;
+      }
+      return session;
+    }
+
+    function createSessionRecord(id) {
+      return {
+        id: id || uuid(),
+        title: "新会话",
+        messages: [],
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+    }
+
+    function syncSessionInput() {
+      fields.sessionId.value = activeSessionId;
+      updateSessionView();
+      const session = activeSession();
+      const isFirst = session.messages.length === 0;
+      document.getElementById("question").placeholder = isFirst ? "输入抖音评论内容" : "输入用户私信内容";
+    }
+
+    function renderSessions() {
+      sessionsList.innerHTML = "";
+      sessions.forEach(session => {
+        const item = document.createElement("div");
+        item.className = "session-item" + (session.id === activeSessionId ? " active" : "");
+        item.dataset.sessionId = session.id;
+
+        const main = document.createElement("button");
+        main.type = "button";
+        main.className = "session-main";
+
+        const name = document.createElement("div");
+        name.className = "session-name";
+        name.textContent = session.title || "新会话";
+
+        const snippet = document.createElement("div");
+        snippet.className = "session-snippet";
+        const last = session.messages[session.messages.length - 1];
+        snippet.textContent = last ? last.text : session.id;
+
+        const deleteButton = document.createElement("button");
+        deleteButton.type = "button";
+        deleteButton.className = "session-delete";
+        deleteButton.textContent = "删除";
+        deleteButton.title = "删除会话";
+
+        main.appendChild(name);
+        main.appendChild(snippet);
+        main.addEventListener("click", () => switchSession(session.id));
+        deleteButton.addEventListener("click", () => deleteSession(session.id));
+
+        item.appendChild(main);
+        item.appendChild(deleteButton);
+        sessionsList.appendChild(item);
+      });
+    }
+
+    function renderMessages() {
+      messages.querySelectorAll(".message").forEach(node => node.remove());
+      const session = activeSession();
+      empty.style.display = session.messages.length ? "none" : "block";
+      session.messages.forEach(message => addMessage(message.role, message.text, false, message));
+      messages.scrollTop = messages.scrollHeight;
+      syncSessionInput();
+    }
+
+    function switchSession(sessionId) {
+      activeSessionId = sessionId;
+      saveCommonConfig();
+      renderSessions();
+      renderMessages();
+    }
+
+    function createNewSession() {
+      const session = createSessionRecord(uuid());
+      sessions.unshift(session);
+      activeSessionId = session.id;
+      saveCommonConfig();
+      renderSessions();
+      renderMessages();
+      setStatus("已新建会话");
+    }
+
+    function deleteSession(sessionId) {
+      const session = sessions.find(item => item.id === sessionId);
+      if (!session) return;
+      const title = session.title || "这个会话";
+      if (!confirm(`删除会话“${title}”？`)) return;
+
+      const deletingActive = sessionId === activeSessionId;
+      sessions = sessions.filter(item => item.id !== sessionId);
+      if (!sessions.length) {
+        sessions.push(createSessionRecord(uuid()));
+      }
+      if (deletingActive || !sessions.some(item => item.id === activeSessionId)) {
+        activeSessionId = sessions[0].id;
+      }
+      saveCommonConfig();
+      renderSessions();
+      renderMessages();
+      setStatus("会话已删除", "success");
+    }
+
+    function updateActiveSessionAfterMessage(text) {
+      const session = activeSession();
+      if (!session.title || session.title === "新会话") {
+        session.title = text.slice(0, 18) || "新会话";
+      }
+      session.updatedAt = Date.now();
+      saveCommonConfig();
+      renderSessions();
+      syncSessionInput();
+    }
+
+    function setConfigCollapsed(collapsed, persist = true) {
+      app.classList.toggle("config-collapsed", Boolean(collapsed));
+      const button = document.getElementById("toggleConfigPanel");
+      button.textContent = collapsed ? "展开" : "收起";
+      button.title = collapsed ? "展开配置页" : "收起配置页";
+      if (persist) saveCommonConfig();
+    }
+
+    function providerPreset(name) {
+      return presets[name] || {};
+    }
+
+    function providerSavedConfig(name) {
+      const store = normalizeStore(savedConfig());
+      return store.providers[name] || null;
+    }
+
+    function isLegacyMiniMaxConfig(providerName, saved) {
+      if (providerName !== "minimax" || !saved) return false;
+      return (saved.funcName === "minimax_chat") || String(saved.url || "").includes("/v1/chat/completions");
+    }
+
+    function fillProviderConfig(providerName, forcePreset = false) {
+      const preset = providerPreset(providerName);
+      const savedConfig = forcePreset ? null : providerSavedConfig(providerName);
+      const saved = isLegacyMiniMaxConfig(providerName, savedConfig) ? null : savedConfig;
+      fields.apiKey.value = savedConfig ? (savedConfig.apiKey || "") : "";
+      fields.url.value = saved ? (saved.url || preset.url || "") : (preset.url || "");
+      fields.modelName.value = saved ? (saved.modelName || preset.model_name || "") : (preset.model_name || "");
+      fields.funcName.value = saved ? (saved.funcName || preset.func_name || "") : (preset.func_name || "");
+      fields.maxLenInput.value = saved ? (saved.maxLenInput || fields.maxLenInput.value || 16000) : (fields.maxLenInput.value || 16000);
+    }
+
+    function applyPreset(force = false) {
+      const preset = presets[fields.provider.value] || {};
+      if (force || !fields.url.value) fields.url.value = preset.url || "";
+      if (force || !fields.modelName.value) fields.modelName.value = preset.model_name || "";
+      if (force || !fields.funcName.value) fields.funcName.value = preset.func_name || "";
+      if (force) fields.apiKey.value = "";
+      saveCommonConfig();
+    }
+
+    function loadConfig(defaults) {
+      const saved = normalizeStore(savedConfig());
+      sessions = saved.sessions;
+      activeSessionId = saved.activeSessionId || saved.sessionId || sessions[0].id;
+      fields.provider.value = saved.provider || defaults.provider || "minimax";
+      fields.maxLenInput.value = saved.maxLenInput || defaults.max_len_input || 16000;
+      fields.sessionId.value = activeSessionId || defaults.session_id || uuid();
+      fields.userId.value = saved.userId || defaults.user_id || "local_user";
+      fields.projectId.value = saved.projectId || defaults.project_id || "";
+      populateProjects(fields.projectId.value);
+      populateScenes("auto");
+      const savedGlobalPrompt = /不是群发|不是打扰|不是机器人/.test(saved.globalPrompt || "") ? "" : (saved.globalPrompt || "");
+      fields.templateId.value = saved.templateId || "";
+      fields.videoOverview.value = saved.videoOverview || "";
+      fields.globalPrompt.value = savedGlobalPrompt;
+      fields.sourcePlatform.value = "";
+      fields.conversionTarget.value = "";
+      fields.targetNote.value = "";
+      fields.enableKnowledge.checked = false;
+      fields.topics.value = "";
+      fields.summaryMaxChars.value = saved.summaryMaxChars || defaults.summary_max_chars || 4000;
+      fields.rawMaxChars.value = saved.rawMaxChars || defaults.raw_max_chars || 12000;
+      fields.knowledgeSize.value = saved.knowledgeSize || defaults.knowledge_size || 4;
+      setConfigCollapsed(Boolean(saved.configCollapsed), false);
+      fillProviderConfig(fields.provider.value, false);
+      renderSessions();
+      renderMessages();
+      loadSceneTemplates(saved.templateId || "");
+      loadProjectGlobalPrompt(savedGlobalPrompt);
+    }
+
+    function roleLabel(role) {
+      return {
+        comment: "用户评论",
+        private_in: "用户私信",
+        private_first: "首次私信",
+        private_out: "私信回复",
+        user: "用户",
+        assistant: "AI"
+      }[role] || role;
+    }
+
+    function speakerLabel(role) {
+      return ["comment", "private_in"].includes(role) ? "用户" : "";
+    }
+
+    function isAssistantRole(role) {
+      return ["assistant", "private_first", "private_out"].includes(role);
+    }
+
+    function assetTypeFromTitle(title) {
+      if (/草料码|二维码|领取页|扫码/.test(title)) return "qr";
+      if (/名片|企业卡|服务卡|券|优惠|福利|礼包/.test(title)) return "";
+      if (/预约|体验入口|入口|平台卡/.test(title)) return "entry";
+      return "";
+    }
+
+    function currentTargetConfig() {
+      const platform = fields.sourcePlatform.value.trim();
+      const target = fields.conversionTarget.value.trim();
+      const note = fields.targetNote.value.trim();
+      const combined = [target, note].filter(Boolean).join(" ");
+      const contactMatch = combined.match(/\b(vx|wx)\s*[:：]?\s*([A-Za-z0-9_-]{4,})/i)
+        || combined.match(/(?:微信号?|企微|企业微信)\s*[:：号]?\s*([A-Za-z0-9_-]{4,})/i);
+      let contact = "";
+      if (contactMatch) {
+        contact = contactMatch.length >= 3
+          ? `${contactMatch[1].toLowerCase()}:${contactMatch[2]}`
+          : `微信号:${contactMatch[1]}`;
+      }
+      return {platform, target, note, combined, contact};
+    }
+
+    function hasTargetConfig(config = currentTargetConfig()) {
+      return Boolean(config.platform || config.target || config.note);
+    }
+
+    function targetLabel(config = currentTargetConfig()) {
+      const text = config.combined.toLowerCase();
+      if (/微信群|进群|群入口/.test(config.combined)) return "微信群";
+      if (/企业微信|企微/.test(config.combined)) return "企业微信";
+      if (/公众号/.test(config.combined)) return "公众号";
+      if (/微信|v信|\bvx\b|\bwx\b/.test(text)) return "微信";
+      if (/私域/.test(config.combined)) return "私域入口";
+      const cleaned = config.target
+        .replace(/[，,。；;].*$/, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      return cleaned || "";
+    }
+
+    function isDirectContactTarget(config = currentTargetConfig()) {
+      const text = config.combined.toLowerCase();
+      return /微信群|微信号|企业微信|企微|加微信|加我|v信|\bvx\b|\bwx\b/.test(text);
+    }
+
+    function preferredTargetAssetType(config = currentTargetConfig()) {
+      const label = targetLabel(config);
+      if (isDirectContactTarget(config)) return "";
+      if (/微信群|公众号|入口|领取页|草料码|二维码/.test(label + config.combined)) return "entry";
+      return "entry";
+    }
+
+    function targetAssetTitle(type, config = currentTargetConfig()) {
+      const label = targetLabel(config);
+      const platform = config.platform || "当前平台";
+      if (type === "qr") {
+        if (/微信群/.test(label)) return "微信群领取页";
+        if (/微信|企业微信/.test(label)) return `${label}添加页`;
+        if (/页$/.test(label)) return label;
+        return label ? `${label}领取页` : "专属领取页";
+      }
+      if (/微信群/.test(label)) return "微信群领取入口";
+      if (/企业微信/.test(label)) return "企业微信添加入口";
+      if (/微信/.test(label)) return "微信添加入口";
+      if (/公众号/.test(label)) return "公众号关注入口";
+      if (/入口$/.test(label)) return label;
+      return label ? `${label}入口` : "专属服务入口";
+    }
+
+    function normalizeAssetTitle(type, title) {
+      const config = currentTargetConfig();
+      if (!hasTargetConfig(config)) return title;
+      if (/名片|服务卡|企业卡|优惠券|体验券|新人体验券|福利|礼包/.test(title)) {
+        return "";
+      }
+      if (/XX|xx|某公司|某平台|平台服务名片|公司新人体验券|草料码领取页|专属体验入口/.test(title)) {
+        return targetAssetTitle(type, config);
+      }
+      return title;
+    }
+
+    function assetActionText(type, config = currentTargetConfig()) {
+      const label = targetLabel(config);
+      if (/微信群/.test(label)) return "查看进群入口";
+      if (/企业微信|微信/.test(label)) return "查看添加方式";
+      if (/公众号/.test(label)) return "查看关注入口";
+      return "打开入口";
+    }
+
+    function assetAvatarText(config = currentTargetConfig()) {
+      const label = targetLabel(config);
+      if (/微信群/.test(label)) return "群";
+      if (/企业微信/.test(label)) return "企微";
+      if (/微信/.test(label)) return "微信";
+      if (/公众号/.test(label)) return "公号";
+      if (config.platform) return config.platform.slice(0, 2);
+      return "入口";
+    }
+
+    function assetSubText(type, config = currentTargetConfig()) {
+      const platform = config.platform || "当前平台";
+      const label = targetLabel(config) || "服务入口";
+      if (type === "qr") return `扫码打开${label}，按页面提示完成下一步`;
+      return `${platform} · 私信承接 · ${label}`;
+    }
+
+    function extractAssets(text) {
+      const assets = [];
+      const seen = new Set();
+
+      function pushAsset(type, title) {
+        if (!type || !title) return;
+        title = normalizeAssetTitle(type, title);
+        if (!title) return;
+        const key = type + ":" + title;
+        if (seen.has(key)) return;
+        seen.add(key);
+        assets.push({type, title});
+      }
+
+      for (const match of String(text || "").matchAll(/【([^】]+)】/g)) {
+        const title = match[1].trim();
+        pushAsset(assetTypeFromTitle(title), title);
+      }
+
+      if (assets.length) return assets.slice(0, 3);
+
+      const config = currentTargetConfig();
+      const directContact = isDirectContactTarget(config);
+      const targetText = String(text || "");
+      const blockedAssetText = /名片|企业卡|服务卡|优惠券|体验券|新人体验券|福利|礼包/.test(targetText);
+      if (!blockedAssetText && !directContact && hasTargetConfig(config) && /微信|企微|企业微信|微信群|加我|添加|进群|入口|联系方式|\bvx\b|\bwx\b/i.test(targetText)) {
+        const type = preferredTargetAssetType(config);
+        pushAsset(type, targetAssetTitle(type, config));
+      }
+      if (!blockedAssetText && !directContact && !assets.some(asset => asset.type === "qr") && /草料码|二维码|领取页|扫码/.test(text)) {
+        pushAsset("qr", targetAssetTitle("qr"));
+      }
+      if (!blockedAssetText && !directContact && !assets.some(asset => asset.type === "entry") && /体验入口|预约卡|平台卡|入口/.test(text)) {
+        pushAsset("entry", targetAssetTitle("entry"));
+      }
+
+      return assets.slice(0, 3);
+    }
+
+    function createNode(tagName, className, text) {
+      const node = document.createElement(tagName);
+      if (className) node.className = className;
+      if (text !== undefined) node.textContent = text;
+      return node;
+    }
+
+    function createAssetCard(asset) {
+      const card = createNode("div", "asset-card asset-" + asset.type);
+      const config = currentTargetConfig();
+
+      const head = createNode("div", "asset-card-head");
+      const labelMap = {
+        qr: "草料码",
+        entry: "体验入口"
+      };
+      head.appendChild(createNode("span", "", labelMap[asset.type] || "业务卡片"));
+      head.appendChild(createNode("span", "", "已发送"));
+      card.appendChild(head);
+
+      if (asset.type === "qr") {
+        const body = createNode("div", "asset-qr-body");
+        body.appendChild(createNode("div", "asset-qr"));
+        const info = createNode("div", "");
+        info.appendChild(createNode("div", "asset-name", asset.title));
+        info.appendChild(createNode("div", "asset-sub", assetSubText(asset.type, config)));
+        if (config.contact) info.appendChild(createNode("div", "asset-contact", config.contact));
+        body.appendChild(info);
+        card.appendChild(body);
+        card.appendChild(createNode("div", "asset-card-action", assetActionText(asset.type, config)));
+        return card;
+      }
+
+      card.appendChild(createNode("div", "asset-card-title", asset.title));
+      const desc = `${targetLabel(config) || "服务入口"}已就绪，可查看领取方式、预约入口和下一步说明`;
+      card.appendChild(createNode("div", "asset-card-desc", desc));
+      if (config.contact) card.appendChild(createNode("div", "asset-card-desc", `联系方式：${config.contact}`));
+      card.appendChild(createNode("div", "asset-card-action", assetActionText(asset.type, config)));
+      return card;
+    }
+
+    function renderAssistantAssets(item, role, text) {
+      const oldStack = item.querySelector(".asset-stack");
+      if (oldStack) oldStack.remove();
+      if (!isAssistantRole(role)) return;
+
+      const assets = extractAssets(text);
+      if (!assets.length) return;
+
+      const stack = createNode("div", "asset-stack");
+      assets.forEach(asset => stack.appendChild(createAssetCard(asset)));
+      const bottomLabel = item.querySelector(".role-label.bottom");
+      item.insertBefore(stack, bottomLabel);
+    }
+
+    function promptTextFromTrace(promptTrace) {
+      if (!promptTrace) return "";
+      if (typeof promptTrace === "string") return promptTrace;
+      return promptTrace.final_prompt || promptTrace.prompt || "";
+    }
+
+    function openPromptModal(promptTrace) {
+      const promptText = promptTextFromTrace(promptTrace);
+      if (!promptText) return;
+      promptModalBody.textContent = promptText;
+      promptModal.classList.add("open");
+      promptModal.setAttribute("aria-hidden", "false");
+    }
+
+    function closePromptModal() {
+      promptModal.classList.remove("open");
+      promptModal.setAttribute("aria-hidden", "true");
+    }
+
+    function renderPromptAction(item, role, promptTrace) {
+      const oldActions = item.querySelector(".message-actions");
+      if (oldActions) oldActions.remove();
+      if (!isAssistantRole(role) || !promptTextFromTrace(promptTrace)) return;
+
+      const actions = createNode("div", "message-actions");
+      const button = createNode("button", "prompt-link", "查看 Prompt");
+      button.type = "button";
+      button.addEventListener("click", () => openPromptModal(promptTrace));
+      actions.appendChild(button);
+      item.appendChild(actions);
+    }
+
+    function addMessage(role, text, persist = true, extra = {}) {
+      empty.style.display = "none";
+      const item = document.createElement("article");
+      item.className = "message " + role;
+      const topLabelText = speakerLabel(role);
+      if (topLabelText) {
+        const topLabel = document.createElement("div");
+        topLabel.className = "role-label top";
+        topLabel.textContent = topLabelText;
+        item.appendChild(topLabel);
+      }
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.textContent = text;
+      item.appendChild(bubble);
+      const bottomLabel = document.createElement("div");
+      bottomLabel.className = "role-label bottom";
+      bottomLabel.textContent = roleLabel(role);
+      item.appendChild(bottomLabel);
+      renderAssistantAssets(item, role, text);
+      renderPromptAction(item, role, extra.promptTrace || extra.prompt_trace);
+      messages.appendChild(item);
+      messages.scrollTop = messages.scrollHeight;
+      if (persist) {
+        const session = activeSession();
+        session.messages.push({role, text, promptTrace: extra.promptTrace || extra.prompt_trace || null, createdAt: Date.now()});
+        updateActiveSessionAfterMessage(text);
+      }
+      return item;
+    }
+
+    function addMeta(item, result) {
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      if (result.memory_error) meta.appendChild(tag("记忆未保存", "warn"));
+      if (result.used_knowledge && result.used_knowledge.length) {
+        meta.appendChild(tag("知识库 " + result.used_knowledge.length));
+      }
+      if (meta.childNodes.length) item.appendChild(meta);
+    }
+
+    function tag(text, type) {
+      const node = document.createElement("span");
+      node.className = "tag" + (type ? " " + type : "");
+      node.textContent = text;
+      return node;
+    }
+
+    function payload(question, conversationStage) {
+      return {
+        question,
+        conversation_stage: conversationStage,
+        provider: fields.provider.value,
+        api_key: fields.apiKey.value,
+        url: fields.url.value,
+        model_name: fields.modelName.value,
+        func_name: fields.funcName.value,
+        max_len_input: Number(fields.maxLenInput.value || 16000),
+        session_id: fields.sessionId.value,
+        user_id: fields.userId.value,
+        project_id: fields.projectId.value,
+        scene_id: "auto",
+        template_id: fields.templateId.value,
+        video_overview: fields.videoOverview.value,
+        global_prompt: fields.globalPrompt.value,
+        source_platform: "",
+        conversion_target: "",
+        target_note: "",
+        enable_knowledge: false,
+        topics: "",
+        summary_max_chars: Number(fields.summaryMaxChars.value || 4000),
+        raw_max_chars: Number(fields.rawMaxChars.value || 12000),
+        knowledge_size: Number(fields.knowledgeSize.value || 4)
+      };
+    }
+
+    function streamStatusText(code) {
+      return {
+        selecting_project_documents: "自动识别场景并匹配资料",
+        reading_memory: "读取会话记忆",
+        searching_knowledge: "检索知识库",
+        checking_context: "判断上下文",
+        reading_raw_context: "补读原始上下文",
+        streaming_answer: "生成回复中"
+      }[code] || code || "请求中";
+    }
+
+    function parseSSEFrames(buffer) {
+      const frames = buffer.split("\n\n");
+      return {
+        complete: frames.slice(0, -1),
+        rest: frames[frames.length - 1]
+      };
+    }
+
+    function parseSSEFrame(frame) {
+      const dataLines = frame
+        .split("\n")
+        .map(line => line.trimEnd())
+        .filter(line => line.startsWith("data:"))
+        .map(line => line.slice(5).trimStart());
+      if (!dataLines.length) return null;
+      return JSON.parse(dataLines.join("\n"));
+    }
+
+    async function send(question) {
+      const session = activeSession();
+      const isFirstTurn = session.messages.length === 0;
+      const inboundRole = isFirstTurn ? "comment" : "private_in";
+      const outboundRole = isFirstTurn ? "private_first" : "private_out";
+      const conversationStage = isFirstTurn ? "first_comment" : "private_followup";
+
+      addMessage(inboundRole, question);
+      const pending = addMessage(outboundRole, "...");
+      const pendingRecord = activeSession().messages[activeSession().messages.length - 1];
+      const bubble = pending.querySelector(".bubble");
+      sendBtn.disabled = true;
+      setStatus("请求中");
+
+      try {
+        const response = await fetch("/api/chat/stream", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(payload(question, conversationStage))
+        });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body.error || "请求失败");
+        }
+        if (!response.body) throw new Error("当前浏览器不支持流式读取");
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buffer = "";
+        let streamedText = "";
+        let doneData = null;
+        let hasFirstChunk = false;
+
+        while (true) {
+          const {value, done} = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, {stream: true});
+          const parsed = parseSSEFrames(buffer);
+          buffer = parsed.rest;
+
+          for (const frame of parsed.complete) {
+            const event = parseSSEFrame(frame);
+            if (!event) continue;
+            if (event.type === "status") {
+              setStatus(streamStatusText(event.message));
+            } else if (event.type === "delta") {
+              if (!hasFirstChunk) {
+                bubble.textContent = "";
+                hasFirstChunk = true;
+              }
+              streamedText += event.text || "";
+              bubble.textContent = streamedText;
+              pendingRecord.text = streamedText;
+              messages.scrollTop = messages.scrollHeight;
+            } else if (event.type === "done") {
+              doneData = event.data || {};
+            } else if (event.type === "error") {
+              throw new Error(event.error || "请求失败");
+            }
+          }
+        }
+
+        buffer += decoder.decode();
+        if (buffer.trim()) {
+          const event = parseSSEFrame(buffer);
+          if (event && event.type === "done") doneData = event.data || {};
+          if (event && event.type === "error") throw new Error(event.error || "请求失败");
+        }
+
+        const result = (doneData && doneData.result) || {};
+        const promptTrace = (doneData && doneData.prompt_trace) || result.prompt_trace || null;
+        const finalAnswer = result.answer || streamedText || "";
+        bubble.textContent = finalAnswer;
+        pendingRecord.text = finalAnswer;
+        pendingRecord.promptTrace = promptTrace;
+        renderAssistantAssets(pending, outboundRole, finalAnswer);
+        renderPromptAction(pending, outboundRole, promptTrace);
+        addMeta(pending, result);
+        fields.sessionId.value = (doneData && doneData.session_id) || fields.sessionId.value;
+        if (doneData && doneData.project) {
+          fields.projectId.value = doneData.project.project_id || fields.projectId.value;
+          populateScenes(doneData.project.scene_id || fields.sceneId.value);
+        }
+        updateActiveSessionAfterMessage(finalAnswer);
+        saveCommonConfig();
+        const sceneName = doneData && doneData.project && doneData.project.scene_name;
+        setStatus(sceneName ? `完成，自动识别：${sceneName}` : "完成");
+      } catch (error) {
+        bubble.textContent = error.message || String(error);
+        pendingRecord.text = error.message || String(error);
+        renderAssistantAssets(pending, outboundRole, "");
+        pending.classList.add("assistant");
+        updateActiveSessionAfterMessage(pendingRecord.text);
+        setStatus(error.message || String(error), true);
+      } finally {
+        sendBtn.disabled = false;
+        messages.scrollTop = messages.scrollHeight;
+      }
+    }
+
+    document.getElementById("toggleKey").addEventListener("click", () => {
+      fields.apiKey.type = fields.apiKey.type === "password" ? "text" : "password";
+      document.getElementById("toggleKey").textContent = fields.apiKey.type === "password" ? "显示" : "隐藏";
+    });
+
+    closePromptBtn.addEventListener("click", closePromptModal);
+    promptModal.addEventListener("click", (event) => {
+      if (event.target === promptModal) closePromptModal();
+    });
+    copyPromptBtn.addEventListener("click", async () => {
+      const text = promptModalBody.textContent || "";
+      if (!text) return;
+      try {
+        await navigator.clipboard.writeText(text);
+        setStatus("Prompt ???", "success");
+      } catch (_) {
+        setStatus("??????????????", true);
+      }
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && promptModal.classList.contains("open")) {
+        closePromptModal();
+      }
+    });
+
+    document.getElementById("newSession").addEventListener("click", () => {
+      createNewSession();
+    });
+
+    document.getElementById("newSessionMain").addEventListener("click", () => {
+      createNewSession();
+    });
+
+    document.getElementById("saveConfigBtn").addEventListener("click", async () => {
+      await saveProviderConfig(true);
+    });
+
+    document.getElementById("testConfigBtn").addEventListener("click", testProviderConfig);
+
+    document.getElementById("toggleConfigPanel").addEventListener("click", () => {
+      setConfigCollapsed(!app.classList.contains("config-collapsed"));
+    });
+
+    document.getElementById("resetProviderBtn").addEventListener("click", async () => {
+      fillProviderConfig(fields.provider.value, true);
+      await saveProviderConfig(false);
+      setStatus("当前模型已重置为预设", "success");
+    });
+
+    document.getElementById("chatForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const input = document.getElementById("question");
+      const question = input.value.trim();
+      if (!question) return;
+      input.value = "";
+      send(question);
+    });
+
+    document.getElementById("question").addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+        event.preventDefault();
+        document.getElementById("chatForm").requestSubmit();
+      }
+    });
+
+    fields.sessionId.addEventListener("change", () => {
+      const nextId = fields.sessionId.value.trim();
+      if (!nextId || nextId === activeSessionId) return;
+      if (!sessions.some(session => session.id === nextId)) {
+        sessions.unshift(createSessionRecord(nextId));
+      }
+      switchSession(nextId);
+    });
+
+    Object.values(fields).forEach(field => {
+      field.addEventListener("change", () => {
+        if (field === fields.provider) return;
+        if (field === fields.projectId) {
+          populateScenes("auto");
+          loadSceneTemplates(fields.templateId.value);
+          loadProjectGlobalPrompt("");
+        }
+        if ([fields.sessionId, fields.userId, fields.projectId, fields.sceneId, fields.templateId, fields.videoOverview, fields.globalPrompt, fields.summaryMaxChars, fields.rawMaxChars, fields.knowledgeSize].includes(field)) {
+          saveCommonConfig();
+        }
+      });
+      field.addEventListener("input", () => {
+        if ([fields.sessionId, fields.userId, fields.videoOverview, fields.globalPrompt, fields.summaryMaxChars, fields.rawMaxChars, fields.knowledgeSize].includes(field)) {
+          saveCommonConfig();
+        }
+      });
+    });
+
+    fields.provider.addEventListener("change", () => {
+      fillProviderConfig(fields.provider.value, false);
+      saveCommonConfig();
+      setStatus("");
+    });
+
+    importFileBtn.addEventListener("click", importProjectFile);
+
+    Promise.all([
+      fetch("/api/presets").then(response => response.json()),
+      fetch("/api/projects").then(response => response.json()),
+      fetch("/api/v1/model/configs").then(response => response.json()).catch(() => ({ok: false}))
+    ])
+      .then(([presetBody, projectBody, modelConfigBody]) => {
+        presets = presetBody.providers || {};
+        projects = projectBody.projects || [];
+        serverModelConfigs = (modelConfigBody && modelConfigBody.data && modelConfigBody.data.providers) || {};
+        Object.entries(presets).forEach(([name, preset]) => {
+          const option = document.createElement("option");
+          option.value = name;
+          option.textContent = preset.label || name;
+          fields.provider.appendChild(option);
+        });
+        loadConfig(presetBody.defaults || {});
+      })
+      .catch(error => setStatus(error.message || String(error), true));
+  </script>
+</body>
+</html>

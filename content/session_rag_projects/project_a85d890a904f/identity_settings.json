@@ -1,0 +1,179 @@
+{
+  "version": 1,
+  "project_id": "project_a85d890a904f",
+  "updated_at": "2026-07-08T03:16:54",
+  "default_sender_identity": "xx品牌客服",
+  "accounts": [
+    {
+      "account_id": "douyin_health_assistant",
+      "account_name": "xx健康抖音号",
+      "platform": "抖音",
+      "sender_identity": "xx健康顾问助理",
+      "description": "用于大健康、睡眠、膝骨关节干细胞、康养相关评论的首次私信和后续私信承接。",
+      "tags": [
+        "大健康",
+        "睡眠",
+        "膝骨关节",
+        "干细胞",
+        "康养",
+        "抖音"
+      ],
+      "enabled": true
+    },
+    {
+      "account_id": "douyin_ai_ops",
+      "account_name": "xxAI运营号",
+      "platform": "抖音",
+      "sender_identity": "xx运营顾问",
+      "description": "用于AI私信系统、文生视频、评论采集、智能硬件和运营工具相关咨询。",
+      "tags": [
+        "AI私信",
+        "文生视频",
+        "评论采集",
+        "智能硬件",
+        "运营"
+      ],
+      "enabled": true
+    },
+    {
+      "account_id": "douyin_cross_border_ops",
+      "account_name": "xx跨境运营号",
+      "platform": "抖音",
+      "sender_identity": "xx跨境运营顾问",
+      "description": "用于跨境电商托管、AI选品、内容托管和海外市场测试相关咨询。",
+      "tags": [
+        "跨境",
+        "电商",
+        "托管",
+        "AI选品",
+        "海外市场"
+      ],
+      "enabled": true
+    }
+  ],
+  "products": [
+    {
+      "product_id": "health_overview",
+      "product_name": "大健康医疗服务",
+      "sender_identity": "xx健康顾问助理",
+      "related_doc_ids": [
+        "healthcare_medical",
+        "mock_health_compliance"
+      ],
+      "tags": [
+        "大健康",
+        "医疗",
+        "康养",
+        "干细胞",
+        "PRP"
+      ],
+      "enabled": true
+    },
+    {
+      "product_id": "sleep_assessment",
+      "product_name": "睡眠状态初评",
+      "sender_identity": "xx健康顾问助理",
+      "related_doc_ids": [
+        "mock_sleep_assessment",
+        "mock_health_compliance"
+      ],
+      "tags": [
+        "睡眠",
+        "失眠",
+        "睡不好",
+        "压力大",
+        "初评"
+      ],
+      "enabled": true
+    },
+    {
+      "product_id": "joint_assessment",
+      "product_name": "大健康膝骨关节干细胞",
+      "sender_identity": "xx健康顾问助理",
+      "related_doc_ids": [
+        "healthcare_medical",
+        "mock_joint_assessment",
+        "mock_health_compliance"
+      ],
+      "tags": [
+        "膝骨关节",
+        "膝盖疼",
+        "上下楼疼",
+        "骨积液",
+        "软骨磨损",
+        "干细胞",
+        "PRP"
+      ],
+      "enabled": true
+    },
+    {
+      "product_id": "ai_dm_system",
+      "product_name": "自动私信引流系统",
+      "sender_identity": "xx运营顾问",
+      "related_doc_ids": [
+        "ai_technology_hardware",
+        "mock_ai_dm_system",
+        "mock_conversion_hooks"
+      ],
+      "tags": [
+        "AI私信",
+        "自动回复",
+        "评论采集",
+        "私域引流",
+        "模型切换"
+      ],
+      "enabled": true
+    },
+    {
+      "product_id": "ai_content_hardware",
+      "product_name": "AI内容生产与智能硬件",
+      "sender_identity": "xx运营顾问",
+      "related_doc_ids": [
+        "ai_technology_hardware",
+        "mock_ai_dm_system"
+      ],
+      "tags": [
+        "文生视频",
+        "批量剪辑",
+        "自动发布",
+        "智能硬件",
+        "录音转纪要"
+      ],
+      "enabled": true
+    },
+    {
+      "product_id": "cross_border_operation",
+      "product_name": "跨境电商托管",
+      "sender_identity": "xx跨境运营顾问",
+      "related_doc_ids": [
+        "cross_border_services",
+        "mock_cross_border_operation"
+      ],
+      "tags": [
+        "跨境",
+        "跨境电商",
+        "货源",
+        "店铺托管",
+        "AI选品"
+      ],
+      "enabled": true
+    },
+    {
+      "product_id": "general_brand_service",
+      "product_name": "综合企业服务咨询",
+      "sender_identity": "xx品牌客服",
+      "related_doc_ids": [
+        "company_positioning",
+        "mock_business_overview",
+        "mock_conversion_hooks"
+      ],
+      "tags": [
+        "公司介绍",
+        "综合服务",
+        "资料包",
+        "承接方式"
+      ],
+      "enabled": true
+    }
+  ]
+}

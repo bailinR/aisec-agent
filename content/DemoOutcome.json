@@ -1,0 +1,20 @@
+{
+  "查询现在资产安全情况": {
+    "id": 1,
+    "query_sql": {
+      "count": {
+        "asset_count": "SELECT COUNT(*) AS 资产总数 FROM aisec.ai_assets;",
+        "vuln_count": "SELECT COUNT(*) AS 漏洞总数 FROM aisec.ai_vuln;",
+        "fwq": "SELECT COUNT(*) AS 服务器总数 FROM aisec.ai_assets WHERE assets_type = '服务器';",
+        "aqsb": "SELECT COUNT(*) AS 安全设备总数 FROM aisec.ai_assets WHERE assets_type = '安全设备';",
+        "yyxt": "SELECT COUNT(*) AS 应用系统总数 FROM aisec.ai_assets WHERE assets_type = '应用系统';",
+        "zdsb": "SELECT COUNT(*) AS 终端设备总数 FROM aisec.ai_assets WHERE assets_type = '终端设备';",
+        "wlsb": "SELECT COUNT(*) AS 网络设备总数 FROM aisec.ai_assets WHERE assets_type = '网络设备';"
+      },
+      "table": {
+        "asset_vuln_count_table": "SELECT \n    a.assets_type AS 资产类型,\n    COUNT(DISTINCT a.id) AS 资产数量,\n    COUNT(v.id) AS 漏洞数量,\n    SUM(CASE WHEN v.vuln_level = '高危' THEN 1 ELSE 0 END) AS 高危数量,\n    SUM(CASE WHEN v.vuln_level = '中危' THEN 1 ELSE 0 END) AS 中危数量,\n    SUM(CASE WHEN v.vuln_level = '低危' THEN 1 ELSE 0 END) AS 低危数量\nFROM \n    aisec.ai_assets a\nLEFT JOIN \n    aisec.ai_vuln v ON a.id = v.assets_id\nGROUP BY \n    a.assets_type;",
+        "vuln_table": "SELECT \n    IFNULL(am.vendor, '未知供应商') AS 供应商名称,\n    a.assets_name AS 资产名称,\n    v.vuln_name AS 漏洞名称,\n    v.vuln_level AS 危险等级,\n    v.create_time AS 发现时间,\n    v.vuln_status AS 状态\nFROM \n    aisec.ai_assets a\nLEFT JOIN \n    aisec.ai_assets_manage am ON a.id = am.assets_id\nJOIN \n    aisec.ai_vuln v ON a.id = v.assets_id\nWHERE \n    v.vuln_status = '待修复'\n    AND v.vuln_name IS NOT NULL\nORDER BY \n    CASE WHEN am.vendor IS NOT NULL AND am.vendor != '' THEN 0 ELSE 1 END,\n    am.vendor, \n    a.assets_name;"
+      }
+    }
+  }
+}

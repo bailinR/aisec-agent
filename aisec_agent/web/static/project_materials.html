@@ -1,0 +1,1018 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>资料管理与路由调试</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f6f5;
+      --panel: #ffffff;
+      --panel-soft: #eef4f1;
+      --text: #17211d;
+      --muted: #64716d;
+      --line: #d9e2de;
+      --accent: #087f6f;
+      --accent-dark: #066b5d;
+      --danger: #b13f3f;
+      --ok: #2a7d46;
+      --shadow: 0 16px 36px rgba(23, 33, 29, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      height: 100%;
+    }
+
+    body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+      font-size: 14px;
+      letter-spacing: 0;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      border-radius: 6px;
+      min-height: 36px;
+      padding: 0 14px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    button:hover {
+      background: var(--accent-dark);
+    }
+
+    button.secondary {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--text);
+    }
+
+    button.secondary:hover {
+      background: var(--panel-soft);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.65;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      min-height: 36px;
+      padding: 8px 10px;
+      outline: none;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(8, 127, 111, 0.12);
+    }
+
+    textarea {
+      resize: none;
+      line-height: 1.65;
+      font-family: "Consolas", "Microsoft YaHei", monospace;
+      font-size: 13px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .app {
+      height: 100vh;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 14px;
+      padding: 16px;
+      overflow: hidden;
+    }
+
+    .topbar {
+      min-height: 58px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 12px 16px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.35;
+    }
+
+    .subtitle {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .links {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      font-size: 13px;
+    }
+
+    .links a {
+      min-height: 30px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      padding: 0 10px;
+      text-decoration: none;
+      font-size: 12px;
+    }
+
+    .links a:hover {
+      border-color: rgba(8, 127, 111, 0.35);
+      background: #f5faf8;
+      text-decoration: none;
+    }
+
+    .links a.active {
+      border-color: rgba(8, 127, 111, 0.48);
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+    }
+
+    .workspace {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 330px minmax(0, 1fr) 460px;
+      gap: 14px;
+      overflow: hidden;
+    }
+
+    .panel {
+      min-width: 0;
+      min-height: 0;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .side {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .section {
+      padding: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .section:last-child {
+      border-bottom: 0;
+    }
+
+    .project-create {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .project-note {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .file-list {
+      overflow: auto;
+      min-height: 0;
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+      align-content: start;
+    }
+
+    .group-title {
+      margin: 12px 4px 2px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .file-btn {
+      width: 100%;
+      min-height: 54px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--text);
+      text-align: left;
+      display: grid;
+      gap: 3px;
+      align-content: start;
+    }
+
+    .file-btn.active {
+      border-color: rgba(8, 127, 111, 0.45);
+      background: #eef8f5;
+    }
+
+    .file-title,
+    .file-path {
+      overflow: visible;
+      white-space: normal;
+      line-height: 1.45;
+      word-break: break-word;
+    }
+
+    .file-title {
+      font-weight: 700;
+    }
+
+    .file-path {
+      color: var(--muted);
+      font-size: 12px;
+      word-break: break-all;
+    }
+
+    .editor,
+    .debugger {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+    }
+
+    .panel-head {
+      min-height: 62px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel-soft);
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .panel-title {
+      font-weight: 700;
+      line-height: 1.35;
+    }
+
+    .panel-subtitle {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      word-break: break-all;
+    }
+
+    .editor-body,
+    .debug-body {
+      min-height: 0;
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .editor-body {
+      grid-template-rows: minmax(0, 1fr);
+      overflow: hidden;
+      align-content: stretch;
+    }
+
+    .debug-body {
+      overflow: auto;
+      align-content: start;
+    }
+
+    .editor textarea {
+      min-height: 0;
+      height: 100%;
+      overflow: auto;
+    }
+
+    .footer {
+      min-height: 54px;
+      border-top: 1px solid var(--line);
+      background: #f8fbf9;
+      padding: 9px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status {
+      min-height: 18px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .status.ok {
+      color: var(--ok);
+    }
+
+    .status.error {
+      color: var(--danger);
+    }
+
+    .two {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .check-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    .check-row input {
+      width: auto;
+      min-height: 0;
+    }
+
+    .result-grid {
+      display: grid;
+      gap: 8px;
+    }
+
+    .result-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 10px;
+      display: grid;
+      gap: 5px;
+    }
+
+    .result-label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .result-value {
+      word-break: break-all;
+      line-height: 1.55;
+    }
+
+    .doc-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .doc-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 9px;
+      background: #fbfcfb;
+      display: grid;
+      gap: 4px;
+    }
+
+    .doc-title {
+      font-weight: 700;
+    }
+
+    .doc-meta {
+      color: var(--muted);
+      font-size: 12px;
+      word-break: break-all;
+    }
+
+    .prompt-view {
+      height: 320px;
+      min-height: 320px;
+    }
+
+    .prompt-module-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .prompt-module-btn {
+      min-height: 30px;
+      padding: 0 9px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--text);
+      font-size: 12px;
+    }
+
+    .prompt-module-btn:hover {
+      background: var(--panel-soft);
+    }
+
+    .prompt-module-btn.active {
+      border-color: rgba(8, 127, 111, 0.45);
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .prompt-module-meta {
+      margin-bottom: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    @media (max-width: 1180px) {
+      body {
+        overflow: auto;
+      }
+
+      .app {
+        height: auto;
+        min-height: 100vh;
+        overflow: visible;
+      }
+
+      .workspace {
+        grid-template-columns: 1fr;
+        overflow: visible;
+      }
+
+      .side,
+      .editor,
+      .debugger {
+        min-height: 560px;
+      }
+
+      .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div>
+        <h1>资料管理与路由调试</h1>
+        <div class="subtitle">管理项目提示词、场景资料和知识库文件；输入评论后查看自动识别场景、命中文档和最终 prompt。</div>
+      </div>
+      <nav class="links">
+        <a href="/session-rag-chat">生成私信</a>
+        <a href="/admin-vue">后台管理</a>
+        <a href="/file-parser">文件解析</a>
+        <a class="active" href="/project-materials">项目资料</a>
+      </nav>
+    </header>
+
+    <section class="workspace">
+      <aside class="panel side">
+        <div class="section">
+          <label for="projectSelect">项目</label>
+          <select id="projectSelect"></select>
+          <div class="project-create">
+            <input id="newProjectName" placeholder="输入新项目名称">
+            <button id="createProjectBtn" type="button">新建</button>
+          </div>
+          <div class="actions" style="margin-top: 10px;">
+            <button class="secondary" id="refreshBtn" type="button">刷新资料</button>
+          </div>
+          <div class="project-note">项目列表来自 content/session_rag_projects 下的项目文件夹；新建项目会自动生成默认场景和资料结构。</div>
+          <div class="status" id="loadStatus"></div>
+        </div>
+        <div class="file-list" id="fileList"></div>
+      </aside>
+
+      <section class="panel editor">
+        <header class="panel-head">
+          <div>
+            <div class="panel-title" id="editorTitle">选择一个资料文件</div>
+            <div class="panel-subtitle" id="editorPath">-</div>
+          </div>
+          <div class="actions">
+            <button class="secondary" id="copyFileBtn" type="button">复制</button>
+            <button id="saveFileBtn" type="button">保存</button>
+          </div>
+        </header>
+        <div class="editor-body">
+          <textarea id="fileEditor" spellcheck="false" placeholder="请选择左侧资料文件"></textarea>
+        </div>
+        <footer class="footer">
+          <div class="status" id="saveStatus"></div>
+          <div class="status" id="fileMeta"></div>
+        </footer>
+      </section>
+
+      <section class="panel debugger">
+        <header class="panel-head">
+          <div>
+            <div class="panel-title">路由调试</div>
+            <div class="panel-subtitle">输入一条评论，查看系统会读取哪些资料。</div>
+          </div>
+          <button id="debugBtn" type="button">调试</button>
+        </header>
+
+        <div class="debug-body">
+          <div>
+            <label for="debugQuestion">用户评论 / 私信</label>
+            <textarea id="debugQuestion" rows="4" placeholder="例如：膝盖积液疼痛怎么办，能不能先了解一下"></textarea>
+          </div>
+
+          <div class="two">
+            <div>
+              <label for="debugStage">对话阶段</label>
+              <select id="debugStage">
+                <option value="first_comment">用户评论 -> 首次私信</option>
+                <option value="private_followup">用户私信 -> 私信回复</option>
+              </select>
+            </div>
+            <div>
+              <label for="debugSessionId">session_id</label>
+              <input id="debugSessionId" autocomplete="off">
+            </div>
+          </div>
+
+          <div>
+            <label for="sourcePlatform">当前平台</label>
+            <input id="sourcePlatform" placeholder="例如：抖音、小红书、视频号">
+          </div>
+
+          <div>
+            <label for="conversionTarget">引流目标</label>
+            <input id="conversionTarget" placeholder="例如：微信号 wx_xxx、预约入口、资料领取页">
+          </div>
+
+          <div>
+            <label for="targetNote">目标补充</label>
+            <textarea id="targetNote" rows="3" placeholder="例如：不要夸大疗效；最多两轮内自然给微信号"></textarea>
+          </div>
+
+          <label class="check-row">
+            <input id="useAiSelector" type="checkbox">
+            <span>用页面保存的模型配置辅助选择文档</span>
+          </label>
+
+          <div class="status" id="debugStatus"></div>
+
+          <div class="result-grid">
+            <div class="result-card">
+              <div class="result-label">自动识别场景</div>
+              <div class="result-value" id="sceneResult">-</div>
+            </div>
+            <div class="result-card">
+              <div class="result-label">选择原因</div>
+              <div class="result-value" id="reasonResult">-</div>
+            </div>
+            <div class="result-card">
+              <div class="result-label">命中文档</div>
+              <div class="doc-list" id="documentResult"></div>
+            </div>
+            <div>
+              <label for="promptPreview">提示词模块 / 最终 prompt</label>
+              <div class="prompt-module-list" id="promptModuleList"></div>
+              <div class="prompt-module-meta" id="promptModuleMeta">调试后会显示各模块。</div>
+              <textarea class="prompt-view" id="promptPreview" spellcheck="false"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <footer class="footer">
+          <button class="secondary" id="copyPromptBtn" type="button">复制 prompt</button>
+          <div class="status" id="promptMeta"></div>
+        </footer>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const chatStorageKey = "session-rag-chat-config";
+    const projectSelect = document.getElementById("projectSelect");
+    const newProjectName = document.getElementById("newProjectName");
+    const createProjectBtn = document.getElementById("createProjectBtn");
+    const refreshBtn = document.getElementById("refreshBtn");
+    const fileList = document.getElementById("fileList");
+    const loadStatus = document.getElementById("loadStatus");
+    const saveStatus = document.getElementById("saveStatus");
+    const editorTitle = document.getElementById("editorTitle");
+    const editorPath = document.getElementById("editorPath");
+    const fileEditor = document.getElementById("fileEditor");
+    const fileMeta = document.getElementById("fileMeta");
+    const saveFileBtn = document.getElementById("saveFileBtn");
+    const copyFileBtn = document.getElementById("copyFileBtn");
+    const debugBtn = document.getElementById("debugBtn");
+    const debugQuestion = document.getElementById("debugQuestion");
+    const debugStage = document.getElementById("debugStage");
+    const debugSessionId = document.getElementById("debugSessionId");
+    const sourcePlatform = document.getElementById("sourcePlatform");
+    const conversionTarget = document.getElementById("conversionTarget");
+    const targetNote = document.getElementById("targetNote");
+    const useAiSelector = document.getElementById("useAiSelector");
+    const debugStatus = document.getElementById("debugStatus");
+    const sceneResult = document.getElementById("sceneResult");
+    const reasonResult = document.getElementById("reasonResult");
+    const documentResult = document.getElementById("documentResult");
+    const promptModuleList = document.getElementById("promptModuleList");
+    const promptModuleMeta = document.getElementById("promptModuleMeta");
+    const promptPreview = document.getElementById("promptPreview");
+    const copyPromptBtn = document.getElementById("copyPromptBtn");
+    const promptMeta = document.getElementById("promptMeta");
+
+    let projects = [];
+    let files = [];
+    let currentProject = null;
+    let selectedFile = null;
+    let promptModules = [];
+    let activePromptModuleKey = "final_prompt";
+
+    function uuid() {
+      if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID().replaceAll("-", "");
+      return Date.now().toString(16) + Math.random().toString(16).slice(2);
+    }
+
+    function setStatus(node, text, type = "") {
+      node.textContent = text || "";
+      node.className = "status" + (type ? " " + type : "");
+    }
+
+    function savedChatConfig() {
+      try {
+        return JSON.parse(localStorage.getItem(chatStorageKey) || "{}");
+      } catch (_) {
+        return {};
+      }
+    }
+
+    function modelConfigPayload() {
+      const saved = savedChatConfig();
+      const provider = saved.provider || "minimax";
+      const providerConfig = saved.providers && saved.providers[provider] ? saved.providers[provider] : {};
+      return {
+        provider,
+        api_key: providerConfig.apiKey || "",
+        url: providerConfig.url || saved.url || "",
+        model_name: providerConfig.modelName || saved.modelName || "",
+        func_name: providerConfig.funcName || saved.funcName || "",
+        max_len_input: Number(providerConfig.maxLenInput || saved.maxLenInput || 16000)
+      };
+    }
+
+    function loadDebugDefaults() {
+      const saved = savedChatConfig();
+      debugSessionId.value = saved.sessionId || saved.activeSessionId || uuid();
+      sourcePlatform.value = saved.sourcePlatform || "";
+      conversionTarget.value = saved.conversionTarget || "";
+      targetNote.value = saved.targetNote || "";
+    }
+
+    function applyMaterialsData(data) {
+      data = data || {};
+      projects = data.projects || [];
+      files = data.files || [];
+      currentProject = data.project || null;
+      renderProjectSelect();
+      renderFileList();
+      selectFile(files[0] || null);
+      if (!currentProject) {
+        setStatus(loadStatus, "资料已读取", "ok");
+      } else if (projects.length <= 1) {
+        setStatus(loadStatus, "当前只有一个项目：" + currentProject.name + "；可在上方新建更多项目。", "ok");
+      } else {
+        setStatus(loadStatus, "当前项目：" + currentProject.name, "ok");
+      }
+    }
+
+    async function loadMaterials(projectId = "") {
+      setStatus(loadStatus, "正在读取资料...");
+      const url = "/api/project-materials" + (projectId ? "?project_id=" + encodeURIComponent(projectId) : "");
+      const response = await fetch(url);
+      const body = await response.json();
+      if (!response.ok || !body.ok) {
+        throw new Error(body.error || "读取资料失败");
+      }
+      applyMaterialsData(body.data || {});
+    }
+
+    async function createProject() {
+      const name = newProjectName.value.trim();
+      if (!name) {
+        setStatus(loadStatus, "请输入新项目名称。", "error");
+        return;
+      }
+      createProjectBtn.disabled = true;
+      setStatus(loadStatus, "正在创建项目...");
+      try {
+        const response = await fetch("/api/projects/create", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({name})
+        });
+        const body = await response.json();
+        if (!response.ok || !body.ok) {
+          throw new Error(body.error || "创建项目失败");
+        }
+        newProjectName.value = "";
+        applyMaterialsData(body.data || {});
+        setStatus(loadStatus, "已创建项目：" + ((body.data && body.data.project && body.data.project.name) || name), "ok");
+      } catch (error) {
+        setStatus(loadStatus, error.message || "创建项目失败", "error");
+      } finally {
+        createProjectBtn.disabled = false;
+      }
+    }
+
+    function renderProjectSelect() {
+      projectSelect.innerHTML = "";
+      projects.forEach(project => {
+        const option = document.createElement("option");
+        option.value = project.project_id;
+        option.textContent = project.name || project.project_id;
+        projectSelect.appendChild(option);
+      });
+      if (currentProject) projectSelect.value = currentProject.project_id;
+    }
+
+    function renderFileList() {
+      fileList.innerHTML = "";
+      const grouped = new Map();
+      files.forEach(file => {
+        const group = file.group || "未分组";
+        if (!grouped.has(group)) grouped.set(group, []);
+        grouped.get(group).push(file);
+      });
+
+      grouped.forEach((items, group) => {
+        const title = document.createElement("div");
+        title.className = "group-title";
+        title.textContent = group;
+        fileList.appendChild(title);
+
+        items.forEach(file => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "file-btn" + (selectedFile && selectedFile.relative_path === file.relative_path ? " active" : "");
+          button.innerHTML = "";
+          const fileTitle = document.createElement("div");
+          fileTitle.className = "file-title";
+          fileTitle.textContent = file.title || file.relative_path;
+          const filePath = document.createElement("div");
+          filePath.className = "file-path";
+          filePath.textContent = file.relative_path;
+          button.appendChild(fileTitle);
+          button.appendChild(filePath);
+          button.addEventListener("click", () => selectFile(file));
+          fileList.appendChild(button);
+        });
+      });
+    }
+
+    function selectFile(file) {
+      selectedFile = file;
+      if (!file) {
+        editorTitle.textContent = "选择一个资料文件";
+        editorPath.textContent = "-";
+        fileEditor.value = "";
+        fileEditor.disabled = true;
+        saveFileBtn.disabled = true;
+        copyFileBtn.disabled = true;
+        fileMeta.textContent = "";
+        return;
+      }
+      editorTitle.textContent = file.title || file.relative_path;
+      editorPath.textContent = file.relative_path;
+      fileEditor.disabled = false;
+      saveFileBtn.disabled = !file.editable;
+      copyFileBtn.disabled = false;
+      fileEditor.value = file.content || "";
+      fileMeta.textContent = `${file.chars || 0} 字符`;
+      setStatus(saveStatus, "");
+      renderFileList();
+    }
+
+    async function saveSelectedFile() {
+      if (!selectedFile || !currentProject) return;
+      saveFileBtn.disabled = true;
+      setStatus(saveStatus, "正在保存...");
+      try {
+        const response = await fetch("/api/project-materials/save", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            project_id: currentProject.project_id,
+            relative_path: selectedFile.relative_path,
+            content: fileEditor.value
+          })
+        });
+        const body = await response.json();
+        if (!response.ok || !body.ok) {
+          throw new Error(body.error || "保存失败");
+        }
+        selectedFile.content = fileEditor.value;
+        selectedFile.chars = fileEditor.value.length;
+        fileMeta.textContent = `${selectedFile.chars} 字符`;
+        setStatus(saveStatus, "已保存", "ok");
+      } catch (error) {
+        setStatus(saveStatus, error.message || "保存失败", "error");
+      } finally {
+        saveFileBtn.disabled = false;
+      }
+    }
+
+    async function copyText(text, statusNode) {
+      if (!text) {
+        setStatus(statusNode, "没有可复制的内容", "error");
+        return;
+      }
+      await navigator.clipboard.writeText(text);
+      setStatus(statusNode, "已复制", "ok");
+    }
+
+    function setActivePromptModule(key) {
+      activePromptModuleKey = key || "final_prompt";
+      const module = promptModules.find(item => item.key === activePromptModuleKey) || promptModules[promptModules.length - 1];
+      promptModuleList.querySelectorAll(".prompt-module-btn").forEach(button => {
+        button.classList.toggle("active", button.dataset.key === (module && module.key));
+      });
+      if (!module) {
+        promptPreview.value = "";
+        promptModuleMeta.textContent = "调试后会显示各模块。";
+        promptMeta.textContent = "0 字符";
+        return;
+      }
+      promptPreview.value = module.content || "";
+      promptModuleMeta.textContent = `${module.title} · ${module.chars || promptPreview.value.length} 字符`;
+      promptMeta.textContent = `${promptPreview.value.length} 字符`;
+    }
+
+    function renderPromptModules(modules, fallbackPrompt = "") {
+      promptModuleList.innerHTML = "";
+      promptModules = Array.isArray(modules) && modules.length
+        ? modules
+        : [{key: "final_prompt", title: "最终完整 Prompt", content: fallbackPrompt || "", chars: (fallbackPrompt || "").length}];
+      promptModules.forEach(module => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "prompt-module-btn";
+        button.dataset.key = module.key;
+        button.textContent = module.title || module.key;
+        button.addEventListener("click", () => setActivePromptModule(module.key));
+        promptModuleList.appendChild(button);
+      });
+      const hasFinal = promptModules.some(module => module.key === "final_prompt");
+      setActivePromptModule(hasFinal ? "final_prompt" : promptModules[0].key);
+    }
+
+    function renderDebugResult(data) {
+      const project = data.project || {};
+      const docs = (data.project_documents && data.project_documents.documents) || [];
+      sceneResult.textContent = project.scene_name ? `${project.scene_name} (${project.scene_id})` : "-";
+      reasonResult.textContent = [
+        project.scene_reason ? "场景：" + project.scene_reason : "",
+        data.selector && data.selector.reason ? "文档：" + data.selector.reason : ""
+      ].filter(Boolean).join("；") || "-";
+      documentResult.innerHTML = "";
+      if (!docs.length) {
+        const empty = document.createElement("div");
+        empty.className = "doc-meta";
+        empty.textContent = "没有命中文档";
+        documentResult.appendChild(empty);
+      }
+      docs.forEach(doc => {
+        const item = document.createElement("div");
+        item.className = "doc-item";
+        const title = document.createElement("div");
+        title.className = "doc-title";
+        title.textContent = doc.title || doc.doc_id || "";
+        const meta = document.createElement("div");
+        meta.className = "doc-meta";
+        meta.textContent = `${doc.doc_id || ""} · ${doc.relative_path || ""}`;
+        item.appendChild(title);
+        item.appendChild(meta);
+        documentResult.appendChild(item);
+      });
+      renderPromptModules(data.prompt_modules || [], data.prompt || "");
+    }
+
+    async function runRouteDebug() {
+      const question = debugQuestion.value.trim();
+      if (!question) {
+        setStatus(debugStatus, "请输入要调试的评论或私信", "error");
+        return;
+      }
+      debugBtn.disabled = true;
+      setStatus(debugStatus, "正在自动识别场景并匹配资料...");
+      try {
+        const response = await fetch("/api/project-route/debug", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            question,
+            project_id: currentProject ? currentProject.project_id : projectSelect.value,
+            conversation_stage: debugStage.value,
+            session_id: debugSessionId.value || "debug-session",
+            source_platform: sourcePlatform.value,
+            conversion_target: conversionTarget.value,
+            target_note: targetNote.value,
+            use_ai_selector: useAiSelector.checked,
+            ...modelConfigPayload()
+          })
+        });
+        const body = await response.json();
+        if (!response.ok || !body.ok) {
+          throw new Error(body.error || "调试失败");
+        }
+        renderDebugResult(body.data || {});
+        setStatus(debugStatus, "调试完成", "ok");
+      } catch (error) {
+        setStatus(debugStatus, error.message || "调试失败", "error");
+      } finally {
+        debugBtn.disabled = false;
+      }
+    }
+
+    projectSelect.addEventListener("change", () => {
+      loadMaterials(projectSelect.value).catch(error => setStatus(loadStatus, error.message || "读取资料失败", "error"));
+    });
+    createProjectBtn.addEventListener("click", createProject);
+    newProjectName.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        createProject();
+      }
+    });
+    refreshBtn.addEventListener("click", () => {
+      loadMaterials(projectSelect.value).catch(error => setStatus(loadStatus, error.message || "读取资料失败", "error"));
+    });
+    saveFileBtn.addEventListener("click", saveSelectedFile);
+    copyFileBtn.addEventListener("click", () => copyText(fileEditor.value, saveStatus));
+    debugBtn.addEventListener("click", runRouteDebug);
+    copyPromptBtn.addEventListener("click", () => copyText(promptPreview.value, promptMeta));
+
+    debugQuestion.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && event.ctrlKey) {
+        event.preventDefault();
+        runRouteDebug();
+      }
+    });
+
+    loadDebugDefaults();
+    loadMaterials().catch(error => setStatus(loadStatus, error.message || "读取资料失败", "error"));
+  </script>
+</body>
+</html>

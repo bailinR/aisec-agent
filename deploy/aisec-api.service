@@ -1,0 +1,14 @@
+[Unit]
+Description=AISEC Agent API
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/www/wwwroot/aisec-agent-api
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/env python3 -m aisec_agent.web --host 127.0.0.1 --port 7860 --no-open
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
