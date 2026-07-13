@@ -437,7 +437,7 @@ class SessionRAGWebTest(unittest.TestCase):
             )
 
         self.assertEqual(response["session_id"], "postman-session")
-        self.assertEqual(response["sender_identity"], "xx健康顾问助理")
+        self.assertEqual(response["sender_identity"], "健康顾问助理")
         self.assertEqual(response["sender_identity_source"]["source"], "product")
         self.assertEqual(logic.calls[0]["key"], "postman-key")
         self.assertEqual(logic.calls[0]["func_name"], "deepseek_chat")
@@ -1383,10 +1383,11 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertIn("视频概述", project_context)
         self.assertIn("上下楼疼", project_context)
         self.assertIn("<sender_identity>", project_context)
-        self.assertIn("xx健康顾问助理", project_context)
+        self.assertIn("健康顾问助理", project_context)
         self.assertIn("<retrieved_knowledge>", project_context)
         self.assertIn("大健康医疗板块", project_context)
-        self.assertEqual(response["sender_identity"], "xx健康顾问助理")
+        self.assertEqual(response["sender_identity"], "健康顾问助理")
+        self.assertEqual(response["sender_identity_source"]["source"], "context_generated")
         self.assertNotIn("<global_operator_prompt>", project_context)
         self.assertNotIn("<project_scene_prompt>", project_context)
         self.assertNotIn("<conversion_goal>", project_context)
@@ -1410,11 +1411,12 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(response["project"]["scene_id"], "ai_hardware_presales")
         self.assertIn("<retrieved_knowledge>", logic.calls[0]["project_context"])
         self.assertIn("<sender_identity>", logic.calls[0]["project_context"])
-        self.assertIn("xx运营顾问", logic.calls[0]["project_context"])
+        self.assertIn("运营顾问", logic.calls[0]["project_context"])
         self.assertIn("AI技术与智能硬件板块", logic.calls[0]["project_context"])
         self.assertNotIn("<project_materials>", logic.calls[0]["project_context"])
+        self.assertEqual(response["sender_identity_source"]["source"], "context_generated")
         self.assertIn("ai_technology_hardware", response["project_documents"]["document_ids"])
-        self.assertEqual(response["sender_identity"], "xx运营顾问")
+        self.assertEqual(response["sender_identity"], "运营顾问")
 
     def test_sender_identity_can_be_resolved_from_account_product_or_override(self):
         logic = FakeLogic()
@@ -1450,17 +1452,17 @@ class SessionRAGWebTest(unittest.TestCase):
                     "api_key": "page-key",
                     "session_id": "sid-override",
                     "account_id": "douyin_ai_ops",
-                    "sender_identity": "xx人工运营助理",
+                    "sender_identity": "人工运营助理",
                 },
                 logic=logic,
                 project_store=store,
             )
 
-        self.assertEqual(account_response["sender_identity"], "xx运营顾问")
+        self.assertEqual(account_response["sender_identity"], "运营顾问")
         self.assertEqual(account_response["sender_identity_source"]["source"], "account")
-        self.assertEqual(product_response["sender_identity"], "xx跨境运营顾问")
+        self.assertEqual(product_response["sender_identity"], "跨境运营顾问")
         self.assertEqual(product_response["sender_identity_source"]["source"], "product")
-        self.assertEqual(override_response["sender_identity"], "xx人工运营助理")
+        self.assertEqual(override_response["sender_identity"], "人工运营助理")
         self.assertEqual(override_response["sender_identity_source"]["source"], "api_override")
 
     def test_project_materials_can_be_read_and_saved(self):
@@ -1517,9 +1519,9 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(response["project"]["scene_id"], "ai_hardware_presales")
         self.assertIn("ai_technology_hardware", response["project_documents"]["document_ids"])
         self.assertIn("AI技术与智能硬件板块", response["prompt"])
-        self.assertIn("xx运营顾问", response["prompt"])
-        self.assertIn("Return JSON only", response["prompt"])
-        self.assertEqual(response["sender_identity"], "xx运营顾问")
+        self.assertIn("运营顾问", response["prompt"])
+        self.assertIn("只返回 JSON", response["prompt"])
+        self.assertEqual(response["sender_identity"], "运营顾问")
         module_keys = [module["key"] for module in response["prompt_modules"]]
         self.assertIn("user_context", module_keys)
         self.assertIn("sender_identity", module_keys)
@@ -1587,15 +1589,16 @@ class SessionRAGWebTest(unittest.TestCase):
             ["user_context", "global_prompt", "sender_identity", "scene_template", "activity_settings", "retrieved_knowledge", "final_prompt"],
         )
         self.assertTrue(restored["selector"]["document_ids"])
-        self.assertEqual(restored["sender_identity"], "xx运营顾问")
+        self.assertEqual(restored["sender_identity"], "运营顾问")
         self.assertIn("用户评论", restored["final_prompt"])
         self.assertIn("视频概述", restored["final_prompt"])
         self.assertIn("自动发布和评论采集流程", restored["final_prompt"])
         self.assertIn("上一轮用户说想减少人工剪辑时间", restored["final_prompt"])
+        self.assertEqual(restored["sender_identity_source"]["source"], "context_generated")
         self.assertIn("<user_context>", restored["final_prompt"])
         self.assertIn("<global_prompt>", restored["final_prompt"])
         self.assertIn("<sender_identity>", restored["final_prompt"])
-        self.assertIn("xx运营顾问", restored["final_prompt"])
+        self.assertIn("运营顾问", restored["final_prompt"])
         self.assertIn("<scene_template>", restored["final_prompt"])
         self.assertIn("<activity_settings>", restored["final_prompt"])
         self.assertIn("<retrieved_knowledge>", restored["final_prompt"])
@@ -1837,7 +1840,7 @@ class SessionRAGWebTest(unittest.TestCase):
 
         self.assertTrue(any(doc_id.startswith("recruitment_") for doc_id in restored["selector"]["document_ids"]))
         self.assertIn("招聘知识库", restored["final_prompt"])
-        self.assertIn("xx招聘助理", restored["final_prompt"])
+        self.assertIn("招聘助理", restored["final_prompt"])
 
     def test_private_followup_stage_is_passed_to_chat_logic(self):
         logic = FakeLogic()

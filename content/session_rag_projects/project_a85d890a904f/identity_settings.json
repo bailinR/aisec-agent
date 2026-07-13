@@ -2,13 +2,13 @@
   "version": 1,
   "project_id": "project_a85d890a904f",
   "updated_at": "2026-07-08T03:16:54",
-  "default_sender_identity": "xx品牌客服",
+  "default_sender_identity": "品牌客服",
   "accounts": [
     {
       "account_id": "douyin_health_assistant",
-      "account_name": "xx健康抖音号",
+      "account_name": "健康抖音号",
       "platform": "抖音",
-      "sender_identity": "xx健康顾问助理",
+      "sender_identity": "健康顾问助理",
       "description": "用于大健康、睡眠、膝骨关节干细胞、康养相关评论的首次私信和后续私信承接。",
       "tags": [
         "大健康",
@@ -22,9 +22,9 @@
     },
     {
       "account_id": "douyin_ai_ops",
-      "account_name": "xxAI运营号",
+      "account_name": "AI运营号",
       "platform": "抖音",
-      "sender_identity": "xx运营顾问",
+      "sender_identity": "运营顾问",
       "description": "用于AI私信系统、文生视频、评论采集、智能硬件和运营工具相关咨询。",
       "tags": [
         "AI私信",
@@ -37,9 +37,9 @@
     },
     {
       "account_id": "douyin_cross_border_ops",
-      "account_name": "xx跨境运营号",
+      "account_name": "跨境运营号",
       "platform": "抖音",
-      "sender_identity": "xx跨境运营顾问",
+      "sender_identity": "跨境运营顾问",
       "description": "用于跨境电商托管、AI选品、内容托管和海外市场测试相关咨询。",
       "tags": [
         "跨境",
@@ -55,7 +55,7 @@
     {
       "product_id": "health_overview",
       "product_name": "大健康医疗服务",
-      "sender_identity": "xx健康顾问助理",
+      "sender_identity": "健康顾问助理",
       "related_doc_ids": [
         "healthcare_medical",
         "mock_health_compliance"
@@ -72,7 +72,7 @@
     {
       "product_id": "sleep_assessment",
       "product_name": "睡眠状态初评",
-      "sender_identity": "xx健康顾问助理",
+      "sender_identity": "健康顾问助理",
       "related_doc_ids": [
         "mock_sleep_assessment",
         "mock_health_compliance"
@@ -89,7 +89,7 @@
     {
       "product_id": "joint_assessment",
       "product_name": "大健康膝骨关节干细胞",
-      "sender_identity": "xx健康顾问助理",
+      "sender_identity": "健康顾问助理",
       "related_doc_ids": [
         "healthcare_medical",
         "mock_joint_assessment",
@@ -109,7 +109,7 @@
     {
       "product_id": "ai_dm_system",
       "product_name": "自动私信引流系统",
-      "sender_identity": "xx运营顾问",
+      "sender_identity": "运营顾问",
       "related_doc_ids": [
         "ai_technology_hardware",
         "mock_ai_dm_system",
@@ -127,7 +127,7 @@
     {
       "product_id": "ai_content_hardware",
       "product_name": "AI内容生产与智能硬件",
-      "sender_identity": "xx运营顾问",
+      "sender_identity": "运营顾问",
       "related_doc_ids": [
         "ai_technology_hardware",
         "mock_ai_dm_system"
@@ -144,7 +144,7 @@
     {
       "product_id": "cross_border_operation",
       "product_name": "跨境电商托管",
-      "sender_identity": "xx跨境运营顾问",
+      "sender_identity": "跨境运营顾问",
       "related_doc_ids": [
         "cross_border_services",
         "mock_cross_border_operation"
@@ -161,7 +161,7 @@
     {
       "product_id": "general_brand_service",
       "product_name": "综合企业服务咨询",
-      "sender_identity": "xx品牌客服",
+      "sender_identity": "品牌客服",
       "related_doc_ids": [
         "company_positioning",
         "mock_business_overview",

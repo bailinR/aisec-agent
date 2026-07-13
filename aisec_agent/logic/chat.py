@@ -394,7 +394,7 @@ class AgentsQuestionsLogic(BaseHandler):
             return Ret(data={"answer": result, "reference": []}).dict()
         except Exception as e:
             logging.error(f"agent_completion 调用失败: {str(e)}")
-            raise Ret(err_no=500, msg=str(e)).dict()
+            raise Ret(code=500, msg=str(e)).dict()
 
     def sift_report_template(self, question: str, agent_id: str, **kwargs):
         try:
@@ -415,4 +415,4 @@ class AgentsQuestionsLogic(BaseHandler):
 
         except Exception as e:
             logging.error(f"选择模板调用失败: {str(e)}")
-            raise Ret(err_no=500, msg=str(e)).dict()
+            raise Ret(code=500, msg=str(e)).dict()

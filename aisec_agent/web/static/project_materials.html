@@ -596,7 +596,7 @@
 
           <div>
             <label for="conversionTarget">引流目标</label>
-            <input id="conversionTarget" placeholder="例如：微信号 wx_xxx、预约入口、资料领取页">
+            <input id="conversionTarget" placeholder="例如：微信号 wx_x、预约入口、资料领取页">
           </div>
 
           <div>
@@ -743,8 +743,8 @@
       const url = "/api/project-materials" + (projectId ? "?project_id=" + encodeURIComponent(projectId) : "");
       const response = await fetch(url);
       const body = await response.json();
-      if (!response.ok || !body.ok) {
-        throw new Error(body.error || "读取资料失败");
+      if (!response.ok || body.code !== 0) {
+        throw new Error(body.msg || "读取资料失败");
       }
       applyMaterialsData(body.data || {});
     }
@@ -764,8 +764,8 @@
           body: JSON.stringify({name})
         });
         const body = await response.json();
-        if (!response.ok || !body.ok) {
-          throw new Error(body.error || "创建项目失败");
+        if (!response.ok || body.code !== 0) {
+          throw new Error(body.msg || "创建项目失败");
         }
         newProjectName.value = "";
         applyMaterialsData(body.data || {});
@@ -860,8 +860,8 @@
           })
         });
         const body = await response.json();
-        if (!response.ok || !body.ok) {
-          throw new Error(body.error || "保存失败");
+        if (!response.ok || body.code !== 0) {
+          throw new Error(body.msg || "保存失败");
         }
         selectedFile.content = fileEditor.value;
         selectedFile.chars = fileEditor.value.length;
@@ -974,8 +974,8 @@
           })
         });
         const body = await response.json();
-        if (!response.ok || !body.ok) {
-          throw new Error(body.error || "调试失败");
+        if (!response.ok || body.code !== 0) {
+          throw new Error(body.msg || "调试失败");
         }
         renderDebugResult(body.data || {});
         setStatus(debugStatus, "调试完成", "ok");

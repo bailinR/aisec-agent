@@ -32,4 +32,4 @@ class AssetsVulnAPI(Resource):
             return Ret().dict()
         except Exception as e:
             logging.warning(f"预处理漏洞数据失败, 错误: {e}")
-            return Ret(err_no=500, msg=str(e)).dict()
+            return Ret(code=500, msg=str(e)).dict()

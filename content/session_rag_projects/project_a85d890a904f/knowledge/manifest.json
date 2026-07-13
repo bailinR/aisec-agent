@@ -8,7 +8,7 @@
       "domain": "公司定位",
       "section": "默认板块",
       "category": "公司定位",
-      "sender_identity": "xx品牌客服",
+      "sender_identity": "品牌客服",
       "relative_path": "knowledge/files/公司私信知识库/公司定位/默认板块/公司定位.md",
       "description": "说明公司总体定位、服务对象、业务闭环和五大聚焦方向。",
       "keywords": [
@@ -32,7 +32,7 @@
       "domain": "三大核心业务板块",
       "section": "默认板块",
       "category": "三大核心业务板块",
-      "sender_identity": "xx健康顾问助理",
+      "sender_identity": "健康顾问助理",
       "relative_path": "knowledge/files/公司私信知识库/三大核心业务板块/默认板块/大健康医疗板块.md",
       "description": "大健康医疗核心主业，覆盖关节健康、干细胞、PRP、产品体系、合作渠道与合规优势。",
       "keywords": [
@@ -66,7 +66,7 @@
       "domain": "三大核心业务板块",
       "section": "默认板块",
       "category": "三大核心业务板块",
-      "sender_identity": "xx运营顾问",
+      "sender_identity": "运营顾问",
       "relative_path": "knowledge/files/公司私信知识库/三大核心业务板块/默认板块/AI技术与智能硬件板块.md",
       "description": "AI内容生产、智能硬件、私信引流、舆论管控、数据采集和AI Agent自动化调度能力。",
       "keywords": [
@@ -101,7 +101,7 @@
       "domain": "三大核心业务板块",
       "section": "默认板块",
       "category": "三大核心业务板块",
-      "sender_identity": "xx跨境运营顾问",
+      "sender_identity": "跨境运营顾问",
       "relative_path": "knowledge/files/公司私信知识库/三大核心业务板块/默认板块/跨境与综合业务板块.md",
       "description": "跨境电商、AI选品、内容托管、自动化运营、留学移民和企业资源对接。",
       "keywords": [
@@ -121,13 +121,70 @@
       "content_chars": 70
     },
     {
+      "doc_id": "doc_8469181788ef",
+      "title": "AI技术与智能硬件板块",
+      "knowledge_base": "公司私信知识库",
+      "domain": "三大核心业务板块",
+      "section": "三大核心业务板块",
+      "category": "三大核心业务板块",
+      "sender_identity": "运营顾问",
+      "relative_path": "knowledge/files/公司私信知识库/三大核心业务板块/AI技术与智能硬件板块.md",
+      "description": "AI技术与智能硬件板块；AI内容生产：文生视频、批量剪辑、自动发布、评论采集、数据统计。；智能产品：录音背夹/智能可穿戴设备录音转纪要建议协助办公等，远程小主机（边缘计算），本地+云端协同。；核心系统：数据收集-自动私信引私域系统、舆论管控系统等。；技术能力：分布式爬虫、千万级数据优化、AI Agent自动化调度。",
+      "keywords": [
+        "公司私信知识库",
+        "三大核心业务板块",
+        "三大核心业务板块"
+      ],
+      "source_file_name": "AI技术与智能硬件板块.md",
+      "imported_at": "2026-07-10T16:11:17",
+      "content_chars": 170
+    },
+    {
+      "doc_id": "doc_8fea38244ceb",
+      "title": "大健康医疗板块",
+      "knowledge_base": "公司私信知识库",
+      "domain": "三大核心业务板块",
+      "section": "三大核心业务板块",
+      "category": "三大核心业务板块",
+      "sender_identity": "健康顾问助理",
+      "relative_path": "knowledge/files/公司私信知识库/三大核心业务板块/大健康医疗板块.md",
+      "description": "大健康医疗板块（核心主业）；聚焦膝骨关节、骨积液、软骨修复等垂直领域。；产品体系：口服、贴剂、注射、理疗仪、非变二型骨胶原肽等。；高端项目：合规干细胞、PRP注射、临床治疗服务。；合作渠道：医院、门诊、诊所、康养机构、公办养老、社区健康项目。；合规优势：资质齐全、自有门诊、临床落地、国资背景资源支持。",
+      "keywords": [
+        "公司私信知识库",
+        "三大核心业务板块",
+        "三大核心业务板块"
+      ],
+      "source_file_name": "大健康医疗板块.md",
+      "imported_at": "2026-07-10T16:11:17",
+      "content_chars": 165
+    },
+    {
+      "doc_id": "doc_e191c73c5965",
+      "title": "跨境与综合业务板块",
+      "knowledge_base": "公司私信知识库",
+      "domain": "三大核心业务板块",
+      "section": "三大核心业务板块",
+      "category": "三大核心业务板块",
+      "sender_identity": "运营顾问",
+      "relative_path": "knowledge/files/公司私信知识库/三大核心业务板块/跨境与综合业务板块.md",
+      "description": "跨境与综合业务板块；跨境电商：全平台运营、AI选品、内容托管、自动化运营。；跨境服务：留学移民项目批发、企业服务、资源对接。",
+      "keywords": [
+        "公司私信知识库",
+        "三大核心业务板块",
+        "三大核心业务板块"
+      ],
+      "source_file_name": "跨境与综合业务板块.md",
+      "imported_at": "2026-07-10T16:11:17",
+      "content_chars": 70
+    },
+    {
       "doc_id": "company_private_kb_readme",
       "title": "公司私信知识库 README",
       "knowledge_base": "公司私信知识库",
       "domain": "评论转私信",
       "section": "README与路由",
       "category": "评论转私信",
-      "sender_identity": "xx账号助理",
+      "sender_identity": "账号助理",
       "relative_path": "knowledge/files/公司私信知识库/README.md",
       "description": "说明公司私信知识库的用途、业务目录、Prompt组装方式和维护规则。",
       "keywords": [
@@ -148,7 +205,7 @@
       "domain": "评论转私信",
       "section": "README与路由",
       "category": "评论转私信",
-      "sender_identity": "xx账号助理",
+      "sender_identity": "账号助理",
       "relative_path": "knowledge/files/公司私信知识库/评论转私信/README.md",
       "description": "说明评论转私信业务用途、目录结构、提示词、相关文档、场景路由和运行时读取流程。",
       "keywords": [
@@ -160,7 +217,7 @@
       ],
       "source_file_name": "README.md",
       "imported_at": "2026-07-10T01:11:27",
-      "content_chars": 2647
+      "content_chars": 2639
     },
     {
       "doc_id": "comment_private_prompt_global",
@@ -169,7 +226,7 @@
       "domain": "评论转私信",
       "section": "业务提示词",
       "category": "评论转私信",
-      "sender_identity": "xx账号助理",
+      "sender_identity": "账号助理",
       "relative_path": "knowledge/files/公司私信知识库/评论转私信/prompts/全局提示词.md",
       "description": "定义私信智能体角色、人员身份、语气、回复风格和内容边界。",
       "keywords": [
@@ -181,7 +238,7 @@
       ],
       "source_file_name": "全局提示词.md",
       "imported_at": "2026-07-10T01:11:27",
-      "content_chars": 785
+      "content_chars": 777
     },
     {
       "doc_id": "comment_private_prompt_routing",
@@ -190,7 +247,7 @@
       "domain": "评论转私信",
       "section": "业务提示词",
       "category": "评论转私信",
-      "sender_identity": "xx账号助理",
+      "sender_identity": "账号助理",
       "relative_path": "knowledge/files/公司私信知识库/评论转私信/prompts/场景与文档读取规则.md",
       "description": "根据视频概述、用户评论、会话上下文、用户目标和活动设置选择相关文档。",
       "keywords": [
@@ -212,7 +269,7 @@
       "domain": "评论转私信",
       "section": "业务提示词",
       "category": "评论转私信",
-      "sender_identity": "xx账号助理",
+      "sender_identity": "账号助理",
       "relative_path": "knowledge/files/公司私信知识库/评论转私信/prompts/首次私信与维护规则.md",
       "description": "区分用户评论、首次私信和私信维护，控制首次触达结构、回复限制和下一步动作。",
       "keywords": [
@@ -234,7 +291,7 @@
       "domain": "评论转私信",
       "section": "业务提示词",
       "category": "评论转私信",
-      "sender_identity": "xx账号助理",
+      "sender_identity": "账号助理",
       "relative_path": "knowledge/files/公司私信知识库/评论转私信/prompts/活动与合规规则.md",
       "description": "控制资料包、评估、体验入口、微信号和大健康/AI系统/跨境合规表达。",
       "keywords": [
@@ -256,7 +313,7 @@
       "domain": "评论转私信",
       "section": "相关文档",
       "category": "评论转私信",
-      "sender_identity": "xx品牌客服",
+      "sender_identity": "品牌客服",
       "relative_path": "knowledge/files/公司私信知识库/评论转私信/相关文档/公司定位与业务总览.md",
       "description": "公司定位、三大核心业务板块、服务对象和不同业务方向的建议私信身份。",
       "keywords": [
@@ -269,7 +326,7 @@
       ],
       "source_file_name": "公司定位与业务总览.md",
       "imported_at": "2026-07-10T01:11:27",
-      "content_chars": 678
+      "content_chars": 672
     },
     {
       "doc_id": "comment_private_sleep_assessment",
@@ -278,7 +335,7 @@
       "domain": "评论转私信",
       "section": "相关文档",
       "category": "评论转私信",
-      "sender_identity": "xx健康顾问助理",
+      "sender_identity": "健康顾问助理",
       "relative_path": "knowledge/files/公司私信知识库/评论转私信/相关文档/大健康睡眠初评私信资料.md",
       "description": "睡眠初评服务定位、适用人群、初步解决方向、可用钩子和私信注意事项。",
       "keywords": [
@@ -293,7 +350,7 @@
       ],
       "source_file_name": "大健康睡眠初评私信资料.md",
       "imported_at": "2026-07-10T01:11:27",
-      "content_chars": 679
+      "content_chars": 671
     },
     {
       "doc_id": "comment_private_knee_stemcell",
@@ -302,7 +359,7 @@
       "domain": "评论转私信",
       "section": "相关文档",
       "category": "评论转私信",
-      "sender_identity": "xx健康顾问助理",
+      "sender_identity": "健康顾问助理",
       "relative_path": "knowledge/files/公司私信知识库/评论转私信/相关文档/大健康膝骨关节干细胞私信资料.md",
       "description": "膝骨关节干细胞方向的服务定位、适用人群、评估路径、可用钩子和合规表达。",
       "keywords": [
@@ -317,7 +374,7 @@
       ],
       "source_file_name": "大健康膝骨关节干细胞私信资料.md",
       "imported_at": "2026-07-10T01:11:27",
-      "content_chars": 880
+      "content_chars": 874
     },
     {
       "doc_id": "comment_private_ai_dm_system",
@@ -326,7 +383,7 @@
       "domain": "评论转私信",
       "section": "相关文档",
       "category": "评论转私信",
-      "sender_identity": "xx运营顾问",
+      "sender_identity": "运营顾问",
       "relative_path": "knowledge/files/公司私信知识库/评论转私信/相关文档/AI私信系统私信资料.md",
       "description": "自动私信引流系统定位、核心能力、适用客户、可用钩子和私信注意事项。",
       "keywords": [
@@ -340,7 +397,7 @@
       ],
       "source_file_name": "AI私信系统私信资料.md",
       "imported_at": "2026-07-10T01:11:27",
-      "content_chars": 619
+      "content_chars": 615
     },
     {
       "doc_id": "comment_private_cross_border",
@@ -349,7 +406,7 @@
       "domain": "评论转私信",
       "section": "相关文档",
       "category": "评论转私信",
-      "sender_identity": "xx跨境运营顾问",
+      "sender_identity": "跨境运营顾问",
       "relative_path": "knowledge/files/公司私信知识库/评论转私信/相关文档/跨境电商托管私信资料.md",
       "description": "跨境电商店铺托管、AI选品、内容托管、自动化运营的服务定位和承接规则。",
       "keywords": [
@@ -363,7 +420,7 @@
       ],
       "source_file_name": "跨境电商托管私信资料.md",
       "imported_at": "2026-07-10T01:11:27",
-      "content_chars": 456
+      "content_chars": 452
     },
     {
       "doc_id": "comment_private_activity_hook",
@@ -372,7 +429,7 @@
       "domain": "评论转私信",
       "section": "相关文档",
       "category": "评论转私信",
-      "sender_identity": "xx账号助理",
+      "sender_identity": "账号助理",
       "relative_path": "knowledge/files/公司私信知识库/评论转私信/相关文档/运营活动与承接方式.md",
       "description": "资料型、评估型、体验型钩子及草料码、企业微信、微信号、预约入口的承接规则。",
       "keywords": [
@@ -387,7 +444,7 @@
       ],
       "source_file_name": "运营活动与承接方式.md",
       "imported_at": "2026-07-10T01:11:27",
-      "content_chars": 683
+      "content_chars": 669
     },
     {
       "doc_id": "comment_private_compliance_boundary",
@@ -396,7 +453,7 @@
       "domain": "评论转私信",
       "section": "相关文档",
       "category": "评论转私信",
-      "sender_identity": "xx账号助理",
+      "sender_identity": "账号助理",
       "relative_path": "knowledge/files/公司私信知识库/评论转私信/相关文档/私信合规边界.md",
       "description": "大健康、私信风格和活动边界，避免医疗承诺、恐吓式话术和虚构名额。",
       "keywords": [
@@ -409,7 +466,7 @@
       ],
       "source_file_name": "私信合规边界.md",
       "imported_at": "2026-07-10T01:11:27",
-      "content_chars": 524
+      "content_chars": 522
     },
     {
       "doc_id": "comment_private_samples",
@@ -418,7 +475,7 @@
       "domain": "评论转私信",
       "section": "相关文档",
       "category": "评论转私信",
-      "sender_identity": "xx账号助理",
+      "sender_identity": "账号助理",
       "relative_path": "knowledge/files/公司私信知识库/评论转私信/相关文档/评论样本与回复方向.md",
       "description": "典型评论样本、意向判断和回复方向，用于调试睡眠、膝骨关节、AI系统、跨境和弱意向评论。",
       "keywords": [
@@ -433,6 +490,328 @@
       "source_file_name": "评论样本与回复方向.md",
       "imported_at": "2026-07-10T01:11:27",
       "content_chars": 649
+    },
+    {
+      "doc_id": "doc_e67418663fa1",
+      "title": "公司定位",
+      "knowledge_base": "公司私信知识库",
+      "domain": "默认领域",
+      "section": "默认板块",
+      "category": "默认领域",
+      "sender_identity": "健康顾问助理",
+      "relative_path": "knowledge/files/公司私信知识库/公司定位.md",
+      "description": "公司定位；公司是一家以大健康为核心、AI技术为驱动、跨境业务为延伸的综合型企业服务平台，聚焦关节健康、干细胞合规医疗、AI内容生产、智能硬件、跨境电商五大方向，打造“技术+产品+服务+渠道”全链路商业闭环，面向C端消费者、B端商户、G端公立机构提供产品与解决方案。",
+      "keywords": [
+        "公司私信知识库",
+        "默认领域"
+      ],
+      "source_file_name": "公司定位.md",
+      "imported_at": "2026-07-10T16:11:17",
+      "content_chars": 136
+    },
+    {
+      "doc_id": "doc_08e6932f65b0",
+      "title": "自动私信引流系统说明",
+      "knowledge_base": "公司私信知识库",
+      "domain": "模拟业务资料",
+      "section": "AI私信系统",
+      "category": "模拟业务资料",
+      "sender_identity": "运营顾问",
+      "relative_path": "knowledge/files/公司私信知识库/模拟业务资料/AI私信系统/自动私信引流系统说明.md",
+      "description": "自动私信引流系统说明；> 资料性质：AI 模拟资料，待业务确认。；产品定位；平台自动私信引流系统用于帮助运营团队处理短视频平台评论线索。系统根据视频概述、用户评论、项目资料和场景模板生成首次私信或后续私信回复，提高评论承接效率。；建议私信身份：运营顾问。；核心能力；评论采集：支持导入或接入短视频评论数据。；视频理解：通过视频转写和摘要识别视频方向。；意向识别：区分强意向、中意向、弱意向和普通互动。；场景模板：支持首次私信、私信维护、评论区维护等模板。；知识库读取：按项目、场景和评论内容读取相关资料。；模型切。",
+      "keywords": [
+        "公司私信知识库",
+        "模拟业务资料",
+        "AI私信系统"
+      ],
+      "source_file_name": "自动私信引流系统说明.md",
+      "imported_at": "2026-07-10T16:11:17",
+      "content_chars": 615
+    },
+    {
+      "doc_id": "doc_af53a0c0aa5e",
+      "title": "大健康与私信合规边界",
+      "knowledge_base": "公司私信知识库",
+      "domain": "模拟业务资料",
+      "section": "合规边界",
+      "category": "模拟业务资料",
+      "sender_identity": "健康顾问助理",
+      "relative_path": "knowledge/files/公司私信知识库/模拟业务资料/合规边界/大健康与私信合规边界.md",
+      "description": "大健康与私信合规边界；> 资料性质：AI 模拟资料，待业务确认。；大健康方向不能说；不能承诺治愈、根治、保证有效。；不能替代医生诊断。；不能根据评论直接判断疾病。；不能虚构医生、专家、医院、资质或背书。；不能夸大干细胞、PRP、注射、理疗、贴剂、营养品等效果。；不能用恐吓式话术制造焦虑。；建议私信身份：健康顾问助理。不要伪装医生、专家或医疗机构人员。；可以说；“可以先做初步评估。”；“具体情况需要结合年龄、持续时间和检查结果判断。”；“我先发您一份资料/自查表，您可以先看方向。”；“如果症状明显或持续时间较长。",
+      "keywords": [
+        "公司私信知识库",
+        "模拟业务资料",
+        "合规边界"
+      ],
+      "source_file_name": "大健康与私信合规边界.md",
+      "imported_at": "2026-07-10T16:11:17",
+      "content_chars": 526
+    },
+    {
+      "doc_id": "doc_06e735ef7e5e",
+      "title": "睡眠初评服务说明",
+      "knowledge_base": "公司私信知识库",
+      "domain": "模拟业务资料",
+      "section": "大健康睡眠项目",
+      "category": "模拟业务资料",
+      "sender_identity": "健康顾问助理",
+      "relative_path": "knowledge/files/公司私信知识库/模拟业务资料/大健康睡眠项目/睡眠初评服务说明.md",
+      "description": "睡眠初评服务说明；> 资料性质：AI 模拟资料，待业务确认。；服务定位；健康科技服务有限公司提供“睡眠状态初步评估 + 生活习惯建议 + 后续专业咨询预约”的轻量服务。适用于在短视频评论区表达睡不好、入睡困难、早醒、压力大、白天疲惫等问题的用户。；建议私信身份：健康顾问助理。；适用人群；工作压力大、作息不规律，近期睡眠质量下降的人群。；经常熬夜、入睡慢、睡醒后仍疲惫的人群。；想先了解睡眠状态，不确定是否需要进一步咨询的人群。；为父母、伴侣、朋友咨询睡眠改善方向的人群。；初步解决方向；首次沟通不要直接下结论。",
+      "keywords": [
+        "公司私信知识库",
+        "模拟业务资料",
+        "大健康睡眠项目"
+      ],
+      "source_file_name": "睡眠初评服务说明.md",
+      "imported_at": "2026-07-10T16:11:17",
+      "content_chars": 668
+    },
+    {
+      "doc_id": "doc_8402bfb807b4",
+      "title": "膝骨关节干细胞项目说明",
+      "knowledge_base": "公司私信知识库",
+      "domain": "模拟业务资料",
+      "section": "大健康膝骨关节干细胞",
+      "category": "模拟业务资料",
+      "sender_identity": "健康顾问助理",
+      "relative_path": "knowledge/files/公司私信知识库/模拟业务资料/大健康膝骨关节干细胞/膝骨关节干细胞项目说明.md",
+      "description": "膝骨关节干细胞项目说明；> 资料性质：AI 模拟资料，待业务确认。；服务定位；健康科技服务有限公司提供“大健康膝骨关节干细胞方向”的合规咨询承接服务，重点面向膝骨关节不适、骨积液、软骨磨损、上下楼疼、久站久走不舒服、长辈膝关节退变等评论场景。私信阶段只做初步沟通、资料科普和评估预约引导，不直接判断病情或承诺治疗结果。；建议私信身份：健康顾问助理。；适用人群；膝盖上下楼疼、蹲起困难、走路久了不舒服的人群。；膝骨关节反复不适，想先了解可能原因、日常注意事项和评估路径的人群。；为父母或长辈咨询膝骨关节养护、骨积液。",
+      "keywords": [
+        "公司私信知识库",
+        "模拟业务资料",
+        "大健康膝骨关节干细胞"
+      ],
+      "source_file_name": "膝骨关节干细胞项目说明.md",
+      "imported_at": "2026-07-10T16:11:17",
+      "content_chars": 867
+    },
+    {
+      "doc_id": "doc_b93c6d24fa92",
+      "title": "视频方向总结示例",
+      "knowledge_base": "公司私信知识库",
+      "domain": "模拟业务资料",
+      "section": "样本库",
+      "category": "模拟业务资料",
+      "sender_identity": "健康顾问助理",
+      "relative_path": "knowledge/files/公司私信知识库/模拟业务资料/样本库/视频方向总结示例.md",
+      "description": "视频方向总结示例；> 资料性质：AI 模拟资料，待业务确认。；睡眠视频；视频转写摘要：视频讲到工作压力、长期熬夜和睡前刷手机可能影响睡眠质量，提醒用户先记录入睡时间、醒来次数和白天精神状态。；方向标签：睡眠、压力、作息、初步评估、资料包。；适合读取资料：睡眠初评服务说明、活动钩子与承接方式、大健康与私信合规边界。；膝骨关节干细胞视频；视频转写摘要：视频讲到膝盖上下楼疼、久坐后起身不适、骨积液和软骨磨损等膝骨关节问题，并提到干细胞/PRP等方向需要合规评估后确认是否适合。；方向标签：膝骨关节、膝盖疼、老人、上下楼疼。",
+      "keywords": [
+        "公司私信知识库",
+        "模拟业务资料",
+        "样本库"
+      ],
+      "source_file_name": "视频方向总结示例.md",
+      "imported_at": "2026-07-10T16:11:17",
+      "content_chars": 612
+    },
+    {
+      "doc_id": "doc_49a4bf8197b1",
+      "title": "评论意向样本与回复方向",
+      "knowledge_base": "公司私信知识库",
+      "domain": "模拟业务资料",
+      "section": "样本库",
+      "category": "模拟业务资料",
+      "sender_identity": "健康顾问助理",
+      "relative_path": "knowledge/files/公司私信知识库/模拟业务资料/样本库/评论意向样本与回复方向.md",
+      "description": "评论意向样本与回复方向；> 资料性质：AI 模拟资料，待业务确认。；大健康睡眠评论；评论：“平时工作压力大，最近老是睡不好。”；意向判断：中意向。用户表达明确痛点，但未直接询问价格或报名。；回复方向：承接压力和睡眠差，先问是自己还是家人；给初步方向为睡眠状态评估；甜头为睡眠自测表或资料包。；大健康膝骨关节干细胞评论；评论：“我妈膝盖上下楼疼，这个有用吗？”；意向判断：强意向。用户有明确对象和痛点，并询问适用性。；回复方向：承接“妈妈”和“上下楼疼”，不要承诺有用；问年龄、持续时间、是否检查过；甜头为膝骨关节资料包或。",
+      "keywords": [
+        "公司私信知识库",
+        "模拟业务资料",
+        "样本库"
+      ],
+      "source_file_name": "评论意向样本与回复方向.md",
+      "imported_at": "2026-07-10T16:11:17",
+      "content_chars": 651
+    },
+    {
+      "doc_id": "doc_2523e878bd13",
+      "title": "资料说明",
+      "knowledge_base": "公司私信知识库",
+      "domain": "模拟业务资料",
+      "section": "模拟业务资料",
+      "category": "模拟业务资料",
+      "sender_identity": "健康顾问助理",
+      "relative_path": "knowledge/files/公司私信知识库/模拟业务资料/资料说明.md",
+      "description": "模拟业务资料说明；> 资料性质：AI 模拟资料，供本地私信智能体流程测试使用。上线前必须由业务、法务或项目负责人确认。；使用目的；这套资料用于跑通“视频概述 + 用户评论 + 全局提示词 + 场景模板 + 相关知识库 -> 首次私信/私信维护”的完整链路。；模拟项目主体；公司名称：健康科技服务有限公司；账号身份：健康顾问 / 品牌客服 / 账号助理；主推方向：睡眠状态初评、大健康膝骨关节干细胞、AI私信引流系统、跨境电商托管；承接方式：资料包、免费初步评估、预约入口、草料码、企业微信或微信号；资料使。",
+      "keywords": [
+        "公司私信知识库",
+        "模拟业务资料",
+        "模拟业务资料"
+      ],
+      "source_file_name": "资料说明.md",
+      "imported_at": "2026-07-10T16:11:17",
+      "content_chars": 541
+    },
+    {
+      "doc_id": "doc_65f2c200a692",
+      "title": "跨境电商托管服务说明",
+      "knowledge_base": "公司私信知识库",
+      "domain": "模拟业务资料",
+      "section": "跨境电商托管",
+      "category": "模拟业务资料",
+      "sender_identity": "运营顾问",
+      "relative_path": "knowledge/files/公司私信知识库/模拟业务资料/跨境电商托管/跨境电商托管服务说明.md",
+      "description": "跨境电商托管服务说明；> 资料性质：AI 模拟资料，待业务确认。；服务定位；跨境服务团队提供跨境电商店铺托管、AI选品、内容托管、自动化运营和资源对接服务，适合想做跨境但缺少运营团队或内容能力的商家。；建议私信身份：跨境运营顾问。；适用客户；有货源但缺跨境平台运营经验的商家。；想测试海外市场但不知道从哪个平台开始的团队。；有内容素材但缺少批量剪辑、发布和数据复盘能力的商家。；需要选品、店铺搭建、内容托管和运营节奏建议的客户。；初步解决方向；首次沟通可先判断客户处于哪一阶段：已有店铺、准备开店、已有货源、想找。",
+      "keywords": [
+        "公司私信知识库",
+        "模拟业务资料",
+        "跨境电商托管"
+      ],
+      "source_file_name": "跨境电商托管服务说明.md",
+      "imported_at": "2026-07-10T16:11:17",
+      "content_chars": 452
+    },
+    {
+      "doc_id": "doc_1766bfdd816c",
+      "title": "活动钩子与承接方式",
+      "knowledge_base": "公司私信知识库",
+      "domain": "模拟业务资料",
+      "section": "运营转化",
+      "category": "模拟业务资料",
+      "sender_identity": "健康顾问助理",
+      "relative_path": "knowledge/files/公司私信知识库/模拟业务资料/运营转化/活动钩子与承接方式.md",
+      "description": "活动钩子与承接方式；> 资料性质：AI 模拟资料，待业务确认。；使用原则；钩子不是夸大承诺，而是给用户一个立即回复的理由。首次私信应根据评论意图选择一个明确、低门槛、可兑现的甜头。；默认私信身份应跟随被检索到的业务资料：大健康方向用 健康顾问助理，AI私信/文生视频方向用 运营顾问，跨境方向用 跨境运营顾问。；可用钩子类型；资料型；睡眠改善资料包；关节养护资料包；私信话术模板包；跨境入门资料包；适合中弱意向用户。话术可以说：“我可以先发您一份资料看看方向。”；评估型；免费初步评估；睡眠状。",
+      "keywords": [
+        "公司私信知识库",
+        "模拟业务资料",
+        "运营转化"
+      ],
+      "source_file_name": "活动钩子与承接方式.md",
+      "imported_at": "2026-07-10T16:11:17",
+      "content_chars": 656
+    },
+    {
+      "doc_id": "doc_6224702a99f0",
+      "title": "boss沟通 README",
+      "knowledge_base": "招聘知识库",
+      "domain": "boss沟通",
+      "section": "boss沟通",
+      "category": "boss沟通",
+      "sender_identity": "招聘助理",
+      "relative_path": "knowledge/files/招聘知识库/boss沟通/README.md",
+      "description": "Boss 沟通业务说明；当前状态；本业务目录目前是占位目录，暂未配置正式提示词和相关文档。；计划用途；后续可用于 Boss 直聘中的非正式初面沟通，例如：；候选人刚咨询岗位时的自然回复。；候选人询问薪资、地点、经验要求、面试安排时的承接。；招聘方主动打招呼后的候选人回复处理。；候选人暂时不想细聊、只问简单问题时的轻量沟通。；建议目录结构；```text；boss沟通/；README.md；prompts/；全局提示词.md；岗位咨询回复规则.md；薪资福利沟通规则.md；相关文档/；岗位基础信息.md；公司介绍.m。",
+      "keywords": [
+        "招聘知识库",
+        "boss沟通",
+        "boss沟通"
+      ],
+      "source_file_name": "README.md",
+      "imported_at": "2026-07-10T16:11:17",
+      "content_chars": 525
+    },
+    {
+      "doc_id": "doc_07ab43d00b86",
+      "title": "README与路由 README",
+      "knowledge_base": "招聘知识库",
+      "domain": "README与路由",
+      "section": "README与路由",
+      "category": "README与路由",
+      "sender_identity": "招聘助理",
+      "relative_path": "knowledge/files/招聘知识库/README.md",
+      "description": "招聘知识库；知识库用途；本知识库用于招聘相关的自动回复场景，包括 Boss 直聘沟通、求职者私信承接、机器人初面、岗位流程匹配、候选人问题处理和招聘合规话术。；API 调用时通常会传入：；调用方：例如 Boss 直聘、企业微信、OpenClaw。；业务场景：例如机器人面试、Boss 沟通、岗位咨询。；用户身份：例如求职者姓名、应聘岗位、经验、来源账号。；求职者消息：本轮需要回复的内容。；session_id：用于读取同一候选人的历史上下文。；系统会根据这些信息选择对应业务目录，再读取该业务目录下的 README、提。",
+      "keywords": [
+        "招聘知识库",
+        "README与路由",
+        "README与路由"
+      ],
+      "source_file_name": "README.md",
+      "imported_at": "2026-07-10T16:11:17",
+      "content_chars": 1203
+    },
+    {
+      "doc_id": "doc_2e14cf428238",
+      "title": "全局提示词",
+      "knowledge_base": "招聘知识库",
+      "domain": "机器人面试",
+      "section": "prompts",
+      "category": "机器人面试",
+      "sender_identity": "招聘助理",
+      "relative_path": "knowledge/files/招聘知识库/机器人面试/prompts/全局提示词.md",
+      "description": "招聘初面全局提示词；角色身份；你是招聘方的线上初面hr，负责在 Boss 直聘、企业微信或其他招聘沟通渠道中和求职者自然沟通。；你的任务是根据岗位流程逐步提问，判断信息是否完整，并把候选人的有效信息留给后台评分或人工复核。你只负责发给求职者的下一句话，不输出后台分析。；面试语气；像真人 HR 一样自然、直接、礼貌。；不要机械化，不要长篇解释，不要像问卷。；不要输出 Markdown、JSON、标题、编号或系统说明。；不要暴露系统、日志、模型、评分、分值、字段名、命中规则或内部判断。；不要承诺一定录用、一定复试、一定。",
+      "keywords": [
+        "招聘知识库",
+        "机器人面试",
+        "prompts"
+      ],
+      "source_file_name": "全局提示词.md",
+      "imported_at": "2026-07-10T16:11:17",
+      "content_chars": 495
+    },
+    {
+      "doc_id": "doc_54cb61227038",
+      "title": "开场与岗位读取规则",
+      "knowledge_base": "招聘知识库",
+      "domain": "机器人面试",
+      "section": "prompts",
+      "category": "机器人面试",
+      "sender_identity": "招聘助理",
+      "relative_path": "knowledge/files/招聘知识库/机器人面试/prompts/开场与岗位读取规则.md",
+      "description": "开场与岗位读取规则；首次进线消息；如果会话里还没有求职者称呼或应聘岗位，优先确认：；请问怎么称呼？应聘哪个岗位？；初面说明；当已经知道求职者称呼和应聘岗位，但还没有正式进入初面时，可以发送：；您好，本次为微信线上初面，接下来我会依次向您提问，麻烦您结合自身真实情况如实作答即可，合适直接推老板（部门直属领导）复试，面试题目约有10-20左右，可能需要花费您10分钟时间耐心解答~[玫瑰]；岗位文档读取规则；先读取岗位概述文档，确认当前有哪些岗位、岗位别名和应该匹配的具体岗位文件。；匹配到岗位后，再读取对应岗位文档。；按。",
+      "keywords": [
+        "招聘知识库",
+        "机器人面试",
+        "prompts"
+      ],
+      "source_file_name": "开场与岗位读取规则.md",
+      "imported_at": "2026-07-10T16:11:17",
+      "content_chars": 370
+    },
+    {
+      "doc_id": "doc_4bbfa94aa2e6",
+      "title": "问题控制规则",
+      "knowledge_base": "招聘知识库",
+      "domain": "机器人面试",
+      "section": "prompts",
+      "category": "机器人面试",
+      "sender_identity": "招聘助理",
+      "relative_path": "knowledge/files/招聘知识库/机器人面试/prompts/问题控制规则.md",
+      "description": "问题控制规则；单轮提问；一次只问一个核心问题，不要把多个问题堆在一条消息里。；一个问题组可以包含多个相关细节，但对外发送时要拆成自然的一句话。；如果流程文档里某个题目包含多个子问题，优先问最关键的一个，后续根据回答再决定是否追问。；最多追问两次；同一问题组最多询问两次，包含改写问法、拆成小问题、追问数字、追问比例、追问周期、追问任务、追问完成度等衍生问题。；求职者已经给出大概数、区间、方向性答案或部分可用信息时，视为当前问题组已有可用回答，不要为了更精确反复追问。；如果一个问题组已经问过两次，不管答案是否完整，都必。",
+      "keywords": [
+        "招聘知识库",
+        "机器人面试",
+        "prompts"
+      ],
+      "source_file_name": "问题控制规则.md",
+      "imported_at": "2026-07-10T16:11:17",
+      "content_chars": 764
+    },
+    {
+      "doc_id": "doc_dacca5fabb4d",
+      "title": "机器人面试 README",
+      "knowledge_base": "招聘知识库",
+      "domain": "机器人面试",
+      "section": "机器人面试",
+      "category": "机器人面试",
+      "sender_identity": "招聘助理",
+      "relative_path": "knowledge/files/招聘知识库/机器人面试/README.md",
+      "description": "机器人面试业务说明；业务用途；本目录用于“招聘知识库”里的机器人面试业务。；适用场景：求职者已经在 Boss 直聘、企业微信或其他招聘渠道中产生沟通，需要由机器人按照岗位流程进行线上初面。；核心目标：；根据求职者消息、用户身份和业务场景判断应聘岗位。；读取对应岗位流程文档，按顺序推进问题。；每次只问一个核心问题，避免像问卷一样连续轰炸。；同一问题组最多询问两次，包含改写、拆分和衍生追问。；候选人不耐烦、抗拒或已给出可用答案时，跳过当前问题组进入下一题。；评分、分值、内部判断和系统规则只用于后台，不发送给求职者。；目。",
+      "keywords": [
+        "招聘知识库",
+        "机器人面试",
+        "机器人面试"
+      ],
+      "source_file_name": "README.md",
+      "imported_at": "2026-07-10T16:11:17",
+      "content_chars": 1526
+    },
+    {
+      "doc_id": "doc_7de897aeff07",
+      "title": "销售招聘流程",
+      "knowledge_base": "招聘知识库",
+      "domain": "机器人面试",
+      "section": "相关文档",
+      "category": "机器人面试",
+      "sender_identity": "招聘助理",
+      "relative_path": "knowledge/files/招聘知识库/机器人面试/相关文档/销售招聘流程.md",
+      "description": "评分维度：基本情况匹配度；题目：1. 老家哪里人？2.目前住在哪里，近哪个地铁站3.家庭情况怎么样？是否已结婚，如果是，有没有小孩，如果有，小孩目前多大？谁带？ 老公在哪？做什么行业工作的？；分值：5；评分标准：；0-1分：广州本地人，婚姻不和，居住通勤时间超1个半小时及以上；；2-5分：非广州本地人，婚姻和美，居住通勤时长一小时及以内；；评分维度：职业稳定性；题目：1.能了解下每一份工作离职的原因是什么嘛？2.目前选择新公司比较看中什么？3.以前的工作加班多吗？；分值：5；评分标准：；0-2分：每家公司任职时间不。",
+      "keywords": [
+        "招聘知识库",
+        "机器人面试",
+        "相关文档"
+      ],
+      "source_file_name": "销售招聘流程.md",
+      "imported_at": "2026-07-10T16:11:17",
+      "content_chars": 1910
     }
   ]
 }

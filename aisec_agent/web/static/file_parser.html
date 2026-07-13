@@ -485,8 +485,8 @@
           body: form
         });
         const payload = await response.json();
-        if (!response.ok || !payload.ok) {
-          throw new Error(payload.error || "解析失败");
+        if (!response.ok || payload.code !== 0) {
+          throw new Error(payload.msg || "解析失败");
         }
 
         const data = payload.data || {};

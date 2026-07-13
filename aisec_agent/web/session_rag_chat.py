@@ -6,6 +6,7 @@ import json
 import mimetypes
 import os
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -376,6 +377,14 @@ def _clip_text(value: Any, max_chars: int = 500) -> str:
     return text
 
 
+def _display_sender_identity(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    cleaned = re.sub(r"^\s*(?:xx|XX)[\s._-]*", "", text).strip()
+    return cleaned or text
+
+
 def _validate_api_key_for_headers(config: Dict[str, Any]) -> None:
     key = str(config.get("key") or "").strip()
     if not key:
@@ -385,7 +394,7 @@ def _validate_api_key_for_headers(config: Dict[str, Any]) -> None:
         "你的 API Key",
         "your api key",
         "api_key_here",
-        "sk-xxx",
+        "sk-x",
         "test-key",
     ]
     lowered = key.lower()
@@ -539,6 +548,7 @@ def _chat_response_payload(
         }
 
     answer = str(result_data.get("answer") or "")
+    resolved_sender_identity = _display_sender_identity(sender_identity or (sender_identity_source or {}).get("sender_identity")) or "品牌客服"
     return {
         "answer": answer,
         "result": result_data,
@@ -547,7 +557,7 @@ def _chat_response_payload(
         "provider": prepared.provider,
         "project": project_data,
         "project_documents": project_documents or {"documents": [], "document_ids": [], "reason": ""},
-        "sender_identity": sender_identity or _derive_sender_identity((project_documents or {}).get("documents", [])),
+        "sender_identity": resolved_sender_identity,
         "sender_identity_source": sender_identity_source or {},
         "scene_template": scene_template or {},
         "activity_settings": activity_settings or {},
@@ -556,6 +566,7 @@ def _chat_response_payload(
             "func_name": prepared.config["func_name"],
             "model_name": prepared.config["model_name"],
             "max_len_input": prepared.config["max_len_input"],
+            "key_source": prepared.config.get("key_source"),
             "project_id": project_data.get("project_id") or prepared.project_id,
             "scene_id": project_data.get("scene_id") or prepared.scene_id,
             "template_id": (scene_template or {}).get("template_id") or prepared.template_id,
@@ -567,12 +578,51 @@ def _chat_response_payload(
             "conversation_stage": prepared.conversation_stage,
             "source_platform": prepared.source_platform,
             "conversion_target": prepared.conversion_target,
-            "sender_identity": sender_identity or _derive_sender_identity((project_documents or {}).get("documents", [])),
+            "target_note": prepared.target_note,
+            "sender_identity": resolved_sender_identity,
             "sender_identity_source": sender_identity_source or {},
             "account_id": prepared.account_id,
             "product_id": prepared.product_id,
         },
         "prompt_trace": trace,
+    }
+
+
+def _compact_private_message_response(
+    *,
+    question: str,
+    session_id: str,
+    user_id: str,
+    provider: str,
+    config: Dict[str, Any],
+    answer: str,
+    prompt_modules: List[Dict[str, Any]],
+    extra_input: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    input_data = {
+        "question": question,
+        "session_id": session_id,
+        "user_id": user_id,
+    }
+    if extra_input:
+        for key, value in extra_input.items():
+            if value is None:
+                continue
+            if isinstance(value, (str, list, dict, tuple, set)) and not value:
+                continue
+            input_data[key] = value
+    return {
+        "input": input_data,
+        "reply": answer,
+        "prompts": prompt_modules,
+        "config": {
+            "provider": provider,
+            "api": config.get("url"),
+            "func": config.get("func_name"),
+            "model": config.get("model_name"),
+            "max_len": config.get("max_len_input"),
+            "key_source": config.get("key_source"),
+        },
     }
 
 
@@ -678,41 +728,92 @@ def _format_global_prompt_context(global_prompt: str) -> str:
 
 
 def _derive_sender_identity(documents: Optional[List[Dict[str, Any]]]) -> str:
-    fallback = ""
-    for doc in documents or []:
-        identity = str(
-            doc.get("sender_identity")
-            or doc.get("persona_identity")
-            or doc.get("role_identity")
-            or ""
-        ).strip()
-        if ProjectMaterialStore._is_valid_sender_identity(identity):
-            if identity != "xx品牌客服":
-                return identity
-            fallback = fallback or identity
+    identity, _ = _infer_sender_identity_from_context(documents=documents)
+    return identity
 
-    combined = "\n".join(
-        " ".join([
-            str(doc.get("doc_id") or ""),
-            str(doc.get("title") or ""),
-            str(doc.get("knowledge_base") or ""),
-            str(doc.get("category") or ""),
-            str(doc.get("domain") or ""),
-            str(doc.get("section") or ""),
-            " ".join(str(tag) for tag in (doc.get("tags") or doc.get("keywords") or [])),
+
+def _infer_sender_identity_from_context(
+    prepared: Optional[PreparedChatRequest] = None,
+    documents: Optional[List[Dict[str, Any]]] = None,
+    scene_template: Optional[Dict[str, Any]] = None,
+    activity_settings: Optional[Dict[str, Any]] = None,
+) -> tuple[str, Dict[str, Any]]:
+    segments: List[str] = []
+    if prepared:
+        segments.extend([
+            prepared.question,
+            prepared.video_overview,
+            prepared.source_platform,
+            prepared.conversion_target,
+            prepared.target_note,
+            prepared.conversation_stage,
         ])
-        for doc in documents or []
-    )
-    if re.search(r"招聘|岗位|候选人|简历|面试|薪资|福利|HR|Boss|求职|入职|到岗", combined, flags=re.I):
-        return "xx招聘助理"
-    if re.search(r"睡眠|关节|膝|大健康|医疗|骨积液|软骨|干细胞|PRP|康养", combined):
-        return "xx健康顾问助理"
-    if re.search(r"文生视频|AI私信|自动回复|评论采集|私信系统|内容生产|运营", combined, flags=re.I):
-        return "xx运营顾问"
-    if re.search(r"跨境|电商|选品|店铺|托管", combined):
-        return "xx跨境运营顾问"
-    return fallback or "xx品牌客服"
+    if scene_template:
+        segments.extend([
+            str(scene_template.get("title") or ""),
+            str(scene_template.get("purpose") or ""),
+            str(scene_template.get("applicable_scene") or ""),
+        ])
+        segments.extend(str(tag) for tag in (scene_template.get("tags") or []) if str(tag).strip())
+        segments.extend(str(step) for step in (scene_template.get("steps") or []) if str(step).strip())
+    if activity_settings:
+        segments.extend([
+            str(activity_settings.get("title") or ""),
+            str(activity_settings.get("activity_type") or ""),
+            str(activity_settings.get("applicable_scene") or ""),
+            str(activity_settings.get("description") or ""),
+            str(activity_settings.get("benefit") or ""),
+            str(activity_settings.get("claim_method") or ""),
+            str(activity_settings.get("deadline") or ""),
+            str(activity_settings.get("quota") or ""),
+            str(activity_settings.get("compliance_note") or ""),
+        ])
+        segments.extend(str(tag) for tag in (activity_settings.get("tags") or []) if str(tag).strip())
+    text = "\n".join(_clip_text(segment, 800) for segment in segments if str(segment or "").strip())
+    identity = "品牌客服"
+    family = "general"
+    reason = "通用业务信息"
+    if re.search(r"招聘|求职|面试|岗位|简历|候选人|hr|boss|到岗|offer|入职", text, flags=re.I):
+        identity, family, reason = "招聘助理", "recruitment", "招聘/求职/面试/岗位"
+    elif re.search(r"跨境|电商|店铺|货源|托管|选品|海外|出海|留学|平台运营", text, flags=re.I):
+        identity, family, reason = "跨境运营顾问", "cross_border", "跨境/电商/托管/选品"
+    elif re.search(r"睡眠|失眠|入睡|早醒|压力|疲惫|熬夜|关节|膝|骨积液|软骨|prp|干细胞|康养|理疗|医疗|健康", text, flags=re.I):
+        identity, family, reason = "健康顾问助理", "health", "大健康/睡眠/关节/康养"
+    elif re.search(r"自动私信|评论采集|自动回复|文生视频|批量剪辑|自动发布|数据统计|引流|ai|agent|运营", text, flags=re.I):
+        identity, family, reason = "运营顾问", "ops", "AI私信/内容生产/运营引流"
+    elif re.search(r"活动|义诊|体验|名额|资料包|领取|预约|优惠|钩子|承接", text, flags=re.I):
+        identity, family, reason = "运营助理", "activity", "活动/钩子/承接"
 
+    source: Dict[str, Any] = {
+        "source": "context_generated",
+        "sender_identity": identity,
+        "identity_family": family,
+        "reason": reason,
+    }
+    if prepared:
+        source["conversation_stage"] = prepared.conversation_stage
+        source["question"] = _clip_text(prepared.question, 300)
+        if prepared.video_overview:
+            source["video_overview"] = _clip_text(prepared.video_overview, 500)
+        if prepared.source_platform:
+            source["source_platform"] = prepared.source_platform
+        if prepared.conversion_target:
+            source["conversion_target"] = prepared.conversion_target
+        if prepared.target_note:
+            source["target_note"] = prepared.target_note
+    if scene_template:
+        if scene_template.get("template_id"):
+            source["template_id"] = scene_template.get("template_id")
+        if scene_template.get("title"):
+            source["template_title"] = scene_template.get("title")
+        if scene_template.get("applicable_scene"):
+            source["template_scene"] = scene_template.get("applicable_scene")
+    if activity_settings:
+        for key in ("activity_id", "title", "activity_type", "applicable_scene", "benefit", "claim_method"):
+            value = activity_settings.get(key)
+            if value:
+                source[key] = _clip_text(value, 300)
+    return identity, source
 
 def _valid_sender_identity(value: Any) -> str:
     identity = str(value or "").strip()
@@ -726,12 +827,12 @@ def _identity_source_payload(
 ) -> Dict[str, Any]:
     data = {
         "source": source,
-        "sender_identity": identity,
+        "sender_identity": _display_sender_identity(identity),
     }
     if item:
         for key in ("account_id", "account_name", "product_id", "product_name", "platform", "description"):
             if item.get(key):
-                data[key] = item.get(key)
+                data[key] = _display_sender_identity(item.get(key))
     return data
 
 
@@ -796,62 +897,89 @@ def _resolve_sender_identity(
     project_id: str,
     documents: Optional[List[Dict[str, Any]]] = None,
     prepared: Optional[PreparedChatRequest] = None,
+    scene_template: Optional[Dict[str, Any]] = None,
+    activity_settings: Optional[Dict[str, Any]] = None,
     account_id: str = "",
     product_id: str = "",
     sender_identity: str = "",
 ) -> tuple[str, Dict[str, Any]]:
     settings = _load_identity_settings(store, project_id)
-    explicit_identity = _valid_sender_identity(sender_identity or (prepared.sender_identity if prepared else ""))
+    explicit_identity = _valid_sender_identity(_display_sender_identity(sender_identity or (prepared.sender_identity if prepared else "")))
     if explicit_identity:
         return explicit_identity, _identity_source_payload("api_override", explicit_identity)
 
     account_id = account_id or (prepared.account_id if prepared else "")
     product_id = product_id or (prepared.product_id if prepared else "")
     account = _find_identity_item(settings.get("accounts", []), "account_id", account_id)
-    account_identity = _valid_sender_identity((account or {}).get("sender_identity"))
+    account_identity = _valid_sender_identity(_display_sender_identity((account or {}).get("sender_identity")))
     if account_identity:
         return account_identity, _identity_source_payload("account", account_identity, account)
 
     product = _find_identity_item(settings.get("products", []), "product_id", product_id)
-    product_identity = _valid_sender_identity((product or {}).get("sender_identity"))
+    product_identity = _valid_sender_identity(_display_sender_identity((product or {}).get("sender_identity")))
     if product_identity:
         return product_identity, _identity_source_payload("product", product_identity, product)
 
-    knowledge_identity = _valid_sender_identity(_derive_sender_identity(documents))
-    if knowledge_identity and knowledge_identity != "xx品牌客服":
-        return knowledge_identity, _identity_source_payload("knowledge", knowledge_identity)
+    generated_identity, generated_source = _infer_sender_identity_from_context(
+        prepared=prepared,
+        documents=documents,
+        scene_template=scene_template,
+        activity_settings=activity_settings,
+    )
+    if generated_identity:
+        auto_product = _auto_match_product_identity(settings.get("products", []), documents)
+        auto_product_identity = _valid_sender_identity(_display_sender_identity((auto_product or {}).get("sender_identity")))
+        if generated_source.get("identity_family") == "general" and auto_product_identity:
+            return auto_product_identity, _identity_source_payload("product_auto", auto_product_identity, auto_product)
+        return generated_identity, generated_source
 
     auto_product = _auto_match_product_identity(settings.get("products", []), documents)
-    auto_product_identity = _valid_sender_identity((auto_product or {}).get("sender_identity"))
+    auto_product_identity = _valid_sender_identity(_display_sender_identity((auto_product or {}).get("sender_identity")))
     if auto_product_identity:
         return auto_product_identity, _identity_source_payload("product_auto", auto_product_identity, auto_product)
 
-    default_identity = _valid_sender_identity(settings.get("default_sender_identity")) or "xx品牌客服"
+    default_identity = _valid_sender_identity(_display_sender_identity(settings.get("default_sender_identity"))) or "品牌客服"
     return default_identity, _identity_source_payload("default", default_identity)
 
 
 def _format_sender_identity_context(sender_identity: str, source: Optional[Dict[str, Any]] = None) -> str:
     source = source or {}
+    sender_identity = _display_sender_identity(sender_identity)
+    source_key = str(source.get("source") or "")
     source_text = {
         "api_override": "页面/API 明确传入",
         "account": "账号身份配置",
         "product": "产品身份配置",
         "product_auto": "根据检索文档自动匹配到的产品身份配置",
+        "context_generated": "根据业务、视频概述和活动自动生成",
         "knowledge": "知识库资料建议",
         "default": "项目默认身份",
-    }.get(str(source.get("source") or ""), "身份配置")
+    }.get(source_key, "身份配置")
     details = []
-    if source.get("account_name"):
-        details.append(f"账号：{source.get('account_name')}")
-    if source.get("product_name"):
-        details.append(f"产品：{source.get('product_name')}")
-    if source.get("platform"):
-        details.append(f"平台：{source.get('platform')}")
+    if source_key == "context_generated":
+        if source.get("reason"):
+            details.append(f"依据：{source.get('reason')}")
+        if source.get("question"):
+            details.append(f"评论：{source.get('question')}")
+        if source.get("video_overview"):
+            details.append(f"视频：{source.get('video_overview')}")
+        activity_label = source.get("title") or source.get("activity_type")
+        if activity_label:
+            details.append(f"活动：{activity_label}")
+        if source.get("template_title"):
+            details.append(f"模板：{source.get('template_title')}")
+    else:
+        if source.get("account_name"):
+            details.append(f"账号：{source.get('account_name')}")
+        if source.get("product_name"):
+            details.append(f"产品：{source.get('product_name')}")
+        if source.get("platform"):
+            details.append(f"平台：{source.get('platform')}")
     return "\n".join([
         "<sender_identity>",
-        f"本轮私信建议使用身份：{sender_identity or 'xx品牌客服'}。",
+        f"本轮私信建议使用身份：{sender_identity or '品牌客服'}。",
         f"身份来源：{source_text}{'；' + '；'.join(details) if details else ''}。",
-        "开头按此身份自然自我介绍，不要伪装医生、专家或平台官方人员；如果页面/API传入账号或产品身份，以配置身份为准，知识库身份仅作兜底建议。",
+        "使用原则：身份只用于引流承接，不要伪装医生、专家或平台官方人员；不要读取知识库里的 sender_identity 字段。",
         "</sender_identity>",
     ])
 
@@ -971,6 +1099,24 @@ def _safe_project_path(store: ProjectMaterialStore, project_id: str, relative_pa
     return project_dir, candidate, candidate_relative.as_posix()
 
 
+def _safe_project_folder_path(store: ProjectMaterialStore, project_id: str, relative_path: str) -> tuple[Path, Path, str]:
+    project_dir, _ = _project_root_and_meta(store, project_id)
+    relative = str(relative_path or "").replace("\\", "/").strip().lstrip("/")
+    if not relative:
+        raise WebInputError("folder_path is required")
+    candidate_relative = Path(relative)
+    if candidate_relative.is_absolute() or any(part == ".." for part in candidate_relative.parts):
+        raise WebInputError("invalid folder_path")
+
+    candidate = (project_dir / candidate_relative).resolve()
+    root = (project_dir / "knowledge" / "files").resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError as e:
+        raise WebInputError("folder_path is outside knowledge files") from e
+    return project_dir, candidate, candidate_relative.as_posix()
+
+
 def _project_file_item(
     project_dir: Path,
     relative_path: str,
@@ -981,7 +1127,8 @@ def _project_file_item(
 ) -> Dict[str, Any]:
     path = project_dir / relative_path
     content = ""
-    if path.exists() and path.is_file():
+    exists = path.exists() and path.is_file()
+    if exists:
         content = path.read_text(encoding="utf-8", errors="replace")
     return {
         "file_id": relative_path.replace("\\", "/"),
@@ -990,6 +1137,7 @@ def _project_file_item(
         "type": file_type,
         "relative_path": relative_path.replace("\\", "/"),
         "editable": editable,
+        "exists": exists,
         "content": content,
         "chars": len(content),
     }
@@ -1122,6 +1270,27 @@ def build_project_material_save_response(
         group="已保存",
         file_type="saved_file",
     )
+
+
+def build_project_material_delete_response(
+    payload: Dict[str, Any],
+    project_store: Optional[ProjectMaterialStore] = None,
+) -> Dict[str, Any]:
+    store = _project_store(project_store)
+    project_id = str(payload.get("project_id") or "").strip()
+    relative_path = str(payload.get("relative_path") or "").strip()
+    if not relative_path:
+        raise WebInputError("relative_path is required")
+    project_dir, target_path, normalized_relative = _safe_project_path(store, project_id, relative_path)
+    if not target_path.exists() or not target_path.is_file():
+        raise WebInputError("file not found")
+    target_path.unlink()
+    _remove_empty_parent_dirs(target_path, project_dir)
+    return {
+        "deleted": True,
+        "relative_path": normalized_relative,
+        "title": Path(normalized_relative).name,
+    }
 
 
 def build_project_create_response(
@@ -1742,7 +1911,8 @@ def _read_project_document_text(
     try:
         path, normalized_relative = _resolve_project_document_file(store, project_id, payload)
         if path.exists() and path.is_file():
-            return path.read_text(encoding="utf-8", errors="replace"), normalized_relative
+            content = path.read_text(encoding="utf-8", errors="replace")
+            return ProjectMaterialStore._sanitize_prompt_document_text(content), normalized_relative
     except Exception:
         return "", str(relative_path or "").replace("\\", "/").strip().lstrip("/")
     return "", str(relative_path or "").replace("\\", "/").strip().lstrip("/")
@@ -1758,6 +1928,40 @@ def _summary_from_project_file(
     content, resolved_relative = _read_project_document_text(store, project_id, relative_path, doc=doc)
     summary = _summarize_document_content(content)
     return summary or str(fallback or ""), len(content), resolved_relative
+
+
+def _prune_missing_description_documents(
+    store: ProjectMaterialStore,
+    project_id: str,
+    data: Dict[str, Any],
+) -> bool:
+    changed = False
+    _normalize_description_structure(data)
+    for knowledge_base_name, domain_name, section_name, section in _iter_description_sections(data):
+        kept = []
+        for doc in section.get("documents", []):
+            relative_path = str(doc.get("relative_path") or "").strip()
+            if not relative_path:
+                kept.append(doc)
+                continue
+            target_path, _ = _resolve_project_document_file(
+                store,
+                project_id,
+                {
+                    **doc,
+                    "knowledge_base": knowledge_base_name,
+                    "domain": domain_name,
+                    "section": section_name,
+                },
+            )
+            if target_path.exists() and target_path.is_file():
+                kept.append(doc)
+            else:
+                changed = True
+        section["documents"] = kept
+    if changed:
+        _remove_empty_sections_and_domains(data)
+    return changed
 
 
 def _iter_description_sections(data: Dict[str, Any]):
@@ -1914,11 +2118,9 @@ def _sync_manifest_from_document_descriptions(
                 "keywords": desc.get("keywords") or item.get("keywords") or [],
                 "source_file_name": desc.get("source_file_name") or item.get("source_file_name") or "",
                 "content_chars": desc.get("content_chars") or item.get("content_chars") or 0,
-                "sender_identity": desc.get("sender_identity") or item.get("sender_identity") or "xx品牌客服",
+                "sender_identity": desc.get("sender_identity") or item.get("sender_identity") or "品牌客服",
             }
             synced.append(merged)
-        else:
-            synced.append(item)
 
     existing_ids = {item.get("doc_id") for item in synced if item.get("doc_id")}
     for doc in _flatten_description_documents(data):
@@ -1952,6 +2154,26 @@ def _sync_manifest_from_document_descriptions(
     manifest["documents"] = synced
     _write_json_file(manifest_path, manifest)
     _sync_chunks_from_document_descriptions(project_dir, data)
+
+
+def _manifest_missing_description_documents(
+    store: ProjectMaterialStore,
+    project_id: str,
+    data: Dict[str, Any],
+) -> bool:
+    project_dir, _ = _project_root_and_meta(store, project_id)
+    manifest_path = project_dir / "knowledge" / "manifest.json"
+    manifest = _load_json_file(manifest_path, {"documents": []})
+    manifest_paths = {
+        _description_path_key(item.get("relative_path"))
+        for item in manifest.get("documents", [])
+        if isinstance(item, dict) and item.get("relative_path")
+    }
+    for doc in _flatten_description_documents(data):
+        relative_path = _description_path_key(doc.get("relative_path"))
+        if relative_path and relative_path not in manifest_paths and (project_dir / relative_path).is_file():
+            return True
+    return False
 
 
 def _document_descriptions_from_manifest(store: ProjectMaterialStore, project_id: str) -> Dict[str, Any]:
@@ -2033,6 +2255,76 @@ def _merge_manifest_documents_into_descriptions(
     return changed
 
 
+def _doc_id_from_relative_path(relative_path: str) -> str:
+    return "doc_" + uuid.uuid5(uuid.NAMESPACE_URL, relative_path).hex[:12]
+
+
+def _section_from_filesystem_path(parts: List[str]) -> str:
+    if len(parts) <= 4:
+        return "README与路由" if parts[-1].lower() == "readme.md" else "默认板块"
+    return parts[-2] or "默认板块"
+
+
+def _merge_filesystem_documents_into_descriptions(
+    store: ProjectMaterialStore,
+    project_id: str,
+    data: Dict[str, Any],
+) -> bool:
+    project_dir, _ = _project_root_and_meta(store, project_id)
+    files_dir = project_dir / "knowledge" / "files"
+    if not files_dir.exists() or not files_dir.is_dir():
+        return False
+
+    data = _normalize_description_structure(data)
+    existing_paths = {_description_path_key(doc.get("relative_path")) for doc in _flatten_description_documents(data)}
+    changed = False
+    allowed_suffixes = {".md", ".txt", ".json"}
+
+    for path in sorted(files_dir.rglob("*")):
+        if not path.is_file() or path.suffix.lower() not in allowed_suffixes:
+            continue
+        try:
+            relative_path = path.relative_to(project_dir).as_posix()
+        except ValueError:
+            continue
+        relative_key = _description_path_key(relative_path)
+        if relative_key in existing_paths:
+            continue
+        parts = Path(relative_path).parts
+        if len(parts) < 4 or parts[0] != "knowledge" or parts[1] != "files":
+            continue
+
+        knowledge_base_name = parts[2] or DEFAULT_KNOWLEDGE_BASE_NAME
+        domain_name = parts[3] if len(parts) >= 5 else ("README与路由" if path.name.lower() == "readme.md" else "默认领域")
+        section_name = _section_from_filesystem_path(list(parts))
+        content = path.read_text(encoding="utf-8", errors="replace")
+        title = path.stem if path.stem.lower() != "readme" else f"{domain_name} README"
+        summary = _summarize_document_content(content)
+        doc = {
+            "doc_id": _doc_id_from_relative_path(relative_key),
+            "title": title,
+            "source_file_name": path.name,
+            "relative_path": relative_path,
+            "description": summary,
+            "summary": summary,
+            "tags": [item for item in [knowledge_base_name, domain_name, section_name] if item and item != "默认板块"],
+            "sender_identity": "",
+            "content_chars": len(content),
+            "updated_at": datetime.fromtimestamp(path.stat().st_mtime).isoformat(timespec="seconds"),
+        }
+        doc["sender_identity"] = _suggest_sender_identity_from_doc(
+            doc,
+            f"{knowledge_base_name}/{domain_name}",
+            section_name,
+        )
+        section = _ensure_description_domain(data, domain_name, section_name, knowledge_base_name)
+        section.setdefault("documents", []).append(doc)
+        existing_paths.add(relative_key)
+        changed = True
+
+    return changed
+
+
 def _load_document_descriptions(store: ProjectMaterialStore, project_id: str) -> Dict[str, Any]:
     project_dir, path = _doc_description_path(store, project_id)
     data = _load_json_file(path, {})
@@ -2041,12 +2333,18 @@ def _load_document_descriptions(store: ProjectMaterialStore, project_id: str) ->
         _write_json_file(path, data)
     else:
         data = _normalize_description_structure(data)
-        if _merge_manifest_documents_into_descriptions(store, project_dir.name, data):
+        manifest_changed = _merge_manifest_documents_into_descriptions(store, project_dir.name, data)
+        filesystem_changed = _merge_filesystem_documents_into_descriptions(store, project_dir.name, data)
+        pruned_missing = _prune_missing_description_documents(store, project_dir.name, data)
+        if manifest_changed or filesystem_changed or pruned_missing:
             data["updated_at"] = datetime.now().isoformat(timespec="seconds")
             _write_json_file(path, data)
+            _sync_manifest_from_document_descriptions(store, project_dir.name, data)
     if _refresh_document_description_summaries(store, project_dir.name, data):
         data["updated_at"] = datetime.now().isoformat(timespec="seconds")
         _write_json_file(path, data)
+        _sync_manifest_from_document_descriptions(store, project_dir.name, data)
+    elif _manifest_missing_description_documents(store, project_dir.name, data):
         _sync_manifest_from_document_descriptions(store, project_dir.name, data)
     data["project_id"] = project_dir.name
     return data
@@ -2126,31 +2424,31 @@ def _empty_identity_settings(project_id: str) -> Dict[str, Any]:
         "version": 1,
         "project_id": project_id,
         "updated_at": now,
-        "default_sender_identity": "xx品牌客服",
+        "default_sender_identity": "品牌客服",
         "accounts": [
             {
                 "account_id": "douyin_health_assistant",
-                "account_name": "xx健康抖音号",
+                "account_name": "健康抖音号",
                 "platform": "抖音",
-                "sender_identity": "xx健康顾问助理",
+                "sender_identity": "健康顾问助理",
                 "description": "用于大健康、睡眠、膝骨关节干细胞、康养相关评论的首次私信和后续私信承接。",
                 "tags": ["大健康", "睡眠", "膝骨关节", "干细胞", "康养", "抖音"],
                 "enabled": True,
             },
             {
                 "account_id": "douyin_ai_ops",
-                "account_name": "xxAI运营号",
+                "account_name": "AI运营号",
                 "platform": "抖音",
-                "sender_identity": "xx运营顾问",
+                "sender_identity": "运营顾问",
                 "description": "用于AI私信系统、文生视频、评论采集、智能硬件和运营工具相关咨询。",
                 "tags": ["AI私信", "文生视频", "评论采集", "智能硬件", "运营"],
                 "enabled": True,
             },
             {
                 "account_id": "douyin_cross_border_ops",
-                "account_name": "xx跨境运营号",
+                "account_name": "跨境运营号",
                 "platform": "抖音",
-                "sender_identity": "xx跨境运营顾问",
+                "sender_identity": "跨境运营顾问",
                 "description": "用于跨境电商托管、AI选品、内容托管和海外市场测试相关咨询。",
                 "tags": ["跨境", "电商", "托管", "AI选品", "海外市场"],
                 "enabled": True,
@@ -2160,7 +2458,7 @@ def _empty_identity_settings(project_id: str) -> Dict[str, Any]:
             {
                 "product_id": "health_overview",
                 "product_name": "大健康医疗服务",
-                "sender_identity": "xx健康顾问助理",
+                "sender_identity": "健康顾问助理",
                 "related_doc_ids": ["healthcare_medical", "mock_health_compliance"],
                 "tags": ["大健康", "医疗", "康养", "干细胞", "PRP"],
                 "enabled": True,
@@ -2168,7 +2466,7 @@ def _empty_identity_settings(project_id: str) -> Dict[str, Any]:
             {
                 "product_id": "sleep_assessment",
                 "product_name": "睡眠状态初评",
-                "sender_identity": "xx健康顾问助理",
+                "sender_identity": "健康顾问助理",
                 "related_doc_ids": ["mock_sleep_assessment", "mock_health_compliance"],
                 "tags": ["睡眠", "失眠", "睡不好", "压力大", "初评"],
                 "enabled": True,
@@ -2176,7 +2474,7 @@ def _empty_identity_settings(project_id: str) -> Dict[str, Any]:
             {
                 "product_id": "joint_assessment",
                 "product_name": "大健康膝骨关节干细胞",
-                "sender_identity": "xx健康顾问助理",
+                "sender_identity": "健康顾问助理",
                 "related_doc_ids": ["healthcare_medical", "mock_joint_assessment", "mock_health_compliance"],
                 "tags": ["膝骨关节", "膝盖疼", "上下楼疼", "骨积液", "软骨磨损", "干细胞", "PRP"],
                 "enabled": True,
@@ -2184,7 +2482,7 @@ def _empty_identity_settings(project_id: str) -> Dict[str, Any]:
             {
                 "product_id": "ai_dm_system",
                 "product_name": "自动私信引流系统",
-                "sender_identity": "xx运营顾问",
+                "sender_identity": "运营顾问",
                 "related_doc_ids": ["ai_technology_hardware", "mock_ai_dm_system", "mock_conversion_hooks"],
                 "tags": ["AI私信", "自动回复", "评论采集", "私域引流", "模型切换"],
                 "enabled": True,
@@ -2192,7 +2490,7 @@ def _empty_identity_settings(project_id: str) -> Dict[str, Any]:
             {
                 "product_id": "ai_content_hardware",
                 "product_name": "AI内容生产与智能硬件",
-                "sender_identity": "xx运营顾问",
+                "sender_identity": "运营顾问",
                 "related_doc_ids": ["ai_technology_hardware", "mock_ai_dm_system"],
                 "tags": ["文生视频", "批量剪辑", "自动发布", "智能硬件", "录音转纪要"],
                 "enabled": True,
@@ -2200,7 +2498,7 @@ def _empty_identity_settings(project_id: str) -> Dict[str, Any]:
             {
                 "product_id": "cross_border_operation",
                 "product_name": "跨境电商托管",
-                "sender_identity": "xx跨境运营顾问",
+                "sender_identity": "跨境运营顾问",
                 "related_doc_ids": ["cross_border_services", "mock_cross_border_operation"],
                 "tags": ["跨境", "跨境电商", "货源", "店铺托管", "AI选品"],
                 "enabled": True,
@@ -2208,13 +2506,41 @@ def _empty_identity_settings(project_id: str) -> Dict[str, Any]:
             {
                 "product_id": "general_brand_service",
                 "product_name": "综合企业服务咨询",
-                "sender_identity": "xx品牌客服",
+                "sender_identity": "品牌客服",
                 "related_doc_ids": ["company_positioning", "mock_business_overview", "mock_conversion_hooks"],
                 "tags": ["公司介绍", "综合服务", "资料包", "承接方式"],
                 "enabled": True,
             },
         ],
     }
+
+
+def _normalize_identity_settings_display(data: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(data, dict):
+        return data
+    cleaned = dict(data)
+    cleaned["default_sender_identity"] = _display_sender_identity(cleaned.get("default_sender_identity")) or "品牌客服"
+    accounts = []
+    for item in cleaned.get("accounts", []) if isinstance(cleaned.get("accounts"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        cleaned_item = dict(item)
+        for key in ("account_name", "sender_identity", "platform", "description"):
+            if cleaned_item.get(key):
+                cleaned_item[key] = _display_sender_identity(cleaned_item.get(key))
+        accounts.append(cleaned_item)
+    cleaned["accounts"] = accounts
+    products = []
+    for item in cleaned.get("products", []) if isinstance(cleaned.get("products"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        cleaned_item = dict(item)
+        for key in ("product_name", "sender_identity", "description"):
+            if cleaned_item.get(key):
+                cleaned_item[key] = _display_sender_identity(cleaned_item.get(key))
+        products.append(cleaned_item)
+    cleaned["products"] = products
+    return cleaned
 
 
 def _load_identity_settings(store: ProjectMaterialStore, project_id: str) -> Dict[str, Any]:
@@ -2229,8 +2555,9 @@ def _load_identity_settings(store: ProjectMaterialStore, project_id: str) -> Dic
         data["products"] = []
     data["version"] = data.get("version") or 1
     data["project_id"] = project_dir.name
+    data = _normalize_identity_settings_display(data)
     if not ProjectMaterialStore._is_valid_sender_identity(data.get("default_sender_identity")):
-        data["default_sender_identity"] = "xx品牌客服"
+        data["default_sender_identity"] = "品牌客服"
     return data
 
 
@@ -2243,8 +2570,9 @@ def _save_identity_settings(store: ProjectMaterialStore, project_id: str, data: 
     data["version"] = data.get("version") or 1
     data["project_id"] = project_dir.name
     data["updated_at"] = datetime.now().isoformat(timespec="seconds")
+    data = _normalize_identity_settings_display(data)
     if not ProjectMaterialStore._is_valid_sender_identity(data.get("default_sender_identity")):
-        data["default_sender_identity"] = "xx品牌客服"
+        data["default_sender_identity"] = "品牌客服"
     _write_json_file(path, data)
     return data
 
@@ -2307,8 +2635,10 @@ def _remove_document_from_descriptions(
     return removed
 
 
-def _remove_empty_sections_and_domains(descriptions: Dict[str, Any]) -> None:
+def _remove_empty_sections_and_domains(descriptions: Dict[str, Any]) -> bool:
     descriptions = _normalize_description_structure(descriptions)
+    before = json.dumps(descriptions.get("knowledge_bases", []), ensure_ascii=False, sort_keys=True)
+    kept_bases = []
     for base in descriptions.get("knowledge_bases", []):
         kept_domains = []
         for domain in base.get("domains", []):
@@ -2320,10 +2650,18 @@ def _remove_empty_sections_and_domains(descriptions: Dict[str, Any]) -> None:
             if kept_sections:
                 kept_domains.append(domain)
         base["domains"] = kept_domains
-    descriptions["domains"] = (next(
-        (item for item in descriptions.get("knowledge_bases", []) if item.get("name") == DEFAULT_KNOWLEDGE_BASE_NAME),
-        (descriptions.get("knowledge_bases") or [{"domains": []}])[0],
-    )).setdefault("domains", [])
+        if kept_domains:
+            kept_bases.append(base)
+    descriptions["knowledge_bases"] = kept_bases
+    if kept_bases:
+        descriptions["domains"] = (next(
+            (item for item in kept_bases if item.get("name") == DEFAULT_KNOWLEDGE_BASE_NAME),
+            kept_bases[0],
+        )).setdefault("domains", [])
+    else:
+        descriptions["domains"] = []
+    after = json.dumps(descriptions.get("knowledge_bases", []), ensure_ascii=False, sort_keys=True)
+    return before != after
 
 
 def _remove_document_from_manifest(project_dir: Path, doc_id: str, relative_path: str) -> bool:
@@ -2392,6 +2730,280 @@ def _remove_empty_parent_dirs(path: Path, stop_dir: Path) -> None:
         except OSError:
             break
         current = current.parent
+
+
+def _remove_documents_from_manifest(project_dir: Path, docs: List[Dict[str, Any]]) -> int:
+    removed = 0
+    for doc in docs:
+        if _remove_document_from_manifest(
+            project_dir,
+            str(doc.get("doc_id") or ""),
+            str(doc.get("relative_path") or ""),
+        ):
+            removed += 1
+    return removed
+
+
+def _remove_documents_from_chunks(project_dir: Path, docs: List[Dict[str, Any]]) -> int:
+    removed = 0
+    for doc in docs:
+        removed += _remove_document_from_chunks(
+            project_dir,
+            str(doc.get("doc_id") or ""),
+            str(doc.get("relative_path") or ""),
+        )
+    return removed
+
+
+def _knowledge_folder_path(project_dir: Path, *parts: str) -> Path:
+    safe_parts = [_safe_segment(part, "默认") for part in parts if str(part or "").strip()]
+    return (project_dir / "knowledge" / "files" / Path(*safe_parts)).resolve()
+
+
+def _ensure_inside_knowledge_files(project_dir: Path, target_path: Path) -> None:
+    root = (project_dir / "knowledge" / "files").resolve()
+    try:
+        target_path.resolve().relative_to(root)
+    except ValueError as e:
+        raise WebInputError("folder is outside knowledge files") from e
+
+
+def _move_knowledge_folder(project_dir: Path, old_path: Path, new_path: Path) -> bool:
+    _ensure_inside_knowledge_files(project_dir, old_path)
+    _ensure_inside_knowledge_files(project_dir, new_path)
+    if old_path == new_path:
+        return False
+    if not old_path.exists():
+        return False
+    if new_path.exists():
+        raise WebInputError("target folder already exists")
+    new_path.parent.mkdir(parents=True, exist_ok=True)
+    old_path.rename(new_path)
+    return True
+
+
+def _delete_knowledge_folder(project_dir: Path, folder_path: Path) -> bool:
+    _ensure_inside_knowledge_files(project_dir, folder_path)
+    if not folder_path.exists():
+        return False
+    if not folder_path.is_dir():
+        raise WebInputError("target is not a folder")
+    shutil.rmtree(folder_path)
+    _remove_empty_parent_dirs(folder_path, project_dir / "knowledge" / "files")
+    return True
+
+
+def _replace_relative_path_prefix(relative_path: str, old_prefix: str, new_prefix: str) -> str:
+    normalized = str(relative_path or "").replace("\\", "/").strip().lstrip("/")
+    old_prefix = str(old_prefix or "").replace("\\", "/").strip().strip("/")
+    new_prefix = str(new_prefix or "").replace("\\", "/").strip().strip("/")
+    if not normalized:
+        return normalized
+    if normalized == old_prefix:
+        return new_prefix
+    if normalized.startswith(old_prefix + "/"):
+        return new_prefix + normalized[len(old_prefix):]
+    return normalized
+
+
+def build_admin_knowledge_base_update_response(
+    payload: Dict[str, Any],
+    project_store: Optional[ProjectMaterialStore] = None,
+) -> Dict[str, Any]:
+    store = _project_store(project_store)
+    project_id = str(payload.get("project_id") or "").strip()
+    old_name = str(payload.get("old_name") or payload.get("name") or "").strip()
+    new_name = str(payload.get("new_name") or "").strip()
+    description = str(payload.get("description") or "").strip()
+    if not old_name:
+        raise WebInputError("old_name is required")
+    if not new_name:
+        raise WebInputError("new_name is required")
+
+    project_dir, _ = _project_root_and_meta(store, project_id)
+    descriptions = _load_document_descriptions(store, project_dir.name)
+    bases = descriptions.get("knowledge_bases") or []
+    base = next((item for item in bases if item.get("name") == old_name), None)
+    if not base:
+        raise WebInputError("knowledge base not found")
+    if new_name != old_name and any(item.get("name") == new_name for item in bases):
+        raise WebInputError("knowledge base name already exists")
+
+    old_safe = _safe_segment(old_name, DEFAULT_KNOWLEDGE_BASE_NAME)
+    new_safe = _safe_segment(new_name, DEFAULT_KNOWLEDGE_BASE_NAME)
+    old_prefix = f"knowledge/files/{old_safe}"
+    new_prefix = f"knowledge/files/{new_safe}"
+    moved = False
+    if new_name != old_name or new_safe != old_safe:
+        old_path = _knowledge_folder_path(project_dir, old_name)
+        new_path = _knowledge_folder_path(project_dir, new_name)
+        moved = _move_knowledge_folder(project_dir, old_path, new_path)
+
+    base["name"] = new_name
+    base["kb_id"] = base.get("kb_id") or _knowledge_base_id(new_name)
+    base["description"] = description
+    for domain in base.get("domains", []):
+        for section in domain.get("sections", []):
+            for doc in section.get("documents", []):
+                doc["relative_path"] = _replace_relative_path_prefix(
+                    str(doc.get("relative_path") or ""),
+                    old_prefix,
+                    new_prefix,
+                )
+    descriptions = _save_document_descriptions(store, project_dir.name, descriptions)
+    return {
+        "document_descriptions": descriptions,
+        "updated": {
+            "type": "knowledge_base",
+            "old_name": old_name,
+            "new_name": new_name,
+            "folder_moved": moved,
+        },
+    }
+
+
+def build_admin_knowledge_domain_update_response(
+    payload: Dict[str, Any],
+    project_store: Optional[ProjectMaterialStore] = None,
+) -> Dict[str, Any]:
+    store = _project_store(project_store)
+    project_id = str(payload.get("project_id") or "").strip()
+    knowledge_base_name = str(payload.get("knowledge_base") or "").strip()
+    old_name = str(payload.get("old_name") or payload.get("name") or "").strip()
+    new_name = str(payload.get("new_name") or "").strip()
+    description = str(payload.get("description") or "").strip()
+    if not knowledge_base_name:
+        raise WebInputError("knowledge_base is required")
+    if not old_name:
+        raise WebInputError("old_name is required")
+    if not new_name:
+        raise WebInputError("new_name is required")
+
+    project_dir, _ = _project_root_and_meta(store, project_id)
+    descriptions = _load_document_descriptions(store, project_dir.name)
+    base = next((item for item in descriptions.get("knowledge_bases", []) if item.get("name") == knowledge_base_name), None)
+    if not base:
+        raise WebInputError("knowledge base not found")
+    domains = base.get("domains") or []
+    domain = next((item for item in domains if item.get("name") == old_name), None)
+    if not domain:
+        raise WebInputError("domain not found")
+    if new_name != old_name and any(item.get("name") == new_name for item in domains):
+        raise WebInputError("domain name already exists")
+
+    base_safe = _safe_segment(knowledge_base_name, DEFAULT_KNOWLEDGE_BASE_NAME)
+    old_safe = _safe_segment(old_name, "默认领域")
+    new_safe = _safe_segment(new_name, "默认领域")
+    old_prefix = f"knowledge/files/{base_safe}/{old_safe}"
+    new_prefix = f"knowledge/files/{base_safe}/{new_safe}"
+    moved = False
+    if new_name != old_name or new_safe != old_safe:
+        old_path = _knowledge_folder_path(project_dir, knowledge_base_name, old_name)
+        new_path = _knowledge_folder_path(project_dir, knowledge_base_name, new_name)
+        moved = _move_knowledge_folder(project_dir, old_path, new_path)
+
+    domain["name"] = new_name
+    domain["domain_id"] = domain.get("domain_id") or _domain_id(new_name)
+    domain["description"] = description
+    for section in domain.get("sections", []):
+        for doc in section.get("documents", []):
+            doc["relative_path"] = _replace_relative_path_prefix(
+                str(doc.get("relative_path") or ""),
+                old_prefix,
+                new_prefix,
+            )
+    descriptions = _save_document_descriptions(store, project_dir.name, descriptions)
+    return {
+        "document_descriptions": descriptions,
+        "updated": {
+            "type": "domain",
+            "knowledge_base": knowledge_base_name,
+            "old_name": old_name,
+            "new_name": new_name,
+            "folder_moved": moved,
+        },
+    }
+
+
+def build_admin_knowledge_base_delete_response(
+    payload: Dict[str, Any],
+    project_store: Optional[ProjectMaterialStore] = None,
+) -> Dict[str, Any]:
+    store = _project_store(project_store)
+    project_id = str(payload.get("project_id") or "").strip()
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise WebInputError("name is required")
+
+    project_dir, _ = _project_root_and_meta(store, project_id)
+    descriptions = _load_document_descriptions(store, project_dir.name)
+    bases = descriptions.get("knowledge_bases") or []
+    target = next((item for item in bases if item.get("name") == name), None)
+    if not target:
+        raise WebInputError("knowledge base not found")
+    docs = []
+    for domain in target.get("domains", []):
+        for section in domain.get("sections", []):
+            docs.extend(section.get("documents", []))
+    descriptions["knowledge_bases"] = [item for item in bases if item.get("name") != name]
+    descriptions = _save_document_descriptions(store, project_dir.name, descriptions)
+    manifest_removed = _remove_documents_from_manifest(project_dir, docs)
+    chunks_removed = _remove_documents_from_chunks(project_dir, docs)
+    folder_deleted = _delete_knowledge_folder(project_dir, _knowledge_folder_path(project_dir, name))
+    return {
+        "document_descriptions": descriptions,
+        "deleted": {
+            "type": "knowledge_base",
+            "name": name,
+            "documents": len(docs),
+            "manifest_removed": manifest_removed,
+            "chunks_removed": chunks_removed,
+            "folder_deleted": folder_deleted,
+        },
+    }
+
+
+def build_admin_knowledge_domain_delete_response(
+    payload: Dict[str, Any],
+    project_store: Optional[ProjectMaterialStore] = None,
+) -> Dict[str, Any]:
+    store = _project_store(project_store)
+    project_id = str(payload.get("project_id") or "").strip()
+    knowledge_base_name = str(payload.get("knowledge_base") or "").strip()
+    name = str(payload.get("name") or "").strip()
+    if not knowledge_base_name:
+        raise WebInputError("knowledge_base is required")
+    if not name:
+        raise WebInputError("name is required")
+
+    project_dir, _ = _project_root_and_meta(store, project_id)
+    descriptions = _load_document_descriptions(store, project_dir.name)
+    base = next((item for item in descriptions.get("knowledge_bases", []) if item.get("name") == knowledge_base_name), None)
+    if not base:
+        raise WebInputError("knowledge base not found")
+    target = next((item for item in base.get("domains", []) if item.get("name") == name), None)
+    if not target:
+        raise WebInputError("domain not found")
+    docs = []
+    for section in target.get("sections", []):
+        docs.extend(section.get("documents", []))
+    base["domains"] = [item for item in base.get("domains", []) if item.get("name") != name]
+    descriptions = _save_document_descriptions(store, project_dir.name, descriptions)
+    manifest_removed = _remove_documents_from_manifest(project_dir, docs)
+    chunks_removed = _remove_documents_from_chunks(project_dir, docs)
+    folder_deleted = _delete_knowledge_folder(project_dir, _knowledge_folder_path(project_dir, knowledge_base_name, name))
+    return {
+        "document_descriptions": descriptions,
+        "deleted": {
+            "type": "domain",
+            "knowledge_base": knowledge_base_name,
+            "name": name,
+            "documents": len(docs),
+            "manifest_removed": manifest_removed,
+            "chunks_removed": chunks_removed,
+            "folder_deleted": folder_deleted,
+        },
+    }
 
 
 def build_admin_knowledge_delete_response(
@@ -2483,9 +3095,13 @@ def build_admin_open_file_location_response(
     store = _project_store(project_store)
     project_id = str(payload.get("project_id") or "").strip()
     relative_path = str(payload.get("relative_path") or "").strip()
-    _, target_path, normalized_relative = _safe_project_path(store, project_id, relative_path)
+    open_type = str(payload.get("type") or "file").strip()
+    if open_type == "folder":
+        _, target_path, normalized_relative = _safe_project_folder_path(store, project_id, relative_path)
+    else:
+        _, target_path, normalized_relative = _safe_project_path(store, project_id, relative_path)
     if not target_path.exists():
-        raise WebInputError("file does not exist")
+        raise WebInputError("path does not exist")
 
     (opener or _open_location_in_file_manager)(target_path)
     return {
@@ -2848,7 +3464,7 @@ def build_admin_scene_template_generate_response(
 你是私信智能体场景模板设计助手。请根据用户输入的目的生成一个可执行场景模板。
 重要规则：
 - 用户目的里的平台、动作、账号、微信号、vx、wx、企微号、链接、品牌名等关键信息必须原样保留，不允许改写成“入口”“下一步动作”“私域”等泛化词。
-- 如果目的里写了“最终引到微信号 xxx”，steps 中必须至少有一步明确写出“引导到/添加/前往 微信号 xxx”。
+- 如果目的里写了“最终引到微信号 x”，steps 中必须至少有一步明确写出“引导到/添加/前往 微信号 x”。
 - 处理步骤必须贴合用户填写的目的链路，例如“评论留言 -> 私信 -> 微信号/目标渠道”，不要只输出通用的识别痛点、匹配资料。
 - 生成内容是场景模板，不是直接回复用户的话术；但步骤要能指导后续话术生成。
 字段要求：
@@ -3112,6 +3728,31 @@ def build_admin_prompt_restore_response(
         _load_activity_settings(store, project_dir.name).get("activities", []),
         str(payload.get("activity_id") or ""),
     )
+    prepared = PreparedChatRequest(
+        question=question,
+        provider="",
+        config={},
+        session_id=str(payload.get("session_id") or "").strip(),
+        user_id=str(payload.get("user_id") or DEFAULT_USER_ID).strip(),
+        conversation_stage=str(payload.get("conversation_stage") or "first_comment"),
+        project_id=project_dir.name,
+        scene_id=selected_template.get("scene_id") if isinstance(selected_template, dict) else "",
+        template_id=str(payload.get("template_id") or "").strip(),
+        activity_id=str(payload.get("activity_id") or "").strip(),
+        account_id=str(payload.get("account_id") or "").strip(),
+        product_id=str(payload.get("product_id") or "").strip(),
+        sender_identity=_clip_text(payload.get("sender_identity") or payload.get("sender_identity_override"), 80),
+        video_overview=video_overview,
+        global_prompt=_clip_text(payload.get("global_prompt"), 8000),
+        enable_knowledge=False,
+        topics=[],
+        summary_max_chars=_to_int(payload.get("summary_max_chars"), 4000),
+        raw_max_chars=_to_int(payload.get("raw_max_chars"), 12000),
+        knowledge_size=_to_int(payload.get("knowledge_size"), 4),
+        source_platform=_clip_text(payload.get("source_platform"), 120),
+        conversion_target=_clip_text(payload.get("conversion_target"), 200),
+        target_note=_clip_text(payload.get("target_note"), 600),
+    )
     selected_docs_context = "\n\n".join(
         "\n".join([
             f"[{index}] {doc.get('title')} ({doc.get('relative_path')})",
@@ -3126,9 +3767,12 @@ def build_admin_prompt_restore_response(
         store,
         project_dir.name,
         selected_docs,
+        scene_template=selected_template,
+        activity_settings=selected_activity,
         account_id=str(payload.get("account_id") or "").strip(),
         product_id=str(payload.get("product_id") or "").strip(),
         sender_identity=_clip_text(payload.get("sender_identity") or payload.get("sender_identity_override"), 80),
+        prepared=prepared,
     )
     global_prompt_path = project_dir / "global_prompt.md"
     default_global_prompt = global_prompt_path.read_text(encoding="utf-8", errors="replace") if global_prompt_path.exists() else ""
@@ -3161,8 +3805,9 @@ def build_admin_prompt_restore_response(
 
 <task>
 只根据用户评论/上下文、全局提示词、人员身份、场景模板、活动设置、检索到的相关知识库生成回复。
+人员身份由业务、视频概述和活动自动生成，不要读取知识库里的 sender_identity 字段；如果页面/API已传入账号或产品身份，以配置身份为准。
 不要编造未在知识库或场景模板中出现的事实、价格、名额、医疗承诺或平台规则。
-如活动设置为空，不要主动编造“活动/义诊/优惠券”；如活动设置存在且适合当前评论，可自然表达为“咱们这边正好有xx活动/义诊/优惠券”。
+如活动设置为空，不要主动编造“活动/义诊/优惠券”；如活动设置存在且适合当前评论，可自然表达为“咱们这边正好有活动/义诊/优惠券”。
 不要主动自证消息真实性、解释发送方式或强调自己是真人，要用对评论和视频内容的准确承接证明真人感。
 </task>
 """.strip()
@@ -3298,6 +3943,8 @@ def build_project_route_debug_response(
         store,
         bundle.project_id,
         project_documents.get("documents", []),
+        scene_template=scene_template,
+        activity_settings=activity_settings,
         prepared=prepared,
     )
     project_context = _format_runtime_rag_context(
@@ -3380,6 +4027,8 @@ def build_chat_response(
         store,
         bundle.project_id,
         project_documents.get("documents", []),
+        scene_template=scene_template,
+        activity_settings=activity_settings,
         prepared=prepared,
     )
     project_context = _format_runtime_rag_context(
@@ -3407,6 +4056,27 @@ def build_chat_response(
         conversation_stage=prepared.conversation_stage,
         project_context=project_context,
     )
+    result_data = _result_to_dict(result)
+    final_prompt = (
+        (result_data.get("prompt_trace") or {}).get("final_prompt")
+        or result_data.get("final_prompt")
+        or ""
+    )
+    prompt_modules = _build_debug_prompt_modules(
+        prepared=prepared,
+        bundle=bundle,
+        routing_input=routing_input,
+        global_prompt_context=global_prompt_context,
+        sender_identity_context=_format_sender_identity_context(sender_identity, sender_identity_source),
+        scene_template_context=_format_scene_template_context(scene_template),
+        activity_settings_context=_format_activity_settings_context(activity_settings),
+        retrieved_knowledge_context=_format_retrieved_knowledge_context(project_documents.get("context", "")),
+        final_prompt=final_prompt,
+    )
+    prompt_trace = dict(result_data.get("prompt_trace") or {})
+    if final_prompt:
+        prompt_trace["final_prompt"] = final_prompt
+    prompt_trace["prompt_modules"] = prompt_modules
 
     return _chat_response_payload(
         prepared,
@@ -3417,6 +4087,7 @@ def build_chat_response(
         activity_settings,
         sender_identity,
         sender_identity_source,
+        prompt_trace=prompt_trace,
     )
 
 
@@ -3489,11 +4160,37 @@ def build_public_private_message_response(
     project_store: Optional[ProjectMaterialStore] = None,
     use_saved_model_config: bool = False,
 ) -> Dict[str, Any]:
-    return build_chat_response(
-        _normalize_public_api_payload(payload),
+    normalized = _normalize_public_api_payload(payload)
+    data = build_chat_response(
+        normalized,
         logic=logic,
         project_store=project_store,
         use_saved_model_config=use_saved_model_config,
+    )
+    config = dict(data.get("config") or {})
+    config.setdefault("provider", data.get("provider") or normalized.get("provider") or "minimax")
+    trace = data.get("prompt_trace") or {}
+    prompts = trace.get("prompt_modules") or []
+    if not prompts and trace.get("final_prompt"):
+        prompts = [_prompt_module("final_prompt", "最终完整 Prompt", trace.get("final_prompt") or "")]
+    return _compact_private_message_response(
+        question=str(normalized.get("question") or ""),
+        session_id=str(data.get("session_id") or ""),
+        user_id=str(data.get("user_id") or ""),
+        provider=str(data.get("provider") or normalized.get("provider") or "minimax"),
+        config=config,
+        answer=str(data.get("answer") or ""),
+        prompt_modules=prompts,
+        extra_input={
+            "conversation_stage": normalized.get("conversation_stage"),
+            "project_id": normalized.get("project_id"),
+            "template_id": normalized.get("template_id"),
+            "activity_id": normalized.get("activity_id"),
+            "source_platform": normalized.get("source_platform"),
+            "conversion_target": normalized.get("conversion_target"),
+            "target_note": normalized.get("target_note"),
+            "video_overview": normalized.get("video_overview"),
+        },
     )
 
 
@@ -4983,52 +5680,20 @@ def build_business_reply_response(
         },
     ]
 
-    selected_documents = [
-        {
-            "title": doc.get("title"),
-            "role": doc.get("role"),
-            "knowledge_base": doc.get("knowledge_base"),
-            "domain": doc.get("domain"),
-            "relative_path": doc.get("relative_path"),
-            "source_files": doc.get("source_files") or [],
-            "content_chars": doc.get("content_chars"),
-        }
-        for doc in context["documents"]
-    ]
-    return {
-        "answer": answer,
-        "result": {
-            "answer": answer,
-            "memory_id": memory_id,
-            "memory_error": memory_error,
+    return _compact_private_message_response(
+        question=message,
+        session_id=session_id,
+        user_id=user_id,
+        provider=str(config.get("provider") or normalized.get("provider") or "minimax"),
+        config=config,
+        answer=answer,
+        prompt_modules=prompt_modules,
+        extra_input={
+            "caller": caller,
+            "business_scene": business_scene,
+            "user_identity": user_identity_structured,
         },
-        "session_id": session_id,
-        "user_id": user_id,
-        "route": context["route"],
-        "user_identity": user_identity,
-        "user_identity_structured": user_identity_structured,
-        "dialogue_list": dialogue_list,
-        "conversation_history": dialogue_list,
-        "selected_documents": selected_documents,
-        "config": {
-            "provider": config.get("provider") or normalized.get("provider") or "minimax",
-            "url": config.get("url"),
-            "func_name": config.get("func_name"),
-            "model_name": config.get("model_name"),
-            "max_len_input": config.get("max_len_input"),
-            "key_source": config.get("key_source"),
-        },
-        "prompt_trace": {
-            "final_prompt": final_prompt,
-            "prompt_modules": prompt_modules,
-            "interview_control": interview_control,
-            "opening_control": {
-                "required": bool(opening_question),
-                "question": opening_question,
-            },
-            "answer_guard": answer_guard,
-        },
-    }
+    )
 
 
 def build_chat_stream_events(
@@ -5057,6 +5722,8 @@ def build_chat_stream_events(
         store,
         bundle.project_id,
         project_documents.get("documents", []),
+        scene_template=scene_template,
+        activity_settings=activity_settings,
         prepared=prepared,
     )
     project_context = _format_runtime_rag_context(
@@ -5322,6 +5989,10 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self._handle_project_material_save()
             return
 
+        if path == "/api/project-materials/delete":
+            self._handle_project_material_delete()
+            return
+
         if path == "/api/projects/create":
             self._handle_project_create()
             return
@@ -5340,6 +6011,22 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/knowledge/delete":
             self._handle_admin_knowledge_delete()
+            return
+
+        if path == "/api/admin/knowledge/base/update":
+            self._handle_admin_knowledge_base_update()
+            return
+
+        if path == "/api/admin/knowledge/base/delete":
+            self._handle_admin_knowledge_base_delete()
+            return
+
+        if path == "/api/admin/knowledge/domain/update":
+            self._handle_admin_knowledge_domain_update()
+            return
+
+        if path == "/api/admin/knowledge/domain/delete":
+            self._handle_admin_knowledge_domain_delete()
             return
 
         if path == "/api/admin/open-file-location":
@@ -5376,7 +6063,7 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
 
         try:
             payload = self._read_json()
-            data = build_chat_response(
+            data = build_public_private_message_response(
                 payload,
                 logic=self.server.logic,
                 project_store=self.server.project_store,
@@ -5397,7 +6084,7 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
                 project_store=self.server.project_store,
                 use_saved_model_config=True,
             )
-            self._send_json({"answer": data.get("answer", ""), "ok": True, "data": data})
+            self._send_json({"answer": data.get("reply", ""), "ok": True, "data": data})
         except WebInputError as e:
             self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
         except Exception as e:
@@ -5412,7 +6099,7 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
                 project_store=self.server.project_store,
                 use_saved_model_config=True,
             )
-            self._send_json({"answer": data.get("answer", ""), "ok": True, "data": data})
+            self._send_json({"answer": data.get("reply", ""), "ok": True, "data": data})
         except WebInputError as e:
             self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
         except Exception as e:
@@ -5521,6 +6208,19 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
+    def _handle_project_material_delete(self):
+        try:
+            payload = self._read_json()
+            data = build_project_material_delete_response(
+                payload,
+                project_store=self.server.project_store,
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
     def _handle_project_create(self):
         try:
             payload = self._read_json()
@@ -5591,6 +6291,58 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
         try:
             payload = self._read_json()
             data = build_admin_knowledge_delete_response(
+                payload,
+                project_store=self.server.project_store,
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_admin_knowledge_base_update(self):
+        try:
+            payload = self._read_json()
+            data = build_admin_knowledge_base_update_response(
+                payload,
+                project_store=self.server.project_store,
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_admin_knowledge_base_delete(self):
+        try:
+            payload = self._read_json()
+            data = build_admin_knowledge_base_delete_response(
+                payload,
+                project_store=self.server.project_store,
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_admin_knowledge_domain_update(self):
+        try:
+            payload = self._read_json()
+            data = build_admin_knowledge_domain_update_response(
+                payload,
+                project_store=self.server.project_store,
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_admin_knowledge_domain_delete(self):
+        try:
+            payload = self._read_json()
+            data = build_admin_knowledge_domain_delete_response(
                 payload,
                 project_store=self.server.project_store,
             )
@@ -5881,13 +6633,46 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
         return json.loads(raw.decode("utf-8"))
 
     def _send_json(self, data: Dict[str, Any], status: int = HTTPStatus.OK):
-        content = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        content = json.dumps(self._response_envelope(data, status), ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(content)))
         self.end_headers()
         self.wfile.write(content)
+
+    @staticmethod
+    def _response_envelope(data: Dict[str, Any], status: int = HTTPStatus.OK) -> Dict[str, Any]:
+        payload = dict(data or {})
+        if "code" in payload:
+            payload.setdefault("msg", "success" if int(payload.get("code") or 0) == 0 else "")
+            payload.setdefault("data", None)
+            payload.pop("ok", None)
+            payload.pop("error", None)
+            return payload
+
+        if "ok" in payload:
+            ok = bool(payload.pop("ok"))
+            message = str(payload.pop("msg", "") or payload.pop("error", "") or ("success" if ok else "failed"))
+            body = payload.pop("data", None)
+            if body is None and payload:
+                payload.pop("answer", None)
+                body = payload or None
+            return {
+                "code": 0 if ok else int(status),
+                "msg": message,
+                "data": body,
+            }
+
+        message = str(payload.pop("msg", "") or ("success" if int(status) < 400 else "failed"))
+        body = payload.pop("data", None)
+        if body is None and payload:
+            body = payload
+        return {
+            "code": 0 if int(status) < 400 else int(status),
+            "msg": message,
+            "data": body,
+        }
 
 
 def _is_port_available(host: str, port: int) -> bool:
@@ -5935,3 +6720,8 @@ def main(argv=None) -> None:
 
 if __name__ == "__main__":
     main()
+
+
+
+
+

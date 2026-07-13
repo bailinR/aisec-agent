@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Callable, Any
 
-from flask import jsonify, make_response, request, g, session
+from flask import make_response, request, g, session
 from pydantic import BaseModel
 import functools
 import logging
@@ -21,7 +21,7 @@ def catch_it(*validator: Callable[..., bool]) -> Callable[..., Any]:
         def _do(*args, **kwargs):
             try:
                 if validator and not all(map(lambda v: v(), validator)):
-                    return jsonify(err_no=403, msg='validate error')
+                    return Ret(code=403, msg='validate error').dict()
                 ret = func(*args, **kwargs)
                 if isinstance(ret, BaseModel):
                     resp = make_response(ret.json())
@@ -31,7 +31,7 @@ def catch_it(*validator: Callable[..., bool]) -> Callable[..., Any]:
                     return ret
             except Exception as e:
                 logging.warning("%s request error: %s", func.__name__, e)
-                return jsonify(err_no=500, msg=f'exception error {e}')
+                return Ret(code=500, msg=f'exception error {e}').dict()
 
         return _do
 
@@ -43,7 +43,7 @@ def login_check(func):
     def wrapper(*args, **kwargs):
         token = request.headers.get('Authorization', None)
         if not token:
-            return jsonify(err_no=401, msg='请先登录')
+            return Ret(code=401, msg='请先登录').dict()
 
         return func(*args, **kwargs)
 
@@ -65,7 +65,7 @@ def handle_stream_or_normal(
             form = getattr(g, 'form', None) or kwargs.get('form')
             if form is None:
                 logging.error("handle_stream_or_normal: g.form 未注入（装饰器顺序或 form_validate 失败）")
-                return Ret(err_no=400, msg="invalid request: form is missing").dict()
+                return Ret(code=400, msg="invalid request: form is missing").dict()
 
             # 兼容 pydantic BaseModel / 普通 dict
             try:
@@ -103,7 +103,7 @@ def handle_stream_or_normal(
                         except Exception:
                             error_details = traceback.format_exc()
                             logging.error(f"流响应生成错误: {error_details}")
-                            yield f"data: {Ret(err_no=500, msg=str(error_details)).json()}\n\n"
+                            yield f"data: {Ret(code=500, msg=str(error_details)).json()}\n\n"
                             yield f"data: {Ret(data=True).json()}\n\n"
 
                     resp = Response(stream_response(), mimetype="text/event-stream")
@@ -137,12 +137,12 @@ def handle_stream_or_normal(
                     except Exception:
                         error_details = traceback.format_exc()
                         logging.error(f"非流式调用错误: {error_details}")
-                        return Ret(err_no=500, msg=str(error_details)).dict()
+                        return Ret(code=500, msg=str(error_details)).dict()
 
             except Exception as e:
                 error_details = traceback.format_exc()
                 logging.error(f"API调用错误: {error_details}")
-                return Ret(err_no=500, msg=str(e)).dict()
+                return Ret(code=500, msg=str(e)).dict()
 
         return wrapper
     return decorator

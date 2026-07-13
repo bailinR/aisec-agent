@@ -51,7 +51,7 @@ class LLMAgents(Resource):
                     except Exception as e:
                         error_details = traceback.format_exc()
                         logging.error(f"流响应生成错误: {error_details}")
-                        error_response = Ret(err_no=500, msg=str(error_details))
+                        error_response = Ret(code=500, msg=str(error_details))
                         yield f"data: {error_response.json()}\n\n"
                         end_response = Ret(data=True)
                         yield f"data: {end_response.json()}\n\n"
@@ -77,13 +77,13 @@ class LLMAgents(Resource):
                 except Exception as e:
                     error_details = traceback.format_exc()
                     logging.error(f"非流式调用错误: {error_details}")
-                    return Ret(err_no=500, msg=str(error_details)).dict()
+                    return Ret(code=500, msg=str(error_details)).dict()
 
         except Exception as e:
             error_details = traceback.format_exc()
             logging.error(f"API调用错误: {error_details}")
             error_msg = str(e)
-            return Ret(err_no=500, msg=str(error_msg)).dict()
+            return Ret(code=500, msg=str(error_msg)).dict()
 
 @api_rest.resource('/agent')
 class LLMAgentsAPI(Resource):
@@ -138,7 +138,7 @@ class LLMAgentsAPI(Resource):
 #                     except Exception as e:
 #                         error_details = traceback.format_exc()
 #                         logging.error(f"流响应生成错误: {error_details}")
-#                         error_response = Ret(err_no=500, msg=str(error_details))
+#                         error_response = Ret(code=500, msg=str(error_details))
 #                         yield f"data: {error_response.json()}\n\n"
 #                         end_response = Ret(data=True)
 #                         yield f"data: {end_response.json()}\n\n"
@@ -164,13 +164,13 @@ class LLMAgentsAPI(Resource):
 #                 except Exception as e:
 #                     error_details = traceback.format_exc()
 #                     logging.error(f"非流式调用错误: {error_details}")
-#                     return Ret(err_no=500, msg=str(error_details)).dict()
+#                     return Ret(code=500, msg=str(error_details)).dict()
 #
 #         except Exception as e:
 #             error_details = traceback.format_exc()
 #             logging.error(f"API调用错误: {error_details}")
 #             error_msg = str(e)
-#             return Ret(err_no=500, msg=str(error_msg)).dict()
+#             return Ret(code=500, msg=str(error_msg)).dict()
 
 
 @api_rest.resource('/agent/log')

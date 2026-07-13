@@ -93,7 +93,7 @@ class ParseFirewallLogModel(BaseModel):
     firewallLog: bool = Field(..., description="用户问题是否需要解析日志.true(是)/false(不是)")
     startDate: str = Field(..., description="开始时间,格式yyyy-MM-dd")
     endDate: str = Field(..., description="结束时间,格式yyyy-MM-dd")
-    ip: str = Field(..., description="用户问题中指定的ip, 格式为xxx.xxx.xxx.xxx")
+    ip: str = Field(..., description="用户问题中指定的ip, 格式为x.x.x.x")
 
 
 class MCPBaseModel(BaseModel):

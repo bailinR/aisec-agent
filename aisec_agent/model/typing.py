@@ -6,15 +6,20 @@
 # @File    : typing.py
 from typing import Any, Dict
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from pydantic.generics import GenericModel
 from werkzeug.datastructures import FileStorage
 
 
 class Ret(GenericModel):
-    err_no: int = 0
+    model_config = ConfigDict(populate_by_name=True)
+    code: int = Field(0, alias="err_no")
     msg: str = 'success'
     data: Any = None
+
+    @property
+    def err_no(self) -> int:
+        return self.code
 
 
 class BaseLLMChatForm(BaseModel):

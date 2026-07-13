@@ -1143,8 +1143,8 @@
           body: JSON.stringify(modelConfigPayload())
         });
         const body = await response.json().catch(() => ({}));
-        if (!response.ok || !body.ok) {
-          throw new Error(body.error || response.statusText || "model config save failed");
+        if (!response.ok || body.code !== 0) {
+          throw new Error(body.msg || response.statusText || "model config save failed");
         }
         serverModelConfigs = (body.data && body.data.configs && body.data.configs.providers) || serverModelConfigs;
         if (showMessage) setStatus("??????API ?????????? key", "success");
@@ -1188,8 +1188,8 @@
           body: JSON.stringify(modelConfigPayload())
         });
         const body = await response.json().catch(() => ({}));
-        if (!response.ok || !body.ok) {
-          throw new Error(body.error || response.statusText || "配置测试失败");
+        if (!response.ok || body.code !== 0) {
+          throw new Error(body.msg || response.statusText || "配置测试失败");
         }
         const data = body.data || {};
         const reply = data.reply ? `，模型返回：${data.reply}` : "";
@@ -1226,8 +1226,8 @@
           body: form
         });
         const body = await response.json();
-        if (!response.ok || !body.ok) {
-          throw new Error(body.error || response.statusText);
+        if (!response.ok || body.code !== 0) {
+          throw new Error(body.msg || response.statusText);
         }
         const data = body.data || {};
         fields.importFile.value = "";
@@ -1312,8 +1312,8 @@
       try {
         const response = await fetch(`/api/admin/state?project_id=${encodeURIComponent(fields.projectId.value)}`);
         const body = await response.json();
-        if (!response.ok || !body.ok) {
-          throw new Error(body.error || response.statusText || "场景模板加载失败");
+        if (!response.ok || body.code !== 0) {
+          throw new Error(body.msg || response.statusText || "场景模板加载失败");
         }
         const data = body.data || {};
         sceneTemplates = (data.scene_templates && data.scene_templates.templates) || [];
@@ -1337,8 +1337,8 @@
       try {
         const response = await fetch(`/api/project-materials?project_id=${encodeURIComponent(fields.projectId.value)}`);
         const body = await response.json();
-        if (!response.ok || !body.ok) {
-          throw new Error(body.error || response.statusText || "全局提示词加载失败");
+        if (!response.ok || body.code !== 0) {
+          throw new Error(body.msg || response.statusText || "全局提示词加载失败");
         }
         const files = (body.data && body.data.files) || [];
         const globalFile = files.find(file => file.relative_path === "global_prompt.md" || file.type === "global_prompt");
@@ -1923,7 +1923,7 @@
         });
         if (!response.ok) {
           const body = await response.json().catch(() => ({}));
-          throw new Error(body.error || "请求失败");
+          throw new Error(body.msg || "请求失败");
         }
         if (!response.body) throw new Error("当前浏览器不支持流式读取");
 
@@ -2105,11 +2105,13 @@
     Promise.all([
       fetch("/api/presets").then(response => response.json()),
       fetch("/api/projects").then(response => response.json()),
-      fetch("/api/v1/model/configs").then(response => response.json()).catch(() => ({ok: false}))
+      fetch("/api/v1/model/configs").then(response => response.json()).catch(() => ({code: 500, msg: "request failed", data: {}}))
     ])
       .then(([presetBody, projectBody, modelConfigBody]) => {
-        presets = presetBody.providers || {};
-        projects = projectBody.projects || [];
+        const presetData = presetBody.data || {};
+        const projectData = projectBody.data || {};
+        presets = presetData.providers || {};
+        projects = projectData.projects || [];
         serverModelConfigs = (modelConfigBody && modelConfigBody.data && modelConfigBody.data.providers) || {};
         Object.entries(presets).forEach(([name, preset]) => {
           const option = document.createElement("option");
@@ -2117,7 +2119,7 @@
           option.textContent = preset.label || name;
           fields.provider.appendChild(option);
         });
-        loadConfig(presetBody.defaults || {});
+        loadConfig(presetData.defaults || {});
       })
       .catch(error => setStatus(error.message || String(error), true));
   </script>

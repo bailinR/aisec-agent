@@ -202,25 +202,24 @@ class SessionRAGChatLogic:
     def _stage_reply_rules(conversation_stage: str) -> str:
         if conversation_stage == "first_comment":
             return """
-First-contact private-message rules:
-- This is the only first private message after a public comment; do not stop at greeting and asking questions.
-- If a scene template is provided, cover the template steps as a complete flow, especially:
-  1. give a safe initial solution or next-step direction based on the comment and retrieved knowledge;
-  2. include a concrete hook/sweetener that encourages the user to reply, such as a material pack, initial assessment, activity, trial, or reserved spot when supported by context.
-- If exact business data is missing, use cautious placeholders like xx资料、xx评估、xx活动, but do not invent exact prices, quantities, medical promises, or guaranteed results.
-- Do not output self-proving phrases about send method, interruption, or human identity. Prove personalization by accurately referencing the user's comment, video overview, pain point, or context.
-- End with one low-friction reply question or action. Do not ask for a keyword if an entrance/contact method has already been given.
-- Keep it concise and natural, preferably within 200 Chinese characters.
+首次私信规则：
+- 这是公开评论后的第一条私信；不要只打招呼或只提问，要给出有价值的承接。
+- 如果提供了场景模板，优先按照模板步骤组织成完整回复，尤其要做到：
+  1. 基于用户评论和检索知识，给出安全的初步方案或下一步方向；
+  2. 在上下文支持时，加入能促使用户回复的具体钩子或甜头，例如资料包、初评、活动、试用、预留名额等。
+- 如果缺少精确业务数据，可以使用“资料”“评估”“活动”等谨慎占位表达，但不要编造具体价格、数量、医疗承诺或保证性结果。
+- 不要输出“我是人工发的”“不是群发”“打扰了”等自证发送方式或真人身份的话术；要通过准确承接用户评论、视频概述、痛点或上下文来体现个性化。
+- 结尾只保留一个低门槛的回复问题或行动。如果已经给出入口或联系方式，不要再要求用户回复关键词。
+- 回复要简洁自然，优先控制在 200 个中文字符以内。
 """.strip()
         if conversation_stage == "private_followup":
             return """
-Private follow-up rules:
-- Continue the existing private conversation, answer the latest concern directly, and do not repeat the first-contact self-introduction.
-- If more information is needed, still provide a useful partial answer or next step based on available context.
-- Use one clear next action only; do not duplicate keyword prompts and contact/entry delivery in the same reply.
+私信跟进规则：
+- 延续已有私信对话，直接回应用户最新关注点，不要重复首次私信里的自我介绍。
+- 如果还需要更多信息，也要先基于已有上下文给出有用的部分回答或下一步建议。
+- 只保留一个清晰的下一步行动；不要在同一条回复里同时要求回复关键词，又投递联系方式或入口。
 """.strip()
         return ""
-
     @staticmethod
     def _build_prompt(
         session_id: str,
@@ -239,22 +238,23 @@ Private follow-up rules:
         project_section = f"\n<scene_template_and_retrieved_knowledge>\n{project_context}\n</scene_template_and_retrieved_knowledge>\n" if project_context else ""
         if structured:
             output_contract = """
-- If the compressed memory and knowledge are not enough, set enough_info to false and explain missing_info.
-- Return JSON only with these fields: answer, enough_info, missing_info, used_knowledge.
+- 如果压缩记忆和知识内容不足以生成可靠回复，请将 enough_info 设为 false，并在 missing_info 中说明缺少什么信息。
+- 只返回 JSON，不要返回 Markdown、解释或额外文本。JSON 字段固定为：answer, enough_info, missing_info, used_knowledge。
 """.strip()
         else:
             output_contract = """
-- Use the compressed memory, knowledge context, and raw session context if present.
-- If some business details are missing, answer safely without inventing unsupported facts.
-- Return only the private-message text; do not return JSON, markdown, labels, or explanations.
+- 如存在压缩记忆、知识上下文或原始会话上下文，请结合使用。
+- 如果缺少部分业务细节，请安全回答，不要编造没有上下文支持的事实。
+- 只返回私信正文，不要返回 JSON、Markdown、标签或解释。
 """.strip()
         stage_rules = SessionRAGChatLogic._stage_reply_rules(conversation_stage)
         return f"""
-Task:
-- Generate a reply using only the user input/session context, global prompt, scene template, and retrieved knowledge.
-- Follow the scene template first when it is provided.
-- Prefer facts from retrieved knowledge and session memory.
-- Do not invent facts that are not supported by context.
+任务：
+- 只根据用户输入、会话上下文、全局提示词、场景模板和检索知识生成回复。
+- 人员身份由业务、视频概述和活动自动生成，不读取知识库里的 sender_identity 字段；如果页面/API已传入账号或产品身份，以配置身份为准。
+- 如果提供了场景模板，请优先遵循场景模板。
+- 优先使用检索知识和会话记忆中的事实。
+- 不要编造上下文中没有支持的事实。
 {output_contract}
 {stage_rules}
 
@@ -263,12 +263,12 @@ conversation_stage: {conversation_stage}
 session_id: {session_id}
 
 <compressed_session_memory>
-{summary_context or "No compressed memory yet."}
+{summary_context or "暂无压缩会话记忆。"}
 </compressed_session_memory>
 {project_section}
 
 <knowledge_context>
-{knowledge_context or "No knowledge snippets were found or configured."}
+{knowledge_context or "未找到或未配置知识片段。"}
 </knowledge_context>
 {raw_section}{missing_section}
 """.strip()

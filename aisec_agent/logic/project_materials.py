@@ -44,7 +44,7 @@ DEFAULT_KNOWLEDGE_DOCUMENTS: List[Dict[str, Any]] = [
         "domain": "公司定位",
         "section": "默认板块",
         "category": "公司定位",
-        "sender_identity": "xx品牌客服",
+        "sender_identity": "品牌客服",
         "relative_path": "knowledge/files/公司私信知识库/公司定位/默认板块/公司定位.md",
         "description": "说明公司总体定位、服务对象、业务闭环和五大聚焦方向。",
         "keywords": ["公司", "定位", "介绍", "平台", "大健康", "AI", "跨境", "服务对象", "解决方案"],
@@ -60,7 +60,7 @@ DEFAULT_KNOWLEDGE_DOCUMENTS: List[Dict[str, Any]] = [
         "domain": "三大核心业务板块",
         "section": "默认板块",
         "category": "三大核心业务板块",
-        "sender_identity": "xx健康顾问助理",
+        "sender_identity": "健康顾问助理",
         "relative_path": "knowledge/files/公司私信知识库/三大核心业务板块/默认板块/大健康医疗板块.md",
         "description": "大健康医疗核心主业，覆盖关节健康、干细胞、PRP、产品体系、合作渠道与合规优势。",
         "keywords": [
@@ -84,7 +84,7 @@ DEFAULT_KNOWLEDGE_DOCUMENTS: List[Dict[str, Any]] = [
         "domain": "三大核心业务板块",
         "section": "默认板块",
         "category": "三大核心业务板块",
-        "sender_identity": "xx运营顾问",
+        "sender_identity": "运营顾问",
         "relative_path": "knowledge/files/公司私信知识库/三大核心业务板块/默认板块/AI技术与智能硬件板块.md",
         "description": "AI内容生产、智能硬件、私信引流、舆论管控、数据采集和AI Agent自动化调度能力。",
         "keywords": [
@@ -107,7 +107,7 @@ DEFAULT_KNOWLEDGE_DOCUMENTS: List[Dict[str, Any]] = [
         "domain": "三大核心业务板块",
         "section": "默认板块",
         "category": "三大核心业务板块",
-        "sender_identity": "xx跨境运营顾问",
+        "sender_identity": "跨境运营顾问",
         "relative_path": "knowledge/files/公司私信知识库/三大核心业务板块/默认板块/跨境与综合业务板块.md",
         "description": "跨境电商、AI选品、内容托管、自动化运营、留学移民和企业资源对接。",
         "keywords": [
@@ -127,13 +127,13 @@ DEFAULT_KNOWLEDGE_DOCUMENTS: List[Dict[str, Any]] = [
         "domain": "公司资料",
         "section": "默认板块",
         "category": "公司资料",
-        "sender_identity": "xx招聘助理",
+        "sender_identity": "招聘助理",
         "relative_path": "knowledge/files/招聘知识库/公司资料/默认板块/招聘公司介绍.md",
         "description": "当候选人询问公司背景、业务方向、团队情况或岗位可信度时读取。",
         "keywords": ["招聘", "公司", "业务", "团队", "岗位", "候选人", "HR", "介绍", "发展方向"],
         "content": """# 招聘公司介绍
 
-xx公司是一家以大健康、AI技术、智能硬件和跨境业务为核心方向的综合型企业服务平台。招聘沟通中可以强调公司正在搭建“内容获客、自动化运营、客户承接、业务转化”的完整链路，岗位会接触真实业务项目、AI工具和跨部门协作。
+公司是一家以大健康、AI技术、智能硬件和跨境业务为核心方向的综合型企业服务平台。招聘沟通中可以强调公司正在搭建“内容获客、自动化运营、客户承接、业务转化”的完整链路，岗位会接触真实业务项目、AI工具和跨部门协作。
 
 对候选人表达时，应保持真实克制：可以说明业务方向、团队需要、成长空间和面试安排，不夸大规模、融资、薪资或确定录用结果。
 """.strip(),
@@ -145,7 +145,7 @@ xx公司是一家以大健康、AI技术、智能硬件和跨境业务为核心�
         "domain": "岗位资料",
         "section": "AI项目经理",
         "category": "岗位资料",
-        "sender_identity": "xx招聘助理",
+        "sender_identity": "招聘助理",
         "relative_path": "knowledge/files/招聘知识库/岗位资料/AI项目经理/AI项目经理岗位说明.md",
         "description": "当候选人评论或咨询 AI 项目经理、产品项目、自动化系统落地岗位时读取。",
         "keywords": ["招聘", "AI项目经理", "项目经理", "产品", "需求", "自动化", "沟通", "交付", "岗位职责"],
@@ -168,7 +168,7 @@ xx公司是一家以大健康、AI技术、智能硬件和跨境业务为核心�
         "domain": "岗位资料",
         "section": "技术工程师",
         "category": "岗位资料",
-        "sender_identity": "xx招聘助理",
+        "sender_identity": "招聘助理",
         "relative_path": "knowledge/files/招聘知识库/岗位资料/技术工程师/技术工程师岗位说明.md",
         "description": "当候选人咨询工程师、后端、前端、自动化、爬虫或 AI Agent 开发岗位时读取。",
         "keywords": ["招聘", "工程师", "后端", "前端", "自动化", "爬虫", "AI Agent", "接口", "数据库", "岗位"],
@@ -191,7 +191,7 @@ xx公司是一家以大健康、AI技术、智能硬件和跨境业务为核心�
         "domain": "招聘流程",
         "section": "默认板块",
         "category": "招聘流程",
-        "sender_identity": "xx招聘助理",
+        "sender_identity": "招聘助理",
         "relative_path": "knowledge/files/招聘知识库/招聘流程/默认板块/面试流程说明.md",
         "description": "当候选人询问如何投递、是否方便沟通、面试安排、到岗时间时读取。",
         "keywords": ["招聘", "面试", "投递", "简历", "沟通", "到岗", "流程", "安排", "HR"],
@@ -213,7 +213,7 @@ xx公司是一家以大健康、AI技术、智能硬件和跨境业务为核心�
         "domain": "薪资福利与合规",
         "section": "默认板块",
         "category": "薪资福利与合规",
-        "sender_identity": "xx招聘助理",
+        "sender_identity": "招聘助理",
         "relative_path": "knowledge/files/招聘知识库/薪资福利与合规/默认板块/薪资福利与沟通合规.md",
         "description": "当候选人询问薪资、福利、真假、录用承诺或敏感招聘问题时读取。",
         "keywords": ["招聘", "薪资", "福利", "待遇", "社保", "真假", "录用", "合规", "承诺", "面试"],
@@ -244,8 +244,8 @@ DEFAULT_SCENES: Dict[str, Dict[str, str]] = {
         "prompt": """
 场景目标：识别关节健康、膝骨关节、骨积液、软骨修复、康养、干细胞、PRP 等意向客户。
 回复策略：先共情疼痛/行动不便/恢复焦虑，再给一个低门槛体验或资料钩子。
-意向分档：问效果/适用/怎么买/多少钱/想试试为强意向，给【XX专属评估入口】或【XX预约咨询入口】；只说疼痛或担心为中意向，先给【XX草料码领取页】或【XX关节养护资料页】；泛泛围观先引导回复。
-优先物料：使用【XX专属评估入口】、【XX预约咨询入口】、【XX草料码领取页】、【XX关节养护资料页】。
+意向分档：问效果/适用/怎么买/多少钱/想试试为强意向，给【专属评估入口】或【预约咨询入口】；只说疼痛或担心为中意向，先给【草料码领取页】或【关节养护资料页】；泛泛围观先引导回复。
+优先物料：使用【专属评估入口】、【预约咨询入口】、【草料码领取页】、【关节养护资料页】。
 合规要求：不承诺疗效，不虚构医生、医院、名额、价格、国资背书；涉及治疗用“需专业评估后确认”。
 """.strip(),
         "materials": """
@@ -265,7 +265,7 @@ DEFAULT_SCENES: Dict[str, Dict[str, str]] = {
         "prompt": """
 场景目标：识别内容生产、自动发布、评论采集、数据统计、智能硬件、录音纪要、边缘计算、私信引流等需求。
 回复策略：强调节省人工、自动化闭环、先给演示/体验入口。
-优先物料：使用【XX平台AI工具体验入口】、【XX草料码演示页】、【XX方案资料页】。
+优先物料：使用【平台AI工具体验入口】、【草料码演示页】、【方案资料页】。
 """.strip(),
         "materials": """
 AI技术与智能硬件板块：
@@ -280,7 +280,7 @@ AI技术与智能硬件板块：
         "prompt": """
 场景目标：识别跨境电商、AI选品、内容托管、自动化运营、留学移民、企业资源对接等需求。
 回复策略：强调方案对接、资源入口、先发资料卡片让用户继续沟通。
-优先物料：使用【XX公司方案资料卡】、【XX专属预约入口】、【XX资源对接入口】。
+优先物料：使用【公司方案资料卡】、【专属预约入口】、【资源对接入口】。
 """.strip(),
         "materials": """
 跨境与综合业务板块：
@@ -294,7 +294,7 @@ AI技术与智能硬件板块：
 场景目标：当用户意图不明确时，先判断其更接近大健康、AI技术、智能硬件或跨境服务。
 回复策略：用轻量问题或综合入口承接，不要强行推具体疗效、价格、名额。
 意向分档：强意向给预约入口、评估入口或资料页；中意向给资料页/入口；弱意向先问一个低门槛问题。
-优先物料：使用【XX专属体验入口】、【XX资料领取页】、【XX预约咨询入口】。
+优先物料：使用【专属体验入口】、【资料领取页】、【预约咨询入口】。
 """.strip(),
         "materials": """
 综合定位：
@@ -556,7 +556,14 @@ class ProjectMaterialStore:
         project_dir = self._resolve_project_dir(project_id)
         self.ensure_default_knowledge_documents(project_dir, create_missing_defaults=False)
         manifest = self._read_json(project_dir / "knowledge" / "manifest.json")
-        return list(manifest.get("documents", []))
+        return [
+            {
+                **doc,
+                "sender_identity": self._display_sender_identity(doc.get("sender_identity")) or "品牌客服",
+            }
+            for doc in manifest.get("documents", [])
+            if isinstance(doc, dict)
+        ]
 
     def import_file_to_knowledge(
         self,
@@ -590,9 +597,9 @@ class ProjectMaterialStore:
         section = str(meta.get("section") or "默认板块").strip() or "默认板块"
         keywords = self._normalize_keywords(meta.get("keywords") or [])
         description = str(meta.get("description") or f"从 {file_name} 解析入库的项目资料").strip()
-        sender_identity = str(
+        sender_identity = self._display_sender_identity(
             meta.get("sender_identity") if self._is_valid_sender_identity(meta.get("sender_identity")) else self._suggest_sender_identity_by_rules(category, file_name, content)
-        ).strip()
+        ) or "品牌客服"
 
         relative_path = f"knowledge/files/{self._safe_title(knowledge_base)}/{self._safe_title(domain)}/{self._safe_title(section)}/{title}.md"
         doc_path = project_dir / relative_path
@@ -1089,7 +1096,7 @@ class ProjectMaterialStore:
 - category：从这些类别中选一个：公司定位、三大核心业务板块、大健康医疗、AI技术与智能硬件、跨境与综合业务、优惠活动、话术规则、合规边界、导入资料。
 - description：一句话说明这份资料什么时候应该被读取。
 - keywords：5到12个关键词，用于后续根据用户评论匹配资料。
-- sender_identity：根据资料所属业务建议私信时使用的人员身份，例如 xx健康顾问助理、xx运营顾问、xx跨境运营顾问、xx招聘助理、xx品牌客服。
+- sender_identity：根据资料所属业务建议私信时使用的人员身份，例如 健康顾问助理、运营顾问、跨境运营顾问、招聘助理、品牌客服。
 
 只返回 JSON，字段固定为：title, knowledge_base, domain, section, category, description, keywords, sender_identity。
 """.strip()
@@ -1173,17 +1180,25 @@ class ProjectMaterialStore:
         return bool(text) and "?" not in text and "�" not in text
 
     @staticmethod
+    def _display_sender_identity(identity: Any) -> str:
+        text = str(identity or "").strip()
+        if not text:
+            return ""
+        cleaned = re.sub(r"(?i)^\s*xx[\s._-]*", "", text).strip()
+        return cleaned or text
+
+    @staticmethod
     def _suggest_sender_identity_by_rules(category: str, file_name: str = "", content: str = "") -> str:
         text = f"{category}\n{file_name}\n{content[:8000]}".lower()
         if re.search(r"招聘|岗位|候选人|简历|面试|薪资|boss|hr|求职|到岗", text, flags=re.I):
-            return "xx招聘助理"
+            return "招聘助理"
         if re.search(r"睡眠|关节|膝|大健康|医疗|骨积液|软骨|干细胞|prp|康养|理疗|健康", text, flags=re.I):
-            return "xx健康顾问助理"
+            return "健康顾问助理"
         if re.search(r"文生视频|ai|智能硬件|自动发布|评论采集|私信|内容生产|剪辑|运营|agent|舆论", text, flags=re.I):
-            return "xx运营顾问"
+            return "运营顾问"
         if re.search(r"跨境|电商|选品|店铺|托管|留学|移民|海外", text, flags=re.I):
-            return "xx跨境运营顾问"
-        return "xx品牌客服"
+            return "跨境运营顾问"
+        return "品牌客服"
 
     @staticmethod
     def _safe_title(title: str) -> str:
@@ -1226,7 +1241,7 @@ class ProjectMaterialStore:
 > 来源文件：{source_file_name}
 > 分类：{category}
 > 读取说明：{description}
-> 建议私信身份：{sender_identity or 'xx品牌客服'}
+> 建议私信身份：{sender_identity or '品牌客服'}
 
 {content.strip()}
 """.strip() + "\n"
@@ -1571,7 +1586,12 @@ class ProjectMaterialStore:
             if not doc:
                 continue
             content, resolved_relative = self._read_knowledge_document_text(project_dir, doc)
-            selected.append({**doc, "relative_path": resolved_relative, "content": content})
+            selected.append({
+                **doc,
+                "sender_identity": self._display_sender_identity(doc.get("sender_identity")) or "品牌客服",
+                "relative_path": resolved_relative,
+                "content": content,
+            })
         return selected
 
     @classmethod
@@ -1611,7 +1631,7 @@ class ProjectMaterialStore:
         for relative in self._knowledge_document_path_candidates(doc):
             path = project_dir / relative
             if path.is_file():
-                return self._read_text(path), relative
+                return self._sanitize_prompt_document_text(self._read_text(path)), relative
         return "", fallback_relative
 
     def _manifest_document_file_exists(self, project_dir: Path, doc: Dict[str, Any]) -> bool:
@@ -1619,6 +1639,20 @@ class ProjectMaterialStore:
             if (project_dir / relative).is_file():
                 return True
         return False
+
+    @staticmethod
+    def _sanitize_prompt_document_text(content: str) -> str:
+        lines = []
+        for raw_line in str(content or "").splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            if re.search(r"(sender_identity|persona_identity|role_identity)\s*[:：]", line, flags=re.I):
+                continue
+            if re.search(r"(建议(私信)?身份|身份来源)", line):
+                continue
+            lines.append(re.sub(r"(?i)xx(?=[\u4e00-\u9fffA-Za-z0-9])", "", raw_line.rstrip()))
+        return "\n".join(lines).strip()
 
     @staticmethod
     def _format_document_context(documents: List[Dict[str, Any]]) -> str:
@@ -1632,8 +1666,7 @@ class ProjectMaterialStore:
                     f"domain: {doc.get('domain', '')}",
                     f"section: {doc.get('section', '')}",
                     f"path: {doc.get('relative_path', '')}",
-                    f"sender_identity: {doc.get('sender_identity', '')}",
-                    f"content:\n{doc.get('content', '')}",
+                    f"content:\n{ProjectMaterialStore._sanitize_prompt_document_text(doc.get('content', ''))}",
                 ])
             )
         return "\n\n".join(blocks)

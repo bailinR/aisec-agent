@@ -30,7 +30,7 @@ class PromptLogic(BaseHandler):
             return Ret(data=data).dict()
         except Exception as e:
             self.logger.error(f"prompt查询失败: {str(e)}")
-            return Ret(err_no=500, msg=f"prompt查询失败: {str(e)}").dict()
+            return Ret(code=500, msg=f"prompt查询失败: {str(e)}").dict()
 
     def edit_prompt(self, agent_id: str, prompt: str):
         try:
@@ -45,7 +45,7 @@ class PromptLogic(BaseHandler):
             return Ret().dict()
         except Exception as e:
             self.logger.error(f"prompt编辑失败: {str(e)}")
-            return Ret(err_no=500, msg=f"prompt编辑失败: {str(e)}").dict()
+            return Ret(code=500, msg=f"prompt编辑失败: {str(e)}").dict()
 
     def recover_prompt(self, agent_id: str):
         try:
@@ -60,4 +60,4 @@ class PromptLogic(BaseHandler):
                 raise
         except Exception as e:
             self.logger.error(f"prompt恢复失败: {str(e)}")
-            return Ret(err_no=500, msg=f"prompt恢复失败: {str(e)}").dict()
+            return Ret(code=500, msg=f"prompt恢复失败: {str(e)}").dict()

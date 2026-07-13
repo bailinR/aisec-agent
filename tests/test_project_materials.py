@@ -87,7 +87,7 @@ class ProjectMaterialStoreTest(unittest.TestCase):
             self.assertIn("识别用户是否具备意向", context)
             self.assertIn("强意向", context)
             self.assertIn("暂时不要发送优惠券或企业名片", context)
-            self.assertIn("给【XX专属评估入口】", context)
+            self.assertIn("给【专属评估入口】", context)
             self.assertIn("关节健康", context)
 
 
@@ -98,8 +98,9 @@ class ProjectMaterialStoreTest(unittest.TestCase):
 
             self.assertIn("healthcare_medical", selection["document_ids"])
             selected_doc = next(doc for doc in selection["documents"] if doc["doc_id"] == "healthcare_medical")
-            self.assertEqual(selected_doc["sender_identity"], "xx健康顾问助理")
-            self.assertIn("sender_identity: xx健康顾问助理", selection["context"])
+            self.assertEqual(selected_doc["sender_identity"], "健康顾问助理")
+            self.assertNotIn("sender_identity:", selection["context"])
+            self.assertNotIn("建议私信身份", selection["context"])
             self.assertIn("大健康医疗板块", selection["context"])
             self.assertIn("骨积液", selection["context"])
 
@@ -115,7 +116,8 @@ class ProjectMaterialStoreTest(unittest.TestCase):
             self.assertIn("recruitment_ai_project_manager", selection["document_ids"])
             self.assertIn("recruitment_interview_process", selection["document_ids"])
             self.assertIn(RECRUITMENT_KNOWLEDGE_BASE_NAME, selection["context"])
-            self.assertIn("sender_identity: xx招聘助理", selection["context"])
+            self.assertNotIn("sender_identity:", selection["context"])
+            self.assertNotIn("建议私信身份", selection["context"])
 
     def test_deleted_default_documents_are_not_recreated_on_restart(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -189,13 +191,14 @@ class ProjectMaterialStoreTest(unittest.TestCase):
 
             docs = store.list_knowledge_documents(project_id)
             imported_doc = next(doc for doc in docs if doc["doc_id"] == result["doc_id"])
-            self.assertEqual(result["sender_identity"], "xx健康顾问助理")
-            self.assertEqual(imported_doc["sender_identity"], "xx健康顾问助理")
+            self.assertEqual(result["sender_identity"], "健康顾问助理")
+            self.assertEqual(imported_doc["sender_identity"], "健康顾问助理")
 
             selection = store.select_relevant_documents("骨积液怎么评估", project_id=project_id, scene_id="health_presales")
             self.assertIn(result["doc_id"], selection["document_ids"])
             self.assertIn("专业评估", selection["context"])
-            self.assertIn("sender_identity: xx健康顾问助理", selection["context"])
+            self.assertNotIn("sender_identity:", selection["context"])
+            self.assertNotIn("建议私信身份", selection["context"])
 
     def test_manifest_restores_documents_from_document_descriptions(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -224,7 +227,7 @@ class ProjectMaterialStoreTest(unittest.TestCase):
                                         "relative_path": relative_path,
                                         "description": "当评论涉及睡不好、压力大、睡眠资料或睡眠初评时读取。",
                                         "tags": ["睡眠", "睡不好", "压力大", "资料包", "免费初评"],
-                                        "sender_identity": "xx健康顾问助理",
+                                        "sender_identity": "健康顾问助理",
                                     }
                                 ],
                             }
@@ -247,7 +250,7 @@ class ProjectMaterialStoreTest(unittest.TestCase):
             )
             self.assertIn("mock_sleep_assessment", selection["document_ids"])
             selected_doc = next(doc for doc in selection["documents"] if doc["doc_id"] == "mock_sleep_assessment")
-            self.assertEqual(selected_doc["sender_identity"], "xx健康顾问助理")
+            self.assertEqual(selected_doc["sender_identity"], "健康顾问助理")
             self.assertIn("睡眠自测表", selection["context"])
 
 

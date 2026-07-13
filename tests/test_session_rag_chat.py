@@ -149,17 +149,17 @@ class SessionRAGChatLogicTest(unittest.TestCase):
             conversation_stage="first_comment",
         )
 
-        self.assertIn("Generate a reply using only the user input/session context, global prompt, scene template, and retrieved knowledge", prompt)
+        self.assertIn("只根据用户输入、会话上下文、全局提示词、场景模板和检索知识生成回复", prompt)
         self.assertIn("summary ctx", prompt)
         self.assertIn("kb ctx", prompt)
         self.assertIn("<scene_template>", prompt)
         self.assertIn("<retrieved_knowledge>", prompt)
-        self.assertIn("give a safe initial solution", prompt)
-        self.assertIn("hook/sweetener", prompt)
-        self.assertIn("do not stop at greeting and asking questions", prompt)
-        self.assertIn("Prove personalization", prompt)
+        self.assertIn("给出安全的初步方案或下一步方向", prompt)
+        self.assertIn("钩子", prompt)
+        self.assertIn("不要只打招呼或只提问", prompt)
+        self.assertIn("准确承接用户评论", prompt)
         self.assertNotIn("You are a Douyin", prompt)
-        self.assertNotIn("XX公司", prompt)
+        self.assertNotIn("公司", prompt)
 
     def test_private_followup_prompt_keeps_conversation_stage_metadata(self):
         prompt = SessionRAGChatLogic._build_prompt(

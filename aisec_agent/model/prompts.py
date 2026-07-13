@@ -45,7 +45,7 @@ def padding_report_prompt(text_type) -> str:
 #                1. selected_table: 选择的表名(str)
 #                2. conditions: 一个字符串列表 (List[Dict])。每个字符串必须是一个完整且有效的 Python 布尔表达式，代表一个 SQLAlchemy 过滤条件。
 #                   - [{{model: 表名, 例如:ai_assets, columns: 字段, 例如:id， condition: 条件, 例如:== 1}}]
-#                3. joins: 如果需要连表查询, 则给出如下格式[(model, model1.id == model2.xxx_id),](List[Tuple[Type[Base], str]])
+#                3. joins: 如果需要连表查询, 则给出如下格式[(model, model1.id == model2.x_id),](List[Tuple[Type[Base], str]])
 #                   - [{{model: 表名, 例如:ai_assets, columns: 字段, 例如:id， condition: 条件, 例如:==, sub_model: 子表表名, sub_columns: 子表字段}}]
 #                4. explanation: 选择该表的原因 (str)
 #                5. order_by: 用于排序的字段名 (str), 可选。
@@ -325,7 +325,7 @@ def ParsePrompt():
         firewallLog: 用户问题是否需要解析日志.true(是)/false(不是)
         startDate: 开始时间,格式yyyy-MM-dd
         endDate: 结束时间,格式yyyy-MM-dd
-        ip: 用户问题中指定的ip, 格式为xxx.xxx.xxx.xxx
+        ip: 用户问题中指定的ip, 格式为x.x.x.x
         
         要求：
         所有提取的内容需要全，不可省略，不可遗漏"""
@@ -616,13 +616,13 @@ def HtmlPrompt( ):
   - 展示方式多样化：拓宽到其他丰富多样的可视化和内容展示形式，保留用户提供的文字叙述案例、相关的代码示例讲解、添加交互式问答模块等，这些方式都能增加网页内容的丰富度与长度。
   - 展示方式多样化：拓宽到其他丰富多样的可视化和内容展示形式，保留用户提供的文字叙述案例、相关的代码示例讲解、添加交互式问答模块等，这些方式都能增加网页内容的丰富度与长度。 
   - 不要输出示意信息、错误信息、不存在的信息、上下文不存在的信息，例如：餐厅a、餐厅b等模糊词，不确定的内容不要输出，没有图片链接则不输出图片，也不要出现相关图片模块。
-  - 网页标题应该引人入胜，准确无误的，不要机械的输出xx报告作为标题
+  - 网页标题应该引人入胜，准确无误的，不要机械的输出报告作为标题
   - 不要为了输出图表而输出图表，应该有明确需要表达的内容。
 
   ## 引用
   ### 引用格式说明
   - 输入格式说明：
-  {"content": "xxxx", "doc_type": "web_page", "link": "https://xxxxxx", "title": "xxxx"}
+  {"content": "xx", "doc_type": "web_page", "link": "https://xx", "title": "xx"}
 
   - 所有内容都必须标注来源，在每个段落后标注对应的引用编号格式为：<cite><a href="[链接<link>]" target="_blank" rel="noopener noreferrer">[[引用编号]]</a></cite>。样式上，增强可视化识别（蓝色#007bff），鼠标悬停显示下划线提升交互反馈
 
@@ -1331,27 +1331,27 @@ def PptListPrompt(task: str, language: str, dt: str, content: str):
   - 内容1
   - 内容2
   ### 节的名字
-  - xxxxx
-  - xxxxx
-  - xxxxx
+  - x
+  - x
+  - x
   ### 节的名字
-  - xxxxx
-  - xxxxx
-  - xxxxx
-  - xxxxx
+  - x
+  - x
+  - x
+  - x
   ## 章的名字
   ### 节的名字
   - 内容1
   - 内容2
   ### 节的名字
-  - xxxxx
-  - xxxxx
-  - xxxxx
+  - x
+  - x
+  - x
   ### 节的名字
-  - xxxxx
-  - xxxxx
-  - xxxxx
-  - xxxxx
+  - x
+  - x
+  - x
+  - x
   ```
   参考知识库：<notes>{content}</notes>"""
 
@@ -1383,27 +1383,27 @@ def PptReviewPrompt(task: str, ):
   - 内容1
   - 内容2
   ### 节的名字
-  - xxxxx
-  - xxxxx
-  - xxxxx
+  - x
+  - x
+  - x
   ### 节的名字
-  - xxxxx
-  - xxxxx
-  - xxxxx
-  - xxxxx
+  - x
+  - x
+  - x
+  - x
   ## 章的名字
   ### 节的名字
   - 内容1
   - 内容2
   ### 节的名字
-  - xxxxx
-  - xxxxx
-  - xxxxx
+  - x
+  - x
+  - x
   ### 节的名字
-  - xxxxx
-  - xxxxx
-  - xxxxx
-  - xxxxx
+  - x
+  - x
+  - x
+  - x
   ```"""
 
 

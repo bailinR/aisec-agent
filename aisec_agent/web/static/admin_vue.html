@@ -3,65 +3,81 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>智能体后台管理</title>
+  <title>私信智能体工作台</title>
+  <link rel="icon" href="data:,">
   <style>
     :root {
       color-scheme: light;
-      --bg: #f4f6f5;
+      --bg: #f3f6ff;
       --panel: #ffffff;
-      --soft: #eef4f1;
-      --text: #17211d;
-      --muted: #64716d;
-      --line: #d9e2de;
-      --accent: #087f6f;
-      --danger: #a73535;
-      --ok: #2a7d46;
-      --shadow: 0 16px 36px rgba(23, 33, 29, 0.08);
+      --panel-soft: #f8fbff;
+      --text: #101827;
+      --muted: #66738a;
+      --line: #dfe8f5;
+      --line-strong: #cbd8ea;
+      --accent: #0d8798;
+      --accent-strong: #076b7a;
+      --accent-soft: #e6f7fb;
+      --blue: #5367ff;
+      --blue-soft: #eef2ff;
+      --amber: #a15c07;
+      --amber-soft: #fff4df;
+      --danger: #b42318;
+      --ok: #187348;
+      --shadow: 0 22px 54px rgba(63, 86, 132, 0.12);
+      --shadow-soft: 0 10px 28px rgba(63, 86, 132, 0.08);
     }
 
     * { box-sizing: border-box; }
-    html, body, #app { height: 100%; }
+    html, body, #app { min-height: 100%; }
     body {
       margin: 0;
-      overflow: hidden;
-      background: var(--bg);
+      background: linear-gradient(135deg, #f9fbff 0%, var(--bg) 48%, #eef4ff 100%);
       color: var(--text);
-      font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+      font-family: "Inter", "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
       font-size: 14px;
       letter-spacing: 0;
     }
     button, input, select, textarea { font: inherit; }
     button {
       border: 0;
-      border-radius: 6px;
+      border-radius: 10px;
       min-height: 36px;
       padding: 0 13px;
       background: var(--accent);
       color: #fff;
       cursor: pointer;
       white-space: nowrap;
+      box-shadow: 0 8px 16px rgba(13, 135, 152, 0.16);
+      transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
     }
+    button:hover { transform: translateY(-1px); box-shadow: 0 12px 22px rgba(13, 135, 152, 0.2); }
+    button:active { transform: translateY(0); box-shadow: 0 6px 12px rgba(13, 135, 152, 0.14); }
     button.secondary {
       border: 1px solid var(--line);
       background: #fff;
       color: var(--text);
+      box-shadow: none;
     }
-    button.danger {
-      background: var(--danger);
-    }
-    button:disabled { opacity: 0.62; cursor: not-allowed; }
+    button.secondary:hover { border-color: var(--line-strong); background: #f9fbff; box-shadow: var(--shadow-soft); }
+    button.danger { background: var(--danger); }
+    button:disabled { opacity: .58; cursor: not-allowed; transform: none; box-shadow: none; }
     input, select, textarea {
       width: 100%;
       border: 1px solid var(--line);
-      border-radius: 6px;
+      border-radius: 11px;
       background: #fff;
       color: var(--text);
       min-height: 36px;
-      padding: 8px 10px;
+      padding: 8px 11px;
       outline: none;
     }
+    input:focus, select:focus, textarea:focus {
+      border-color: rgba(15, 118, 110, .62);
+      box-shadow: 0 0 0 3px rgba(15, 118, 110, .12);
+    }
     textarea {
-      resize: none;
+      resize: vertical;
       line-height: 1.65;
       font-family: "Consolas", "Microsoft YaHei", monospace;
       font-size: 13px;
@@ -77,297 +93,1066 @@
 
     .layout {
       height: 100vh;
-      min-height: 0;
+      min-height: 100vh;
       display: grid;
-      grid-template-columns: 248px minmax(0, 1fr);
+      grid-template-columns: 228px minmax(0, 1fr);
       gap: 14px;
-      padding: 14px;
+      padding: 18px;
       overflow: hidden;
     }
-    .sidebar, .main {
-      min-height: 0;
+    .sidebar, .main-shell {
       border: 1px solid var(--line);
       background: var(--panel);
       box-shadow: var(--shadow);
-      overflow: hidden;
+      min-width: 0;
+      border-radius: 26px;
+      min-height: 0;
+      height: 100%;
     }
     .sidebar {
-      display: grid;
-      grid-template-rows: auto minmax(0, 1fr);
-    }
-    .brand {
-      padding: 16px;
-      border-bottom: 1px solid var(--line);
-      background: var(--soft);
-    }
-    .brand h1 {
-      margin: 0;
-      font-size: 18px;
-    }
-    .brand .sub {
-      margin-top: 4px;
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.55;
-    }
-    .menu {
-      padding: 10px;
-      display: grid;
-      gap: 8px;
-      align-content: start;
-      overflow: auto;
-    }
-    .menu button {
-      width: 100%;
-      min-height: 44px;
-      text-align: left;
-      border: 1px solid var(--line);
-      background: #fff;
-      color: var(--text);
-    }
-    .menu button.active {
-      border-color: rgba(8,127,111,.42);
-      background: #eaf7f3;
-      color: #065c50;
-      font-weight: 700;
-    }
-    .topbar-right {
+      position: sticky;
+      top: 16px;
+      height: calc(100vh - 32px);
       display: flex;
       flex-direction: column;
-      align-items: flex-end;
-      gap: 6px;
-      min-width: min(420px, 48%);
+      overflow: hidden;
     }
-    .entry-nav {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-      gap: 6px;
+    .brand {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      padding: 22px 18px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #ffffff 0%, #f3f8ff 100%);
+    }
+    .brand h1 { margin: 0; font-size: 18px; line-height: 1.3; }
+    .brand .sub { margin-top: 6px; color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .menu { flex: 1 1 auto; min-height: 0; padding: 10px; display: grid; gap: 8px; align-content: start; overflow: auto; scrollbar-gutter: stable; }
+    .menu button {
+      width: 100%;
+      min-height: 46px;
+      padding: 8px 10px;
+      text-align: left;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text);
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr);
+      align-items: center;
+      gap: 8px;
+      box-shadow: none;
+    }
+    .menu button.active {
+      border-color: rgba(15,118,110,.28);
+      background: var(--accent-soft);
+      color: #0b5f58;
+      font-weight: 800;
+    }
+    .menu-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      display: inline-grid;
+      place-items: center;
+      background: #eef2f7;
+      color: var(--muted);
       font-size: 12px;
+      font-weight: 800;
     }
+    .menu button.active .menu-icon { background: #fff; color: var(--accent); }
+    .sidebar-foot { display: none; }
+    .main-shell { display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
+    .topbar {
+      min-height: 78px;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,.86);
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+    .page-title { font-size: 20px; font-weight: 900; line-height: 1.3; }
+    .page-sub { margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .topbar-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; min-width: min(430px, 48%); }
+    .entry-nav { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; font-size: 12px; }
     .entry-nav a {
       min-height: 30px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       border: 1px solid var(--line);
-      border-radius: 6px;
+      border-radius: 10px;
       background: #fff;
       color: var(--text);
       padding: 0 10px;
-      text-decoration: none;
     }
-    .entry-nav a:hover {
-      border-color: rgba(8,127,111,.35);
-      background: #f5faf8;
-      text-decoration: none;
-    }
-    .entry-nav a.active {
-      border-color: rgba(8,127,111,.48);
-      background: var(--accent);
-      color: #fff;
-      font-weight: 700;
-    }
-    .main {
-      display: grid;
-      grid-template-rows: auto minmax(0, 1fr);
-    }
-    .topbar {
-      min-height: 68px;
-      border-bottom: 1px solid var(--line);
-      background: var(--soft);
-      padding: 12px 16px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-    }
-    .page-title {
-      font-size: 18px;
-      font-weight: 800;
-    }
-    .page-sub {
-      margin-top: 3px;
-      color: var(--muted);
-      font-size: 12px;
-    }
-    .status {
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.5;
-    }
+    .entry-nav a.active { border-color: var(--accent); background: var(--accent); color: #fff; font-weight: 800; }
+    .status { color: var(--muted); font-size: 12px; line-height: 1.5; }
     .status.ok { color: var(--ok); }
     .status.error { color: var(--danger); }
-    .content {
-      min-height: 0;
-      overflow: auto;
-      padding: 14px;
-    }
-    .grid-2 {
+    .content { padding: 18px 24px 24px; min-width: 0; min-height: 0; overflow: auto; }
+
+    .metric-grid {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      gap: 14px;
-      min-height: 0;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
     }
-    .grid-main-side {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 380px;
-      gap: 14px;
-      min-height: 0;
-    }
-    .card {
+    .metric {
       border: 1px solid var(--line);
-      background: #fff;
-      border-radius: 8px;
+      background: var(--panel);
+      border-radius: 16px;
+      padding: 14px 16px;
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+      box-shadow: var(--shadow-soft);
+    }
+    .metric-label { color: var(--muted); font-size: 12px; }
+    .metric-value { font-size: 22px; font-weight: 900; line-height: 1; }
+    .metric-note { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: 360px minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+    }
+    .panel {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 18px;
       min-width: 0;
       overflow: hidden;
+      box-shadow: var(--shadow-soft);
     }
-    .card-head {
-      min-height: 48px;
-      padding: 11px 12px;
+    .panel-head {
+      min-height: 52px;
+      padding: 12px;
       border-bottom: 1px solid var(--line);
-      background: #fafcfb;
+      background: var(--panel-soft);
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 10px;
     }
-    .card-title {
-      font-weight: 800;
+    .panel-title { font-weight: 900; line-height: 1.35; }
+    .panel-meta { color: var(--muted); font-size: 12px; line-height: 1.5; margin-top: 2px; }
+    .panel-body { padding: 12px; display: grid; gap: 12px; }
+    .split-editor {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 300px;
+      gap: 12px;
+      align-items: start;
     }
-    .card-body {
+    .side-sheet {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfdff;
       padding: 12px;
       display: grid;
       gap: 12px;
-      align-content: start;
     }
-    .row {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 8px;
-      align-items: end;
-    }
-    .two {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-    .compact-fields {
-      align-items: end;
-    }
-    .actions {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-    button.mini {
-      min-height: 30px;
-      padding: 0 9px;
-      font-size: 12px;
-    }
-    .json-editor, .large-text {
-      height: 520px;
-      min-height: 360px;
-    }
-    .module-text {
-      height: 430px;
-      min-height: 300px;
-    }
-    .list {
-      display: grid;
-      gap: 8px;
-    }
-    .item {
+    .side-sheet-title { font-weight: 900; }
+    .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .field-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .inline-check { width: auto; min-height: 0; }
+    button.mini { min-height: 30px; padding: 0 9px; font-size: 12px; }
+
+    .tree { display: grid; gap: 10px; }
+    .tree-group {
       border: 1px solid var(--line);
+      background: #fff;
       border-radius: 8px;
+      overflow: hidden;
+    }
+    .tree-group-head {
       padding: 10px;
-      background: #fbfcfb;
-      display: grid;
-      gap: 5px;
-    }
-    .item.selected {
-      border-color: rgba(8,127,111,.46);
-      background: #eef9f5;
-    }
-    .item-head {
+      background: #f8fafc;
+      border-bottom: 1px solid var(--line);
       display: flex;
-      align-items: center;
       justify-content: space-between;
       gap: 10px;
+      align-items: center;
+      font-weight: 900;
     }
-    .item-title { font-weight: 800; line-height: 1.45; }
-    .item-meta { color: var(--muted); font-size: 12px; line-height: 1.5; word-break: break-all; }
-    .tags {
-      display: flex;
-      flex-wrap: wrap;
+    .tree-domain { padding: 9px 10px 5px; color: var(--blue); font-size: 12px; font-weight: 900; }
+    .file-list { display: grid; gap: 6px; padding: 6px 8px 10px; }
+    .file-row {
+      width: 100%;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text);
+      text-align: left;
+      min-height: 0;
+      white-space: normal;
+      padding: 8px;
+      display: grid;
       gap: 5px;
     }
+    .file-row:hover { background: #f8fafc; border-color: var(--line); }
+    .file-row.selected { background: var(--blue-soft); border-color: rgba(36,84,166,.22); }
+    .file-name { font-weight: 800; line-height: 1.4; word-break: break-word; }
+    .file-path { color: var(--muted); font-size: 11px; line-height: 1.45; word-break: break-all; }
+    .tags { display: flex; gap: 5px; flex-wrap: wrap; }
     .tag {
       border: 1px solid var(--line);
       border-radius: 5px;
       padding: 2px 6px;
+      background: #fff;
       color: var(--muted);
       font-size: 12px;
-      background: #fff;
+      line-height: 1.4;
     }
-    .module-tabs {
+    .tag.accent { color: var(--accent); border-color: rgba(15,118,110,.25); background: var(--accent-soft); }
+    .tag.blue { color: var(--blue); border-color: rgba(36,84,166,.25); background: var(--blue-soft); }
+    .tag.amber { color: var(--amber); border-color: rgba(161,92,7,.22); background: var(--amber-soft); }
+
+    .editor {
+      min-height: 520px;
+      height: min(64vh, 720px);
+    }
+    .small-editor {
+      min-height: 240px;
+      height: 34vh;
+    }
+    .preview-box {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfdff;
+      padding: 12px;
+      white-space: pre-wrap;
+      line-height: 1.65;
+      max-height: 520px;
+      overflow: auto;
+      word-break: break-word;
+    }
+    .empty {
+      border: 1px dashed var(--line-strong);
+      border-radius: 8px;
+      background: #fbfdff;
+      color: var(--muted);
+      padding: 18px;
+      line-height: 1.65;
+    }
+    .upload-box {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 16px;
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+    }
+    .knowledge-hub {
+      display: grid;
+      gap: 16px;
+    }
+    .kb-command {
+      display: grid;
+      grid-template-columns: minmax(260px, 1fr) 180px auto auto;
+      gap: 10px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: rgba(255,255,255,.94);
+      padding: 14px;
+      box-shadow: var(--shadow-soft);
+    }
+    .kb-upload-inline {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(255,255,255,.96);
+      box-shadow: var(--shadow-soft);
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+      max-width: 920px;
+    }
+    .kb-upload-check {
+      min-height: 40px;
+      padding: 8px 2px;
+      align-content: center;
+    }
+    .kb-search {
+      position: relative;
+    }
+    .kb-search input {
+      min-height: 40px;
+      padding-left: 38px;
+      border-radius: 13px;
+      background: #fbfdff;
+    }
+    .kb-search-icon {
+      position: absolute;
+      left: 13px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #8aa0ba;
+      font-weight: 900;
+      pointer-events: none;
+    }
+    .kb-stage-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-end;
+    }
+    .kb-breadcrumbs {
       display: flex;
       flex-wrap: wrap;
-      gap: 6px;
+      gap: 7px;
+      margin-bottom: 10px;
     }
-    .module-tabs button {
+    button.crumb {
       min-height: 30px;
-      padding: 0 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: #526078;
+      box-shadow: none;
+      padding: 0 11px;
+      font-size: 12px;
+      max-width: 220px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    button.crumb:hover {
+      border-color: rgba(13,135,152,.28);
+      background: var(--accent-soft);
+      box-shadow: none;
+    }
+    button.crumb.active {
+      border-color: rgba(13,135,152,.38);
+      background: var(--accent-soft);
+      color: var(--accent-strong);
+      font-weight: 900;
+    }
+    .kb-stage-title {
+      font-size: 18px;
+      line-height: 1.35;
+      font-weight: 900;
+    }
+    .kb-stage-sub {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+    .kb-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 360px));
+      gap: 14px;
+      justify-content: start;
+    }
+    .kb-card {
+      position: relative;
+      min-height: 132px;
+      border: 1px solid rgba(210, 223, 238, .88);
+      border-radius: 16px;
+      background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+      color: var(--text);
+      box-shadow: none;
+      padding: 16px 16px 62px;
+      text-align: left;
+      display: grid;
+      gap: 10px;
+      white-space: normal;
+      cursor: pointer;
+    }
+    .kb-card:hover {
+      border-color: rgba(13, 135, 152, .34);
+      background: #ffffff;
+      box-shadow: 0 18px 40px rgba(63, 86, 132, .12);
+    }
+    .kb-card.active {
+      border-color: rgba(13, 135, 152, .46);
+      box-shadow: 0 18px 42px rgba(13, 135, 152, .14);
+      background: linear-gradient(180deg, #ffffff 0%, #f1fbfd 100%);
+    }
+    .kb-card.folder .kb-card-icon {
+      color: var(--blue);
+      background: var(--blue-soft);
+      border-color: rgba(83,103,255,.14);
+    }
+    .kb-card.file .kb-card-icon {
+      color: var(--amber);
+      background: var(--amber-soft);
+      border-color: rgba(161,92,7,.16);
+    }
+    .kb-card.file {
+      min-height: 182px;
+      padding-bottom: 70px;
+    }
+    .kb-card:focus-visible {
+      outline: 2px solid rgba(13, 135, 152, .32);
+      outline-offset: 2px;
+    }
+    .kb-card-top {
+      display: grid;
+      grid-template-columns: 40px minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+    }
+    .kb-card-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 13px;
+      display: inline-grid;
+      place-items: center;
+      color: var(--accent);
+      background: var(--accent-soft);
+      border: 1px solid rgba(13, 135, 152, .12);
+      font-weight: 900;
+    }
+    .kb-card-title {
+      font-weight: 900;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+    .kb-card-meta {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .kb-card-desc {
+      color: #526078;
+      font-size: 12px;
+      line-height: 1.55;
+      min-height: 38px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .kb-card-tags {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .kb-card-actions {
+      position: absolute;
+      right: 14px;
+      bottom: 14px;
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: nowrap;
+      z-index: 1;
+    }
+    .kb-icon-btn {
+      width: 32px;
+      min-width: 32px;
+      height: 32px;
+      min-height: 32px;
+      padding: 0;
+      display: inline-grid;
+      place-items: center;
+      border-radius: 10px;
+      box-shadow: none;
+      flex: 0 0 32px;
+    }
+    .kb-icon-btn svg {
+      width: 14px;
+      height: 14px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .kb-icon-btn.danger {
+      background: rgba(180, 35, 24, 0.08);
+      border: 1px solid rgba(180, 35, 24, 0.18);
+      color: var(--danger);
+    }
+    .kb-icon-btn.danger:hover {
+      background: rgba(180, 35, 24, 0.14);
+    }
+    .kb-icon-btn.secondary {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--accent-strong);
+    }
+    .kb-icon-btn.secondary:hover {
+      border-color: rgba(13,135,152,.28);
+      background: var(--accent-soft);
+    }
+    .kb-workbench {
+      display: grid;
+      grid-template-columns: 300px minmax(0, 1fr) 320px;
+      gap: 14px;
+      align-items: start;
+    }
+    .kb-column {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(255,255,255,.96);
+      box-shadow: var(--shadow-soft);
+      min-width: 0;
+      overflow: hidden;
+    }
+    .kb-column-head {
+      min-height: 58px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      background: #fbfdff;
+    }
+    .kb-column-title {
+      font-weight: 900;
+      line-height: 1.35;
+    }
+    .kb-column-meta {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      margin-top: 2px;
+    }
+    .kb-column-body {
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+      max-height: min(660px, calc(100vh - 360px));
+      overflow: auto;
+    }
+    .kb-domain {
+      display: grid;
+      gap: 8px;
+    }
+    .kb-domain-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      color: #44546c;
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .kb-doc-list {
+      display: grid;
+      gap: 8px;
+    }
+    .kb-doc-row {
+      border: 1px solid transparent;
+      border-radius: 14px;
+      background: transparent;
+      box-shadow: none;
+      color: var(--text);
+      min-height: 0;
+      padding: 10px;
+      display: grid;
+      gap: 5px;
+      text-align: left;
+      white-space: normal;
+    }
+    .kb-doc-row:hover {
+      border-color: var(--line);
+      background: #f8fbff;
+      box-shadow: none;
+    }
+    .kb-doc-row.selected {
+      border-color: rgba(83, 103, 255, .26);
+      background: var(--blue-soft);
+    }
+    .kb-editor-shell {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: #fff;
+      box-shadow: var(--shadow-soft);
+      min-width: 0;
+      overflow: hidden;
+    }
+    .kb-editor-page {
+      max-width: 960px;
+    }
+    .kb-editor-head {
+      padding: 15px 16px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: #fbfdff;
+    }
+    .kb-editor-head > div:first-child { min-width: 0; }
+    .kb-editor-head .actions { flex: 0 0 auto; justify-content: flex-end; }
+    .kb-editor-title {
+      font-size: 16px;
+      font-weight: 900;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+    .kb-editor-path {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      word-break: break-all;
+    }
+    .kb-editor-body {
+      padding: 16px;
+      display: grid;
+      gap: 14px;
+    }
+    .kb-meta-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .kb-upload {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: #fff;
+      box-shadow: var(--shadow-soft);
+      overflow: hidden;
+    }
+    .kb-upload .upload-box {
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+    }
+    .prompt-board {
+      display: grid;
+      gap: 16px;
+    }
+    .prompt-board-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .prompt-shelf {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(255,255,255,.96);
+      box-shadow: var(--shadow-soft);
+      overflow: hidden;
+    }
+    .prompt-shelf-head {
+      min-height: 56px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfdff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .prompt-shelf-title {
+      font-size: 16px;
+      font-weight: 900;
+      line-height: 1.35;
+    }
+    .prompt-shelf-meta {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .prompt-row {
+      --prompt-card-width: 228px;
+      --prompt-more-width: 132px;
+      display: flex;
+      gap: 10px;
+      overflow: hidden;
+      padding: 14px 16px;
+      min-width: 0;
+    }
+    .prompt-row.expanded {
+      overflow-x: auto;
+      padding-bottom: 18px;
+    }
+    .prompt-card {
+      flex: 0 0 var(--prompt-card-width);
+      min-height: 144px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
       background: #fff;
       color: var(--text);
-      border: 1px solid var(--line);
+      box-shadow: none;
+      padding: 13px;
+      text-align: left;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: stretch;
+      white-space: normal;
+      cursor: pointer;
+    }
+    .prompt-card:hover {
+      border-color: rgba(13,135,152,.32);
+      background: #fbfdff;
+      box-shadow: 0 12px 28px rgba(63,86,132,.1);
+    }
+    .prompt-card:focus-visible {
+      outline: none;
+      border-color: rgba(83,103,255,.52);
+      box-shadow: 0 0 0 3px rgba(83,103,255,.16), 0 12px 28px rgba(63,86,132,.1);
+    }
+    .prompt-card.selected {
+      border-color: rgba(83,103,255,.34);
+      background: var(--blue-soft);
+    }
+    .prompt-card-header {
+      display: grid;
+      gap: 5px;
+    }
+    .prompt-card-title {
+      font-weight: 900;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+    .prompt-card-location {
+      color: #526078;
       font-size: 12px;
+      line-height: 1.45;
+      word-break: break-word;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
-    .module-tabs button.active {
-      background: var(--accent);
-      color: #fff;
-      border-color: var(--accent);
+    .prompt-card-tags {
+      margin-top: 1px;
     }
-    .chat-box {
+    .prompt-card-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: auto;
+    }
+    .prompt-action {
+      flex: 1 1 0;
+      min-width: 0;
+      min-height: 30px;
+      padding: 0 10px;
+      font-size: 12px;
+      border-radius: 9px;
+    }
+    .prompt-action.danger {
+      color: var(--danger);
+      background: rgba(180, 35, 24, 0.08);
+      border: 1px solid rgba(180, 35, 24, 0.16);
+      box-shadow: none;
+    }
+    .prompt-action.danger:hover {
+      background: rgba(180, 35, 24, 0.12);
+      box-shadow: none;
+    }
+    .prompt-more-card {
+      flex-basis: var(--prompt-more-width);
+      text-align: center;
+      border-style: dashed;
+      color: var(--accent-strong);
+      background: var(--accent-soft);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 6px;
+    }
+    .prompt-editor-panel {
+      max-width: none;
+    }
+    .prompt-selection-bar {
       border: 1px solid var(--line);
-      background: #fbfcfb;
-      border-radius: 8px;
-      padding: 12px;
-      min-height: 180px;
+      border-radius: 14px;
+      background: #fbfdff;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .prompt-selection-title {
+      font-weight: 900;
+      line-height: 1.35;
+    }
+    .prompt-selection-meta {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      margin-top: 2px;
+      word-break: break-word;
+    }
+    .prompt-compose-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      align-items: center;
+      margin-top: 2px;
+    }
+    .prompt-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      background: rgba(16, 24, 39, .38);
+      display: grid;
+      place-items: center;
+      padding: 20px;
+    }
+    .prompt-modal {
+      width: min(1120px, calc(100vw - 40px));
+      max-height: calc(100vh - 40px);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: #fff;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+    }
+    .prompt-modal-head {
+      min-height: 62px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel-soft);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .prompt-modal-title {
+      font-size: 16px;
+      font-weight: 900;
+      line-height: 1.35;
+    }
+    .prompt-modal-meta {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      word-break: break-word;
+    }
+    .prompt-modal-body {
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+      gap: 14px;
+      min-height: 0;
+      overflow: hidden;
+      padding: 14px 16px;
+      align-items: stretch;
+    }
+    .prompt-modal-side {
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      padding: 4px 2px 4px 0;
       display: grid;
       gap: 10px;
       align-content: start;
+      min-height: 0;
+      overflow: auto;
+    }
+    .prompt-modal-label {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      font-weight: 700;
+    }
+    .prompt-modal-note {
+      border: 0;
+      border-radius: 10px;
+      background: #f8fbff;
+      padding: 10px 11px;
+      color: var(--text);
+      font-size: 12px;
+      line-height: 1.55;
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+    .prompt-modal-main {
+      min-height: 0;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 10px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+      padding: 12px 14px;
+      align-self: stretch;
+    }
+    .prompt-modal-main label {
+      margin-bottom: 0;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .prompt-modal-editor {
+      min-height: 0;
+      height: 100%;
+      max-height: none;
+      resize: none;
+    }
+    .prompt-modal-foot {
+      border-top: 1px solid var(--line);
+      padding: 12px 16px;
+      background: #fff;
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .prompt-flow {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(120px, 1fr));
+      gap: 8px;
+      overflow: auto;
+      padding-bottom: 4px;
+    }
+    .flow-step {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 10px;
+      min-height: 84px;
+      display: grid;
+      gap: 6px;
+      align-content: start;
+    }
+    .flow-index {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: inline-grid;
+      place-items: center;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 900;
+      font-size: 12px;
+    }
+    .flow-title { font-weight: 900; font-size: 12px; line-height: 1.4; }
+    .flow-desc { color: var(--muted); font-size: 11px; line-height: 1.45; }
+    .chat-box {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfdff;
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+      min-height: 220px;
+      align-content: start;
     }
     .bubble {
-      max-width: 82%;
+      max-width: 86%;
       border-radius: 8px;
       padding: 10px 12px;
       line-height: 1.65;
       white-space: pre-wrap;
+      word-break: break-word;
     }
-    .bubble.user {
-      justify-self: end;
-      background: #fff7e6;
-      border: 1px solid #e4b95f;
+    .bubble.user { justify-self: end; background: var(--blue-soft); border: 1px solid rgba(36,84,166,.2); }
+    .bubble.ai { justify-self: start; background: var(--accent-soft); border: 1px solid rgba(15,118,110,.22); }
+    .dm-board {
+      display: grid;
+      gap: 14px;
+      align-items: start;
     }
-    .bubble.ai {
-      justify-self: start;
-      background: #effaf6;
-      border: 1px solid rgba(8,127,111,.32);
+    .dm-data-body {
+      display: grid;
+      gap: 12px;
     }
-    .empty {
+    .dm-data-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+      gap: 12px;
+      align-items: start;
+    }
+    .dm-data-column {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+    .dm-data-block {
+      display: grid;
+      gap: 8px;
+      align-content: start;
+    }
+    .dm-data-label {
       color: var(--muted);
-      font-size: 13px;
-      padding: 10px;
+      font-size: 12px;
+      line-height: 1.45;
+      font-weight: 700;
+    }
+    .dm-flow {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .dm-flow-step {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+      box-shadow: none;
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }
+    .dm-flow-step-head {
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
+    }
+    .dm-flow-files {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
     }
     [v-cloak] { display: none; }
-    @media (max-width: 1180px) {
-      body { overflow: auto; }
-      .layout { height: auto; min-height: 100vh; grid-template-columns: 1fr; overflow: visible; }
-      .main, .sidebar { min-height: auto; }
-      .grid-2, .grid-main-side { grid-template-columns: 1fr; }
-      .json-editor, .large-text, .module-text { height: 360px; }
+
+    @media (max-width: 1220px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { position: static; height: auto; }
+      .workspace, .split-editor { grid-template-columns: 1fr; }
+      .dm-data-grid { grid-template-columns: 1fr; }
+      .dm-flow { grid-template-columns: 1fr; }
+      .kb-command { grid-template-columns: minmax(0, 1fr) 170px auto auto; }
+      .kb-workbench { grid-template-columns: 1fr; }
+      .kb-column-body { max-height: 420px; overflow: auto; }
+      .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .prompt-flow { grid-template-columns: repeat(2, minmax(160px, 1fr)); }
+    }
+    @media (max-width: 720px) {
+      .layout { padding: 10px; }
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .topbar-right { align-items: flex-start; min-width: 0; }
+      .content { padding: 14px; }
+      .kb-command { grid-template-columns: 1fr; border-radius: 18px; }
+      .kb-cards { grid-template-columns: 1fr; }
+      .prompt-board-toolbar { align-items: flex-start; flex-direction: column; }
+      .prompt-row {
+        --prompt-card-width: min(190px, calc(100% - 118px));
+        --prompt-more-width: 110px;
+        gap: 8px;
+        padding: 12px;
+      }
+      .dm-data-grid { grid-template-columns: 1fr; }
+      .dm-flow { grid-template-columns: 1fr; }
+      .kb-editor-head { align-items: flex-start; flex-direction: column; }
+      .kb-meta-grid { grid-template-columns: 1fr; }
+      .metric-grid, .field-grid, .field-grid.three { grid-template-columns: 1fr; }
+      .prompt-modal {
+        width: calc(100vw - 16px);
+        max-height: calc(100vh - 16px);
+      }
+      .prompt-modal-body {
+        grid-template-columns: 1fr;
+      }
+      .prompt-modal-side {
+        max-height: 26vh;
+      }
     }
   </style>
 </head>
@@ -376,17 +1161,21 @@
     <div class="layout" v-if="vueReady">
       <aside class="sidebar">
         <div class="brand">
-          <h1>智能体后台</h1>
-          <div class="sub">Vue3 管理页：知识库、场景模板、prompt还原、私信生成。</div>
+          <h1>私信智能体工作台</h1>
+          <div class="sub">面向 SaaS 落地的知识库、提示词和私信生成调试中心。</div>
         </div>
         <nav class="menu">
           <button v-for="item in menus" :key="item.key" :class="{active: activeMenu === item.key}" @click="activeMenu = item.key">
-            {{ item.label }}
+            <span class="menu-icon">{{ item.icon }}</span>
+            <span>{{ item.label }}</span>
           </button>
         </nav>
+        <div class="sidebar-foot">
+          {{ project && project.path ? project.path : '项目路径加载中' }}
+        </div>
       </aside>
 
-      <main class="main">
+      <main class="main-shell">
         <header class="topbar">
           <div>
             <div class="page-title">{{ currentMenu.label }}</div>
@@ -395,7 +1184,7 @@
           <div class="topbar-right">
             <nav class="entry-nav">
               <a href="/session-rag-chat">生成私信</a>
-              <a class="active" href="/admin-vue">后台管理</a>
+              <a class="active" href="/admin-vue">后台工作台</a>
               <a href="/file-parser">文件解析</a>
             </nav>
             <div class="status" :class="statusType">{{ status }}</div>
@@ -403,326 +1192,428 @@
         </header>
 
         <section class="content">
-          <section v-if="activeMenu === 'knowledge'" class="grid-main-side">
-            <div class="card">
-              <div class="card-head">
-                <div>
-                  <div class="card-title">总文档描述 JSON</div>
-                  <div class="item-meta">每次上传会自动追加。可人工修改标签、描述、领域/板块结构。</div>
-                </div>
-                <div class="actions">
-                  <button class="secondary" @click="reloadDescriptionText">还原</button>
-                  <button @click="saveKnowledgeJson">保存 JSON</button>
-                </div>
+          <section v-if="activeMenu === 'knowledge'" class="knowledge-hub">
+            <div class="kb-command">
+              <div class="kb-search">
+                <span class="kb-search-icon">⌕</span>
+                <input v-model.trim="knowledgeSearch" placeholder="搜索知识库、业务、文件或标签...">
               </div>
-              <div class="card-body">
-                <textarea class="json-editor" v-model="knowledgeJsonText" spellcheck="false"></textarea>
-              </div>
+              <select v-model="knowledgeType">
+                <option value="">全部类型</option>
+                <option v-for="name in knowledgeBaseOptions" :key="name" :value="name">{{ name }}</option>
+              </select>
+              <button class="secondary" @click="reloadAll">刷新</button>
+              <button @click="toggleKnowledgeUpload">+ 新建/上传</button>
             </div>
 
-            <div class="card">
-              <div class="card-head">
-                <div class="card-title">上传文档</div>
-              </div>
-              <div class="card-body">
-                <div>
-                  <label>所属项目</label>
-                  <select v-model="projectId" @change="loadState">
-                    <option v-for="project in projects" :key="project.project_id" :value="project.project_id">
-                      {{ project.name || project.project_id }}
-                    </option>
-                  </select>
-                </div>
+            <div class="kb-upload-inline" v-if="showKnowledgeUpload">
+              <div class="kb-stage-title">新建 / 上传资料</div>
+              <div class="field-grid three">
                 <div>
                   <label>知识库</label>
-                  <input v-model="upload.knowledge_base" list="knowledge-base-options" placeholder="例如：公司私信知识库、招聘知识库">
+                  <input id="knowledge-upload-name" v-model="upload.knowledge_base" list="knowledge-base-options">
                   <datalist id="knowledge-base-options">
                     <option v-for="name in knowledgeBaseOptions" :key="name" :value="name"></option>
                   </datalist>
                 </div>
                 <div>
-                  <label>领域 / 业务板块</label>
-                  <input v-model="upload.domain" placeholder="例如：大健康医疗、AI技术与智能硬件">
+                  <label>业务</label>
+                  <input v-model="upload.domain" placeholder="例如：睡眠、招聘、跨境电商">
                 </div>
                 <div>
-                  <label>板块 / 子目录</label>
+                  <label>子目录</label>
                   <input v-model="upload.section" placeholder="例如：售前资料、合规边界、产品说明">
                 </div>
+              </div>
+              <div class="field-grid">
                 <div>
                   <label>资料文件</label>
                   <input type="file" @change="onUploadFile">
                 </div>
-                <label class="actions">
-                  <input type="checkbox" v-model="upload.useAi" style="width:auto;min-height:0">
-                  <span>使用当前模型生成文件描述和标签</span>
+                <label class="actions kb-upload-check">
+                  <input class="inline-check" type="checkbox" v-model="upload.useAi">
+                  <span>上传时使用当前模型生成标签和描述</span>
                 </label>
-                <button @click="uploadKnowledge">上传并更新描述 JSON</button>
-                <div class="item-meta">文件会保存到当前项目的 knowledge/files/知识库/领域/板块/ 下，JSON 中记录相对位置。</div>
+              </div>
+              <div class="actions">
+                <button @click="uploadKnowledge">上传到知识库</button>
+                <button class="secondary" @click="showKnowledgeUpload = false">收起</button>
               </div>
             </div>
 
-            <div class="card" style="grid-column: 1 / -1;">
-              <div class="card-head">
-                <div class="card-title">文档概览</div>
-                <button @click="saveKnowledgeDescriptionsFromForm">保存文档描述</button>
+            <div class="kb-stage-head">
+              <div>
+                <div class="kb-breadcrumbs">
+                  <button class="crumb" :class="{active: knowledgeLevel === 'bases'}" @click="goKnowledgeLevel('bases')">知识库</button>
+                  <button class="crumb" v-if="selectedKnowledgeBaseName" :class="{active: knowledgeLevel === 'domains'}" @click="goKnowledgeLevel('domains')">{{ selectedKnowledgeBaseName }}</button>
+                  <button class="crumb" v-if="selectedKnowledgeDomainName" :class="{active: knowledgeLevel === 'files'}" @click="goKnowledgeLevel('files')">{{ selectedKnowledgeDomainName }}</button>
+                  <button class="crumb active" v-if="knowledgeLevel === 'editor' && selectedDocDraft.title">{{ selectedDocDraft.title }}</button>
+                </div>
+                <div class="kb-stage-title">{{ knowledgeStageTitle }}</div>
+                <div class="kb-stage-sub">{{ knowledgeStageSub }}</div>
               </div>
-              <div class="card-body">
-                <div class="list">
-                  <div class="item" v-for="doc in flatDocuments" :key="doc.doc_id">
-                    <div class="item-head">
-                      <div class="item-title">{{ doc.title }}</div>
-                      <div class="actions">
-                        <button class="secondary mini" @click="openFileLocation(doc)" :disabled="!doc.relative_path">打开文件位置</button>
-                        <button class="danger mini" @click="deleteKnowledgeDocument(doc)" :disabled="!doc.doc_id && !doc.relative_path">删除文件</button>
+            </div>
+
+            <div class="kb-cards" v-if="knowledgeLevel === 'bases'">
+              <div class="kb-card" v-for="base in filteredKnowledgeTree" :key="base.name" role="button" tabindex="0" @click="openKnowledgeBase(base)" @keydown.enter.prevent="openKnowledgeBase(base)" @keydown.space.prevent="openKnowledgeBase(base)">
+                <span class="kb-card-top">
+                  <span class="kb-card-icon">KB</span>
+                  <span>
+                    <span class="kb-card-title">{{ base.name }}</span>
+                    <span class="kb-card-meta">{{ base.domains.length }} 个业务组 · {{ base.count }} 文件</span>
+                  </span>
+                </span>
+                <span class="kb-card-desc">{{ knowledgeBaseDescription(base) }}</span>
+                <span class="kb-card-tags">
+                  <span class="tag accent" v-for="tag in knowledgeBaseTags(base)" :key="base.name + tag">{{ tag }}</span>
+                </span>
+                <span class="kb-card-actions">
+                  <button class="secondary kb-icon-btn" @click.stop="renameKnowledgeBase(base)" title="修改" aria-label="修改">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M16.86 3.49a2.1 2.1 0 0 1 2.97 0l.68.68a2.1 2.1 0 0 1 0 2.97L8.25 19.4 4 20l.6-4.25L16.86 3.49Z"></path>
+                      <path d="M14.25 5.5 18.5 9.75"></path>
+                    </svg>
+                  </button>
+                  <button v-if="isLocalRuntime" class="secondary kb-icon-btn" @click.stop="openKnowledgeBaseFolder(base)" title="打开本地文件夹" aria-label="打开本地文件夹">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h4l2 2H18.5A2.5 2.5 0 0 1 21 10.5v6A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-8Z"></path>
+                      <path d="M7 14h10"></path>
+                    </svg>
+                  </button>
+                  <button class="danger kb-icon-btn" @click.stop="deleteKnowledgeBase(base)" title="删除" aria-label="删除">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M4 7h16"></path>
+                      <path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7"></path>
+                      <path d="M8 7l1 12h6l1-12"></path>
+                      <path d="M10 11v5"></path>
+                      <path d="M14 11v5"></path>
+                    </svg>
+                  </button>
+                </span>
+              </div>
+            </div>
+
+            <div class="kb-cards" v-if="knowledgeLevel === 'domains' && selectedKnowledgeBase">
+              <div class="kb-card folder" v-for="domain in selectedKnowledgeBase.domains" :key="selectedKnowledgeBase.name + domain.name" role="button" tabindex="0" @click="openKnowledgeDomain(domain)" @keydown.enter.prevent="openKnowledgeDomain(domain)" @keydown.space.prevent="openKnowledgeDomain(domain)">
+                <span class="kb-card-top">
+                  <span class="kb-card-icon">FD</span>
+                  <span>
+                    <span class="kb-card-title">{{ domain.name }}</span>
+                    <span class="kb-card-meta">{{ domain.documents.length }} 个文件</span>
+                  </span>
+                </span>
+                <span class="kb-card-desc">{{ domainDescription(domain) }}</span>
+                <span class="kb-card-tags">
+                  <span class="tag blue" v-for="tag in domainTags(domain)" :key="domain.name + tag">{{ tag }}</span>
+                </span>
+                <span class="kb-card-actions">
+                  <button class="secondary kb-icon-btn" @click.stop="renameKnowledgeDomain(domain)" title="修改" aria-label="修改">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M16.86 3.49a2.1 2.1 0 0 1 2.97 0l.68.68a2.1 2.1 0 0 1 0 2.97L8.25 19.4 4 20l.6-4.25L16.86 3.49Z"></path>
+                      <path d="M14.25 5.5 18.5 9.75"></path>
+                    </svg>
+                  </button>
+                  <button v-if="isLocalRuntime" class="secondary kb-icon-btn" @click.stop="openKnowledgeDomainFolder(domain)" title="打开本地文件夹" aria-label="打开本地文件夹">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h4l2 2H18.5A2.5 2.5 0 0 1 21 10.5v6A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-8Z"></path>
+                      <path d="M7 14h10"></path>
+                    </svg>
+                  </button>
+                  <button class="danger kb-icon-btn" @click.stop="deleteKnowledgeDomain(domain)" title="删除" aria-label="删除">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M4 7h16"></path>
+                      <path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7"></path>
+                      <path d="M8 7l1 12h6l1-12"></path>
+                      <path d="M10 11v5"></path>
+                      <path d="M14 11v5"></path>
+                    </svg>
+                  </button>
+                </span>
+              </div>
+            </div>
+
+            <div class="kb-cards" v-if="knowledgeLevel === 'files' && selectedKnowledgeDomain">
+              <div class="kb-card file" v-for="doc in selectedKnowledgeDomain.documents" :key="doc.doc_id || doc.relative_path" role="button" tabindex="0" @click="openKnowledgeFile(doc)" @keydown.enter.prevent="openKnowledgeFile(doc)" @keydown.space.prevent="openKnowledgeFile(doc)">
+                <span class="kb-card-top">
+                  <span class="kb-card-icon">MD</span>
+                  <span>
+                    <span class="kb-card-title">{{ doc.title || doc.source_file_name || '未命名文件' }}</span>
+                    <span class="kb-card-meta">{{ doc.section || selectedKnowledgeDomain.name }}</span>
+                  </span>
+                </span>
+                <span class="kb-card-desc">{{ doc.description || doc.summary || doc.relative_path || '暂无描述' }}</span>
+                <span class="file-path">{{ doc.relative_path || '未记录路径' }}</span>
+                <span class="kb-card-tags">
+                  <span class="tag" v-for="tag in (doc.tags || []).slice(0, 5)" :key="tag">{{ tag }}</span>
+                </span>
+                <span class="kb-card-actions">
+                  <button class="secondary kb-icon-btn" @click.stop="openKnowledgeFile(doc)" title="编辑" aria-label="编辑">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M16.86 3.49a2.1 2.1 0 0 1 2.97 0l.68.68a2.1 2.1 0 0 1 0 2.97L8.25 19.4 4 20l.6-4.25L16.86 3.49Z"></path>
+                      <path d="M14.25 5.5 18.5 9.75"></path>
+                    </svg>
+                  </button>
+                  <button v-if="isLocalRuntime" class="secondary kb-icon-btn" @click.stop="openFileLocation(doc)" title="打开本地文件" aria-label="打开本地文件">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h4l2 2H18.5A2.5 2.5 0 0 1 21 10.5v6A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-8Z"></path>
+                      <path d="M7 14h10"></path>
+                    </svg>
+                  </button>
+                  <button class="danger kb-icon-btn" @click.stop="deleteKnowledgeDocument(doc)" title="删除" aria-label="删除">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M4 7h16"></path>
+                      <path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7"></path>
+                      <path d="M8 7l1 12h6l1-12"></path>
+                      <path d="M10 11v5"></path>
+                      <path d="M14 11v5"></path>
+                    </svg>
+                  </button>
+                </span>
+              </div>
+            </div>
+
+            <section class="kb-editor-shell kb-editor-page" v-if="knowledgeLevel === 'editor' && selectedDocDraft.relative_path">
+                <div class="kb-editor-head">
+                  <div>
+                    <div class="kb-editor-title">{{ selectedDocDraft.title || '选择一个知识库文件' }}</div>
+                    <div class="kb-editor-path">{{ selectedDocDraft.relative_path || '文件会在这里预览和修改' }}</div>
+                  </div>
+                  <div class="actions" v-if="selectedDocDraft.relative_path">
+                    <button class="secondary mini" v-if="isLocalRuntime" @click="openFileLocation(selectedDocDraft)">打开本地文件</button>
+                    <button class="danger mini" @click="deleteKnowledgeDocument(selectedDocDraft)">删除</button>
+                    <button @click="saveSelectedDoc">保存文件</button>
+                  </div>
+                </div>
+                <div class="kb-editor-body">
+                  <div v-if="!selectedDocDraft.relative_path" class="empty">
+                    选择左侧文件后，可以直接预览正文、修改标签和描述，并保存回真实项目路径。
+                  </div>
+                  <template v-else>
+                    <div class="kb-meta-grid">
+                      <div>
+                        <label>标题</label>
+                        <input v-model="selectedDocDraft.title">
                       </div>
-                    </div>
-                    <div class="item-meta">{{ doc.knowledge_base }} / {{ doc.domain }} / {{ doc.section }} · {{ doc.relative_path }}</div>
-                    <div class="two compact-fields">
                       <div>
                         <label>人员身份</label>
-                        <input v-model="doc.sender_identity" placeholder="例如：xx健康顾问助理、xx运营顾问">
+                        <input v-model="selectedDocDraft.sender_identity" placeholder="例如：健康顾问助理">
                       </div>
                       <div>
-                        <label>文档描述</label>
-                        <input v-model="doc.description" placeholder="这份资料什么时候应该被读取">
+                        <label>标签，逗号分隔</label>
+                        <input v-model="selectedDocDraft.tagsText">
+                      </div>
+                      <div>
+                        <label>路径映射</label>
+                        <input :value="selectedDocDraft.relative_path" readonly>
                       </div>
                     </div>
-                    <div>{{ doc.description || doc.summary }}</div>
-                    <div class="tags"><span class="tag" v-for="tag in doc.tags" :key="tag">{{ tag }}</span></div>
-                  </div>
-                  <div class="empty" v-if="!flatDocuments.length">暂无文档，先上传资料。</div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section v-if="activeMenu === 'templates'" class="grid-main-side">
-            <div class="card">
-              <div class="card-head">
-                <div>
-                  <div class="card-title">{{ isEditingTemplate ? '编辑场景模板' : '新建场景模板' }}</div>
-                  <div class="item-meta">输入目的后可以让 AI 自动生成标题、适用场景、标签、处理步骤。</div>
-                </div>
-                <div class="actions">
-                  <button class="secondary" v-if="isEditingTemplate" @click="returnTemplateList">返回列表</button>
-                  <button class="secondary" @click="newTemplate">新建</button>
-                  <button @click="saveTemplate">保存</button>
-                </div>
-              </div>
-              <div class="card-body">
-                <div>
-                  <label>目的</label>
-                  <textarea rows="4" v-model="templateForm.purpose" placeholder="例如：首次私信用户，期望回复；当前账号=xx品牌客服；平台=抖音；评论时间=几月几；活动=xx评估名额；承接方式=xx草料码/企业名片/微信号xxx"></textarea>
-                </div>
-                <div class="actions">
-                  <button class="secondary" @click="generateTemplate">生成完整模板</button>
-                </div>
-                <div>
-                  <label>标题</label>
-                  <input v-model="templateForm.title">
-                </div>
-                <div>
-                  <label>适用场景</label>
-                  <textarea rows="4" v-model="templateForm.applicable_scene"></textarea>
-                </div>
-                <div>
-                  <label>标签，逗号分隔</label>
-                  <input v-model="templateTagsText" placeholder="大健康, 售前, 私信">
-                </div>
-                <div>
-                  <label>处理步骤，每行一步</label>
-                  <textarea rows="8" v-model="templateStepsText"></textarea>
-                </div>
-              </div>
-            </div>
-            <div class="card">
-              <div class="card-head"><div class="card-title">模板列表</div></div>
-              <div class="card-body">
-                <div class="list">
-                  <div class="item" :class="{selected: templateForm.template_id === tpl.template_id}" v-for="tpl in sceneTemplates.templates" :key="tpl.template_id">
-                    <div class="item-title">{{ tpl.title }}</div>
-                    <div class="item-meta">{{ tpl.purpose }}</div>
-                    <div class="tags"><span class="tag" v-for="tag in tpl.tags" :key="tag">{{ tag }}</span></div>
-                    <div class="actions">
-                      <button class="secondary" @click="editTemplate(tpl)">编辑</button>
-                      <button class="danger" @click="deleteTemplate(tpl)">删除</button>
+                    <div>
+                      <label>文件描述</label>
+                      <textarea rows="3" v-model="selectedDocDraft.description"></textarea>
                     </div>
-                  </div>
-                  <div class="empty" v-if="!sceneTemplates.templates.length">暂无模板。</div>
+                    <div>
+                      <label>文件正文</label>
+                      <textarea class="editor" v-model="selectedDocDraft.content" spellcheck="false"></textarea>
+                    </div>
+                  </template>
                 </div>
-              </div>
+            </section>
+
+            <div v-if="knowledgeEmpty" class="empty">
+              当前层级没有匹配内容。可以清空搜索条件，或点击“新建/上传”补充资料。
             </div>
           </section>
 
-          <section v-if="activeMenu === 'activities'" class="grid-main-side">
-            <div class="card">
-              <div class="card-head">
+          <section v-if="activeMenu === 'prompts'" class="prompt-board">
+            <div class="prompt-board-toolbar">
+              <div>
+                <div class="kb-stage-title">提示词资产</div>
+                <div class="kb-stage-sub">按类型横向查看和编辑提示词，放不下的内容在行尾展开。</div>
+              </div>
+            </div>
+
+            <section class="prompt-shelf" v-for="group in promptCatalog" :key="group.key">
+              <div class="prompt-shelf-head">
                 <div>
-                  <div class="card-title">{{ isEditingActivity ? '编辑活动' : '新建活动' }}</div>
-                  <div class="item-meta">用于告诉智能体当前可用活动，例如义诊、优惠券、体验名额、资料领取。</div>
+                  <div class="prompt-shelf-title">{{ group.title }}</div>
+                  <div class="prompt-shelf-meta">{{ group.desc || (group.items.length + ' 项') }}</div>
+                </div>
+                <span class="tag accent">{{ group.items.length }} 项</span>
+              </div>
+              <div class="prompt-row" :class="{expanded: isPromptGroupExpanded(group.key)}" :data-prompt-group="group.key">
+                <article
+                  class="prompt-card"
+                  v-for="item in visiblePromptItems(group)"
+                  :key="item.id"
+                  :class="{selected: activePromptItem && activePromptItem.id === item.id}"
+                  tabindex="0"
+                  role="button"
+                  @click="openPromptPopup(item)"
+                  @keydown.enter.prevent="openPromptPopup(item)"
+                  @keydown.space.prevent="openPromptPopup(item)"
+                >
+                  <div class="prompt-card-header">
+                    <div class="prompt-card-title">{{ item.title }}</div>
+                    <div class="prompt-card-location">位置：{{ promptItemLocation(item) }}</div>
+                  </div>
+                  <span class="tags prompt-card-tags">
+                    <span class="tag accent" v-if="item.kindLabel">{{ item.kindLabel }}</span>
+                    <span class="tag" v-for="tag in (item.tags || []).slice(0, 4)" :key="item.id + ':' + tag">{{ tag }}</span>
+                  </span>
+                  <div class="prompt-card-actions">
+                    <button class="secondary mini prompt-action" :disabled="!item.canEdit" @click.stop="openPromptPopup(item)">修改</button>
+                    <button class="danger mini prompt-action" :disabled="!item.canDelete" @click.stop="deletePromptItem(item)">删除</button>
+                  </div>
+                </article>
+                <button class="prompt-card prompt-more-card" v-if="promptHiddenCount(group) > 0" @click="togglePromptGroup(group.key)">
+                  <span class="prompt-card-title">{{ isPromptGroupExpanded(group.key) ? '收起' : '更多' }}</span>
+                  <span class="prompt-card-location">{{ isPromptGroupExpanded(group.key) ? '收起当前分类' : '还有 ' + promptHiddenCount(group) + ' 项' }}</span>
+                </button>
+              </div>
+            </section>
+
+            <section class="panel prompt-editor-panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">{{ activePromptItem ? activePromptItem.title : '提示词编排' }}</div>
+                  <div class="panel-meta">{{ activePromptItem ? ('位置：' + promptItemLocation(activePromptItem) + (activePromptItem.kindLabel ? ' · ' + activePromptItem.kindLabel : '')) : '查看和修改提示词资产，或还原最终提示词组装流程' }}</div>
                 </div>
                 <div class="actions">
-                  <button class="secondary" v-if="isEditingActivity" @click="newActivity">返回列表</button>
-                  <button class="secondary" @click="newActivity">新建</button>
-                  <button @click="saveActivity">保存</button>
+                  <button class="secondary mini" @click="copyText(activePromptDraft.content || '', '提示词已复制')" :disabled="!activePromptDraft.content">复制</button>
+                  <button @click="savePromptItem" :disabled="!activePromptItem || !activePromptItem.editable">保存提示词</button>
                 </div>
               </div>
-              <div class="card-body">
-                <label class="actions">
-                  <input type="checkbox" v-model="activityForm.enabled" style="width:auto;min-height:0">
-                  <span>启用这个活动</span>
-                </label>
-                <div class="two">
+              <div class="panel-body">
+                <div class="prompt-flow">
+                  <div class="flow-step" v-for="(step, index) in promptFlow" :key="step.key">
+                    <span class="flow-index">{{ index + 1 }}</span>
+                    <div class="flow-title">{{ step.title }}</div>
+                    <div class="flow-desc">{{ step.desc }}</div>
+                  </div>
+                </div>
+
+                <div class="field-grid three">
                   <div>
-                    <label>活动名称</label>
-                    <input v-model="activityForm.title" placeholder="例如：睡眠状态免费初评活动">
+                    <label>用户评论 / 私信</label>
+                    <textarea rows="3" v-model="promptForm.question" placeholder="输入一条评论，用来还原最终 Prompt"></textarea>
                   </div>
                   <div>
-                    <label>活动类型</label>
-                    <select v-model="activityForm.activity_type">
-                      <option>活动</option>
-                      <option>义诊</option>
-                      <option>优惠券</option>
-                      <option>体验名额</option>
-                      <option>资料包</option>
-                      <option>预约咨询</option>
+                    <label>视频概述</label>
+                    <textarea rows="3" v-model="promptForm.video_overview"></textarea>
+                  </div>
+                  <div>
+                    <label>上下文</label>
+                    <textarea rows="3" v-model="promptForm.context"></textarea>
+                  </div>
+                </div>
+                <div class="field-grid">
+                  <div>
+                    <label>场景模板</label>
+                    <select v-model="promptForm.template_id">
+                      <option value="">自动匹配</option>
+                      <option v-for="tpl in sceneTemplates.templates" :key="tpl.template_id" :value="tpl.template_id">{{ tpl.title }}</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label>活动设置</label>
+                    <select v-model="promptForm.activity_id">
+                      <option value="">自动匹配</option>
+                      <option v-for="act in enabledActivities" :key="act.activity_id" :value="act.activity_id">{{ act.title }}</option>
                     </select>
                   </div>
                 </div>
-                <div>
-                  <label>适用场景</label>
-                  <textarea rows="4" v-model="activityForm.applicable_scene" placeholder="例如：用户评论睡不好、压力大、想先了解方向时可用。"></textarea>
+
+                <div class="prompt-compose-actions">
+                  <button class="secondary" @click="restorePrompt">还原最终组装</button>
                 </div>
-                <div>
-                  <label>活动说明</label>
-                  <textarea rows="4" v-model="activityForm.description" placeholder="例如：面向近期睡眠质量下降的用户，提供一次轻量睡眠状态初评。"></textarea>
-                </div>
-                <div>
-                  <label>利益点 / 甜头</label>
-                  <textarea rows="3" v-model="activityForm.benefit" placeholder="例如：免费初评、自测表、资料包、体验券、一次样例试跑。"></textarea>
-                </div>
-                <div>
-                  <label>领取 / 承接方式</label>
-                  <textarea rows="3" v-model="activityForm.claim_method" placeholder="例如：私信里直接发送微信号、草料码入口、预约入口，或先问一个低门槛问题。"></textarea>
-                </div>
-                <div class="two">
+
+                <div v-if="activePromptItem" class="prompt-selection-bar">
                   <div>
-                    <label>名额 / 限制</label>
-                    <input v-model="activityForm.quota" placeholder="例如：这批名额不多；不确定可留空">
+                    <div class="prompt-selection-title">{{ activePromptItem.title }}</div>
+                    <div class="prompt-selection-meta">位置：{{ promptItemLocation(activePromptItem) }}</div>
                   </div>
-                  <div>
-                    <label>截止 / 有效期</label>
-                    <input v-model="activityForm.deadline" placeholder="例如：本周内；不确定可留空">
+                  <div class="actions">
+                    <button class="secondary" @click="openPromptPopup(activePromptItem)">查看 / 修改</button>
                   </div>
                 </div>
-                <div>
-                  <label>标签，逗号分隔</label>
-                  <input v-model="activityTagsText" placeholder="睡眠, 大健康, 初评, 优惠券">
-                </div>
-                <div>
-                  <label>合规备注</label>
-                  <textarea rows="3" v-model="activityForm.compliance_note" placeholder="例如：不要承诺疗效，不要编造具体剩余名额，需以实际页面为准。"></textarea>
-                </div>
+                <div v-else class="empty">从上方选择提示词资产，点击卡片会弹出查看和修改页面。</div>
               </div>
-            </div>
-            <div class="card">
-              <div class="card-head"><div class="card-title">活动列表</div></div>
-              <div class="card-body">
-                <div class="list">
-                  <div class="item" :class="{selected: activityForm.activity_id === act.activity_id}" v-for="act in activitySettings.activities" :key="act.activity_id">
-                    <div class="item-head">
-                      <div class="item-title">{{ act.title }}</div>
-                      <span class="tag">{{ act.enabled === false ? '停用' : '启用' }}</span>
-                    </div>
-                    <div class="item-meta">{{ act.activity_type }} · {{ act.applicable_scene }}</div>
-                    <div>{{ act.benefit || act.description }}</div>
-                    <div class="tags"><span class="tag" v-for="tag in act.tags" :key="tag">{{ tag }}</span></div>
-                    <div class="actions">
-                      <button class="secondary" @click="editActivity(act)">编辑</button>
-                      <button class="danger" @click="deleteActivity(act)">删除</button>
-                    </div>
-                  </div>
-                  <div class="empty" v-if="!activitySettings.activities.length">暂无活动。配置后，生成 prompt 时会按评论自动匹配。</div>
-                </div>
-              </div>
-            </div>
+            </section>
           </section>
 
-          <section v-if="activeMenu === 'prompt'" class="grid-main-side">
-            <div class="card">
-              <div class="card-head">
-                <div class="card-title">prompt 组装还原</div>
-                <button @click="restorePrompt">还原组装</button>
+          <div
+            v-if="promptModalVisible && activePromptItem"
+            class="prompt-modal-backdrop"
+            @click.self="closePromptPopup"
+            @keydown.esc.prevent="closePromptPopup"
+            tabindex="-1"
+          >
+            <section class="prompt-modal" role="dialog" aria-modal="true">
+              <div class="prompt-modal-head">
+                <div>
+                  <div class="prompt-modal-title">{{ activePromptItem.title }}</div>
+                  <div class="prompt-modal-meta">位置：{{ promptItemLocation(activePromptItem) }}{{ activePromptItem.kindLabel ? ' · ' + activePromptItem.kindLabel : '' }}</div>
+                </div>
+                <button class="secondary kb-icon-btn" @click="closePromptPopup" title="关闭" aria-label="关闭">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M6 6l12 12"></path>
+                    <path d="M18 6L6 18"></path>
+                  </svg>
+                </button>
               </div>
-              <div class="card-body">
-                <div>
-                  <label>用户评论 / 私信</label>
-                  <textarea rows="4" v-model="promptForm.question" placeholder="例如：膝盖积液疼痛怎么办，能不能先了解一下"></textarea>
+              <div class="prompt-modal-body">
+                <aside class="prompt-modal-side">
+                  <div>
+                    <div class="prompt-modal-label">位置</div>
+                    <div class="prompt-modal-note">{{ promptItemLocation(activePromptItem) }}</div>
+                  </div>
+                  <div>
+                    <div class="prompt-modal-label">标签</div>
+                    <div class="tags">
+                      <span class="tag accent" v-if="activePromptItem.kindLabel">{{ activePromptItem.kindLabel }}</span>
+                      <span class="tag" v-for="tag in (activePromptItem.tags || [])" :key="activePromptItem.id + ':' + tag">{{ tag }}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div class="prompt-modal-label">说明</div>
+                    <div class="prompt-modal-note">{{ activePromptItem.editable ? '可直接在右侧修改后保存。' : '当前内容只读，适合作为结果预览。' }}</div>
+                  </div>
+                </aside>
+                <div class="prompt-modal-main">
+                  <label>{{ activePromptItem.editable ? '提示词内容' : '预览内容' }}</label>
+                  <textarea class="editor prompt-modal-editor" v-model="activePromptDraft.content" spellcheck="false" :readonly="!activePromptItem.editable"></textarea>
                 </div>
-                <div>
-                  <label>视频概述</label>
-                  <textarea rows="4" v-model="promptForm.video_overview" placeholder="例如：视频讲的是膝盖积液、上下楼疼、关节养护方法，评论区用户多在问是否适合自己"></textarea>
-                </div>
-                <div>
-                  <label>上下文</label>
-                  <textarea rows="4" v-model="promptForm.context" placeholder="可粘贴同一会话历史、压缩记忆或用户补充信息；没有可留空"></textarea>
-                </div>
-                <div>
-                  <label>场景模板</label>
-                  <select v-model="promptForm.template_id">
-                    <option value="">自动匹配</option>
-                    <option v-for="tpl in sceneTemplates.templates" :key="tpl.template_id" :value="tpl.template_id">{{ tpl.title }}</option>
-                  </select>
-                </div>
-                <div>
-                  <label>活动设置</label>
-                  <select v-model="promptForm.activity_id">
-                    <option value="">自动匹配</option>
-                    <option v-for="act in enabledActivities" :key="act.activity_id" :value="act.activity_id">{{ act.title }}</option>
-                  </select>
-                </div>
-                <label class="actions">
-                  <input type="checkbox" v-model="promptForm.use_ai_selector" style="width:auto;min-height:0">
-                  <span>使用模型进行第一步文档路由</span>
-                </label>
               </div>
-            </div>
+              <div class="prompt-modal-foot">
+                <button class="secondary" @click="copyText(activePromptDraft.content || '', '提示词已复制')" :disabled="!activePromptDraft.content">复制</button>
+                <button class="secondary" @click="closePromptPopup">返回</button>
+                <button class="danger" v-if="activePromptItem.canDelete !== false" @click="deletePromptItem(activePromptItem)">删除</button>
+                <button @click="savePromptItem" :disabled="!activePromptItem || !activePromptItem.editable">保存修改</button>
+              </div>
+            </section>
+          </div>
 
-            <div class="card">
-              <div class="card-head"><div class="card-title">组装结果</div></div>
-              <div class="card-body">
-                <div class="item" v-if="promptResult.selector">
-                  <div class="item-title">选中文档</div>
-                  <div class="item-meta">{{ promptResult.selector.document_ids.join(', ') || '无' }}</div>
-                  <div>{{ promptResult.selector.reason }}</div>
-                </div>
-                <div class="module-tabs">
-                  <button v-for="mod in promptResult.prompt_modules" :key="mod.key" :class="{active: activeModuleKey === mod.key}" @click="activeModuleKey = mod.key">
-                    {{ mod.title }}
-                  </button>
-                </div>
-                <textarea class="module-text" :value="activeModule.content || ''" spellcheck="false" readonly></textarea>
-                <div class="status">{{ activeModule.title || '暂无模块' }} {{ activeModule.chars ? '· ' + activeModule.chars + ' 字符' : '' }}</div>
-              </div>
-            </div>
-          </section>
-
-          <section v-if="activeMenu === 'dm'" class="grid-main-side">
-            <div class="card">
-              <div class="card-head">
-                <div class="card-title">生成私信</div>
-                <button @click="generateDm">生成</button>
-              </div>
-              <div class="card-body">
+          <section v-if="activeMenu === 'dm'" class="dm-board">
+            <section class="panel">
+              <div class="panel-head">
                 <div>
-                  <label>模拟用户评论 / 私信</label>
-                  <textarea rows="4" v-model="dmForm.question"></textarea>
+                  <div class="panel-title">私信生成调试</div>
+                  <div class="panel-meta">生成回复后可查看 input / reply / prompts / config</div>
                 </div>
-                <div>
-                  <label>视频概述</label>
-                  <textarea rows="4" v-model="dmForm.video_overview" placeholder="简要说明用户评论所在视频讲了什么、展示了什么、核心卖点或争议点"></textarea>
+                <button @click="generateDm">生成私信</button>
+              </div>
+              <div class="panel-body">
+                <div class="field-grid">
+                  <div>
+                    <label>模拟用户评论 / 私信</label>
+                    <textarea rows="5" v-model="dmForm.question"></textarea>
+                  </div>
+                  <div>
+                    <label>视频概述</label>
+                    <textarea rows="5" v-model="dmForm.video_overview"></textarea>
+                  </div>
                 </div>
-                <div class="two">
+                <div class="field-grid three">
                   <div>
                     <label>阶段</label>
                     <select v-model="dmForm.conversation_stage">
@@ -731,180 +1622,768 @@
                     </select>
                   </div>
                   <div>
-                    <label>场景模板</label>
-                    <select v-model="dmForm.template_id">
-                      <option value="">自动匹配</option>
-                      <option v-for="tpl in sceneTemplates.templates" :key="tpl.template_id" :value="tpl.template_id">{{ tpl.title }}</option>
-                    </select>
+                    <label>当前平台</label>
+                    <input v-model="dmForm.source_platform">
+                  </div>
+                  <div>
+                    <label>引流目标</label>
+                    <input v-model="dmForm.conversion_target">
                   </div>
                 </div>
                 <div>
-                  <label>活动设置</label>
-                  <select v-model="dmForm.activity_id">
-                    <option value="">自动匹配</option>
-                    <option v-for="act in enabledActivities" :key="act.activity_id" :value="act.activity_id">{{ act.title }}</option>
-                  </select>
+                  <label>目标补充</label>
+                  <textarea rows="3" v-model="dmForm.target_note"></textarea>
                 </div>
-                <div><label>session_id</label><input v-model="dmForm.session_id"></div>
-                <div class="two">
-                  <div><label>当前平台</label><input v-model="dmForm.source_platform"></div>
-                  <div><label>引流目标</label><input v-model="dmForm.conversion_target"></div>
-                </div>
-                <div><label>目标补充</label><textarea rows="3" v-model="dmForm.target_note"></textarea></div>
-              </div>
-            </div>
-            <div class="card">
-              <div class="card-head"><div class="card-title">对话模拟</div></div>
-              <div class="card-body">
                 <div class="chat-box">
                   <div class="bubble user" v-if="dmForm.question">{{ dmForm.question }}</div>
                   <div class="bubble ai" v-if="dmAnswer">{{ dmAnswer }}</div>
-                  <div class="empty" v-if="!dmForm.question && !dmAnswer">输入评论后点击生成。</div>
-                </div>
-                <div class="item" v-if="dmMeta.project">
-                  <div class="item-title">识别场景：{{ dmMeta.project.scene_name }}</div>
-                  <div class="item-meta">文档：{{ (dmMeta.project_documents && dmMeta.project_documents.document_ids || []).join(', ') }}</div>
-                  <div class="item-meta">模板：{{ dmMeta.scene_template && dmMeta.scene_template.title || '自动匹配/未匹配' }}</div>
-                  <div class="item-meta">活动：{{ dmMeta.activity_settings && dmMeta.activity_settings.title || '自动匹配/未匹配' }}</div>
+                  <div class="empty" v-if="!dmAnswer">生成后，回复会显示在这里。</div>
                 </div>
               </div>
-            </div>
+            </section>
+            <aside class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">本次调试数据</div>
+                  <div class="panel-meta">{{ dmMeta.config ? dmMeta.config.provider + ' / ' + dmMeta.config.model : '等待生成' }}</div>
+                </div>
+                <button class="secondary mini" @click="copyText(JSON.stringify(dmMeta, null, 2), '调试数据已复制')" :disabled="!dmMeta.reply">复制</button>
+              </div>
+              <div class="panel-body">
+                <div class="preview-box" v-if="dmMeta.input">{{ JSON.stringify(dmMeta.input, null, 2) }}</div>
+                <div class="tree-group" v-if="dmPrompts.length">
+                  <div class="tree-group-head">
+                    <span>提示词模块</span>
+                    <span class="tag accent">{{ dmPrompts.length }} 项</span>
+                  </div>
+                  <div class="file-list">
+                    <button class="file-row" v-for="mod in dmPrompts" :key="mod.key" :class="{selected: activeDmPromptKey === mod.key}" @click="activeDmPromptKey = mod.key">
+                      <span class="file-name">{{ mod.title || mod.key }}</span>
+                      <span class="file-path">{{ mod.chars || 0 }} 字符</span>
+                    </button>
+                  </div>
+                </div>
+                <textarea class="small-editor" v-if="activeDmPrompt.content" :value="activeDmPrompt.content" readonly></textarea>
+              </div>
+            </aside>
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">任务执行流程</div>
+                  <div class="panel-meta">从接收评论，到定位文件、组织提示词，再到调用模型输出私信。</div>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div class="dm-flow">
+                  <article class="dm-flow-step" v-for="(step, index) in dmTaskFlow" :key="step.key">
+                    <div class="dm-flow-step-head">
+                      <span class="flow-index">{{ index + 1 }}</span>
+                      <div>
+                        <div class="dm-flow-title">{{ step.title }}</div>
+                        <div class="dm-flow-desc">{{ step.desc }}</div>
+                      </div>
+                    </div>
+                    <div class="dm-flow-files">
+                      <span class="tag blue" v-for="file in step.files" :key="step.key + file">{{ file }}</span>
+                    </div>
+                  </article>
+                </div>
+              </div>
+            </section>
           </section>
         </section>
       </main>
     </div>
-    <div v-else class="empty">Vue3 未加载，请检查网络或本地静态资源。</div>
+    <div v-else class="empty">Vue3 未加载，请检查本地静态资源。</div>
   </div>
 
   <script src="/static/vendor/vue.global.prod.js"></script>
   <script>
     const { createApp } = window.Vue || {};
     if (!createApp) {
-      document.getElementById("app").innerHTML = '<div class="empty">Vue3 未加载，请检查网络连接。</div>';
+      document.getElementById("app").innerHTML = '<div class="empty">Vue3 未加载，请检查本地静态资源。</div>';
     } else {
       createApp({
         data() {
           return {
             vueReady: true,
-            status: "正在加载...",
+            status: "正在加载工作台...",
             statusType: "",
             activeMenu: "knowledge",
             projectId: "",
+            project: {},
             projects: [],
             documentDescriptions: {knowledge_bases: [], domains: []},
-            knowledgeJsonText: "",
             sceneTemplates: {templates: []},
             activitySettings: {activities: []},
+            projectFiles: [],
             upload: {knowledge_base: "公司私信知识库", domain: "", section: "", file: null, useAi: true},
-            templateForm: {template_id: "", title: "", purpose: "", applicable_scene: "", tags: [], steps: []},
-            templateTagsText: "",
-            templateStepsText: "",
-            activityForm: {
-              activity_id: "",
-              title: "",
-              activity_type: "活动",
-              applicable_scene: "",
-              description: "",
-              benefit: "",
-              claim_method: "",
-              deadline: "",
-              quota: "",
-              compliance_note: "",
-              tags: [],
-              enabled: true
-            },
-            activityTagsText: "",
-            promptForm: {
-              question: "",
-              video_overview: "",
-              context: "",
-              template_id: "",
-              activity_id: "",
-              use_ai_selector: false
-            },
+            knowledgeLevel: "bases",
+            knowledgeSearch: "",
+            knowledgeType: "",
+            showKnowledgeUpload: false,
+            selectedKnowledgeBaseName: "",
+            selectedKnowledgeDomainName: "",
+            selectedDocKey: "",
+            selectedDocDraft: {},
+            expandedPromptGroups: {},
+            promptGroupVisibleLimits: {},
+            promptMeasureFrame: 0,
+            promptResizeHandler: null,
+            activePromptItem: null,
+            activePromptDraft: {},
+            promptForm: {question: "", video_overview: "", context: "", template_id: "", activity_id: "", use_ai_selector: false},
             promptResult: {prompt_modules: []},
-            activeModuleKey: "final_prompt",
+            promptModalVisible: false,
+            promptBodyOverflowBackup: "",
             dmForm: {
               question: "",
               video_overview: "",
               conversation_stage: "first_comment",
-              template_id: "",
-              activity_id: "",
               session_id: this.uuid(),
               source_platform: "抖音",
               conversion_target: "",
               target_note: ""
             },
             dmAnswer: "",
-            dmMeta: {}
+            dmMeta: {},
+            activeDmPromptKey: "final_prompt",
           };
         },
         computed: {
           menus() {
             return [
-              {key: "knowledge", label: "知识库", desc: "文档上传、AI 描述、标签和总文档描述 JSON 管理。"},
-              {key: "templates", label: "场景模板", desc: "自定义场景标题、适用场景、标签、处理步骤和目的。"},
-              {key: "activities", label: "活动设置", desc: "配置活动、义诊、优惠券、体验名额，并组装进 prompt。"},
-              {key: "prompt", label: "prompt组装还原", desc: "还原用户评论/上下文、场景模板、活动设置、检索知识库和最终 prompt。"},
-              {key: "dm", label: "生成私信", desc: "模拟评论生成首次私信或后续私信维护。"}
+              {key: "knowledge", label: "知识库", icon: "KB", desc: "文件夹式知识库，映射真实路径，支持文件预览和修改。"},
+              {key: "prompts", label: "提示词", icon: "PT", desc: "管理全局、业务、任务、活动提示词，并还原最终组装流程。"},
+              {key: "dm", label: "私信调试", icon: "DM", desc: "用当前配置生成私信，查看简化响应和提示词链路。"},
             ];
           },
           currentMenu() {
             return this.menus.find(item => item.key === this.activeMenu) || this.menus[0];
           },
           knowledgeBaseOptions() {
-            const names = ["公司私信知识库", "招聘知识库"];
-            for (const base of this.documentDescriptions.knowledge_bases || []) {
-              const name = (base && base.name || "").trim();
-              if (name && !names.includes(name)) names.push(name);
+            return this.knowledgeTree.map(item => item.name);
+          },
+          filteredKnowledgeTree() {
+            const query = this.normalizeText(this.knowledgeSearch);
+            return this.knowledgeTree.map(base => {
+              if (this.knowledgeType && base.name !== this.knowledgeType) return null;
+              if (!query) return base;
+              const baseHit = this.normalizeText(base.name).includes(query);
+              const domains = base.domains.map(domain => {
+                const domainHit = this.normalizeText(domain.name).includes(query);
+                const documents = domain.documents.filter(doc => {
+                  const tags = (doc.tags || []).join(" ");
+                  const haystack = [
+                    base.name,
+                    domain.name,
+                    doc.title,
+                    doc.source_file_name,
+                    doc.relative_path,
+                    doc.section,
+                    doc.description,
+                    tags
+                  ].join(" ");
+                  return baseHit || domainHit || this.normalizeText(haystack).includes(query);
+                });
+                return {...domain, documents};
+              }).filter(domain => domain.documents.length);
+              const count = domains.reduce((sum, domain) => sum + domain.documents.length, 0);
+              return count ? {...base, domains, count} : null;
+            }).filter(Boolean);
+          },
+          selectedKnowledgeBase() {
+            if (!this.selectedKnowledgeBaseName) return null;
+            return this.filteredKnowledgeTree.find(base => base.name === this.selectedKnowledgeBaseName)
+              || this.knowledgeTree.find(base => base.name === this.selectedKnowledgeBaseName)
+              || null;
+          },
+          selectedKnowledgeDomain() {
+            if (!this.selectedKnowledgeBase || !this.selectedKnowledgeDomainName) return null;
+            return (this.selectedKnowledgeBase.domains || []).find(domain => domain.name === this.selectedKnowledgeDomainName) || null;
+          },
+          isLocalRuntime() {
+            if (typeof window === "undefined") return false;
+            return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+          },
+          knowledgeStageTitle() {
+            if (this.knowledgeLevel === "editor") return this.selectedDocDraft.title || "文件详情";
+            if (this.knowledgeLevel === "files") return this.selectedKnowledgeDomainName || "文件";
+            if (this.knowledgeLevel === "domains") return this.selectedKnowledgeBaseName || "业务文件夹";
+            return "知识库";
+          },
+          knowledgeStageSub() {
+            if (this.knowledgeLevel === "editor") return "预览和修改文件内容、标签、描述与路径映射。";
+            if (this.knowledgeLevel === "files") {
+              const count = this.selectedKnowledgeDomain ? this.selectedKnowledgeDomain.documents.length : 0;
+              return "当前文件夹包含 " + count + " 个文件，点击文件卡片进入预览和编辑。";
             }
-            return names;
+            if (this.knowledgeLevel === "domains") {
+              const count = this.selectedKnowledgeBase ? this.selectedKnowledgeBase.domains.length : 0;
+              return "当前知识库包含 " + count + " 个业务文件夹，点击文件夹继续下钻。";
+            }
+            return "点击知识库卡片，逐层进入业务文件夹和具体资料文件。";
+          },
+          knowledgeEmpty() {
+            if (this.knowledgeLevel === "bases") return !this.filteredKnowledgeTree.length;
+            if (this.knowledgeLevel === "domains") return !this.selectedKnowledgeBase || !(this.selectedKnowledgeBase.domains || []).length;
+            if (this.knowledgeLevel === "files") return !this.selectedKnowledgeDomain || !(this.selectedKnowledgeDomain.documents || []).length;
+            return false;
           },
           flatDocuments() {
             const docs = [];
-            const bases = (this.documentDescriptions.knowledge_bases && this.documentDescriptions.knowledge_bases.length)
-              ? this.documentDescriptions.knowledge_bases
-              : [{name: "公司私信知识库", domains: this.documentDescriptions.domains || []}];
-            for (const base of bases) {
-              for (const domain of base.domains || []) {
-                for (const section of domain.sections || []) {
-                  for (const doc of section.documents || []) {
-                    doc.knowledge_base = base.name || doc.knowledge_base || "公司私信知识库";
-                    doc.domain = domain.name;
-                    doc.section = section.name;
-                    docs.push(doc);
-                  }
-                }
+            for (const base of this.knowledgeTree) {
+              for (const domain of base.domains) {
+                for (const doc of domain.documents) docs.push(doc);
               }
             }
             return docs;
           },
-          activeModule() {
-            return (this.promptResult.prompt_modules || []).find(item => item.key === this.activeModuleKey)
-              || (this.promptResult.prompt_modules || [])[0]
-              || {};
+          knowledgeTree() {
+            const descriptions = this.documentDescriptions || {};
+            const sourceBases = descriptions.knowledge_bases && descriptions.knowledge_bases.length
+              ? descriptions.knowledge_bases
+              : [{name: "默认知识库", domains: descriptions.domains || []}];
+            return sourceBases.map(base => {
+              const domains = (base.domains || []).map(domain => {
+                const documents = [];
+                for (const section of domain.sections || []) {
+                  for (const rawDoc of section.documents || []) {
+                    const doc = {
+                      ...rawDoc,
+                      knowledge_base: rawDoc.knowledge_base || base.name,
+                      domain: rawDoc.domain || domain.name,
+                      section: rawDoc.section || section.name,
+                    };
+                    documents.push(doc);
+                  }
+                }
+                return {
+                  domain_id: domain.domain_id || "",
+                  name: domain.name || "未分类业务",
+                  description: domain.description || "",
+                  documents,
+                };
+              }).filter(domain => domain.documents.length);
+              const count = domains.reduce((sum, domain) => sum + domain.documents.length, 0);
+              return {
+                kb_id: base.kb_id || "",
+                name: base.name || "默认知识库",
+                description: base.description || "",
+                domains,
+                count,
+              };
+            }).filter(base => base.count);
           },
-          isEditingTemplate() {
-            return !!(this.templateForm && this.templateForm.template_id);
+          materialByPath() {
+            const map = {};
+            for (const file of this.projectFiles || []) {
+              if (file.relative_path) map[file.relative_path] = file;
+            }
+            return map;
           },
-          isEditingActivity() {
-            return !!(this.activityForm && this.activityForm.activity_id);
+          stats() {
+            const businesses = new Set();
+            for (const base of this.knowledgeTree) {
+              for (const domain of base.domains) businesses.add(base.name + "/" + domain.name);
+            }
+            return {
+              knowledgeBases: this.knowledgeTree.length,
+              businesses: businesses.size,
+              documents: this.flatDocuments.length,
+              prompts: this.promptCatalog.reduce((sum, group) => sum + group.items.length, 0),
+            };
+          },
+          promptCatalog() {
+            const files = (this.projectFiles || []).filter(file => file && file.exists !== false);
+            const fileItem = (file, category, tags = []) => ({
+              id: "file:" + file.relative_path,
+              title: file.title || file.relative_path,
+              kind: "file",
+              kindLabel: category,
+              relative_path: file.relative_path,
+              type: file.type,
+              content: file.content || "",
+              tags,
+              location: this.promptLocationFromFile(file),
+              editable: file.editable !== false && file.type !== "project_meta",
+              canEdit: file.editable !== false && file.type !== "project_meta",
+              canDelete: file.type !== "project_meta",
+            });
+            const globalItems = files
+              .filter(file => ["global_prompt", "identity_settings", "project_meta"].includes(file.type))
+              .map(file => fileItem(file, "项目全局", [file.type === "global_prompt" ? "全局提示词" : "配置"]));
+            const businessItems = [
+              ...files.filter(file => file.type === "scene_prompt").map(file => fileItem(file, "业务提示词", ["场景"])),
+              ...(this.sceneTemplates.templates || []).map(tpl => ({
+                id: "template:" + tpl.template_id,
+                title: tpl.title || tpl.template_id,
+                kind: "template",
+                kindLabel: "业务场景模板",
+                content: JSON.stringify(tpl, null, 2),
+                tags: tpl.tags || [],
+                location: this.promptLocationFromTemplate(tpl),
+                editable: true,
+                canEdit: true,
+                canDelete: true,
+                raw: tpl,
+              })),
+            ];
+            const taskItems = [
+              ...files.filter(file => file.type === "scene_materials").map(file => fileItem(file, "任务资料", ["任务上下文"])),
+            ];
+            const activityItems = [
+              ...(this.activitySettings.activities || []).map(act => ({
+                id: "activity:" + act.activity_id,
+                title: act.title || act.activity_id,
+                kind: "activity",
+                kindLabel: "活动提示词",
+                content: JSON.stringify(act, null, 2),
+                tags: ["活动", "资料包", "入口", ...(act.tags || [])],
+                location: this.promptLocationFromActivity(act),
+                editable: true,
+                canEdit: true,
+                canDelete: true,
+                raw: act,
+              })),
+            ];
+            const flowItems = (this.promptResult.prompt_modules || []).map(mod => ({
+              id: "flow:" + mod.key,
+              title: mod.title || mod.key,
+              kind: "flow",
+              kindLabel: "最终提示词组装流程",
+              content: mod.content || "",
+              tags: [mod.key, (mod.chars || 0) + " 字符"],
+              location: this.promptLocationFromFlow(mod),
+              editable: false,
+              canEdit: false,
+              canDelete: false,
+            }));
+            return [
+              {key: "global", title: "全局提示词", desc: "项目级统一人设、合规和输出风格", items: globalItems},
+              {key: "business", title: "业务提示词", desc: "场景模板、业务规则和回复策略", items: businessItems},
+              {key: "task", title: "任务提示词", desc: "任务上下文、资料读取要求和当前生成目标", items: taskItems},
+              {key: "activity", title: "活动提示词", desc: "活动、资料包、入口或行动钩子", items: activityItems},
+              {key: "flow", title: "最终提示词组装流程", desc: "查看每一步如何拼成最终 Prompt", items: flowItems},
+            ].filter(group => group.items.length);
+          },
+          promptFlow() {
+            return [
+              {key: "user_context", title: "用户上下文", desc: "评论、私信、视频概述和人工补充上下文"},
+              {key: "global_prompt", title: "全局提示词", desc: "项目级统一人设、合规和输出风格"},
+              {key: "sender_identity", title: "人员身份", desc: "账号、产品或知识库推导出的发送身份"},
+              {key: "scene_template", title: "业务提示词", desc: "场景模板、业务步骤和转化策略"},
+              {key: "task_prompt", title: "任务提示词", desc: "任务上下文、资料读取要求和当前生成目标"},
+              {key: "activity_settings", title: "活动提示词", desc: "活动、资料包、入口或行动钩子"},
+              {key: "retrieved_knowledge", title: "检索知识", desc: "从知识库文件命中的事实资料"},
+              {key: "final_prompt", title: "最终 Prompt", desc: "按顺序拼装后发送给模型的完整提示词"},
+            ];
           },
           enabledActivities() {
             return (this.activitySettings.activities || []).filter(item => item.enabled !== false);
-          }
+          },
+          dmPrompts() {
+            return this.dmMeta.prompts || [];
+          },
+          activeDmPrompt() {
+            return this.dmPrompts.find(item => item.key === this.activeDmPromptKey) || this.dmPrompts[0] || {};
+          },
+          dmTaskFlow() {
+            return [
+              {
+                key: "capture",
+                title: "接收评论与目标",
+                desc: "读取 question、video_overview、conversation_stage、source_platform、conversion_target 和 target_note，先判断是首次评论承接还是后续私信。",
+                files: ["dmForm.question", "dmForm.video_overview", "dmForm.conversation_stage", "dmForm.source_platform"],
+              },
+              {
+                key: "lookup",
+                title: "定位项目与文件",
+                desc: "先看 project、identity_settings、scene_templates、activity_settings，再从 document_descriptions、manifest 和 knowledge/files 找到具体知识文件。",
+                files: ["project.json", "identity_settings.json", "scene_templates.json", "activity_settings.json", "document_descriptions.json", "manifest.json", "knowledge/files/..."],
+              },
+              {
+                key: "compose",
+                title: "组织提示词",
+                desc: "按 全局提示词 -> 业务提示词 -> 任务提示词 -> 活动提示词 -> 检索知识 -> 最终 Prompt 的顺序拼装。",
+                files: ["global_prompt.md", "scenes/**/prompt.md", "scenes/**/materials.md", "activity_settings.json", "retrieved_knowledge", "final_prompt"],
+              },
+              {
+                key: "generate",
+                title: "调用模型生成",
+                desc: "把当前配置交给 minimax / MiniMax-M3，使用 modelConfigPayload 和会话信息完成一次生成。",
+                files: ["provider=minimax", "model=MiniMax-M3", "/api/chat"],
+              },
+              {
+                key: "inspect",
+                title: "检查调试结果",
+                desc: "回看 input、reply、prompts 和 config，确认每个模块是否都按预期进了最终链路。",
+                files: ["dmMeta.input", "dmMeta.reply", "dmMeta.prompts", "dmMeta.config"],
+              },
+            ];
+          },
         },
         mounted() {
           const saved = this.savedChatConfig();
           this.dmForm.source_platform = saved.sourcePlatform || "抖音";
           this.dmForm.conversion_target = saved.conversionTarget || "";
           this.dmForm.target_note = saved.targetNote || "";
+          this.promptResizeHandler = () => this.schedulePromptLayoutMeasure();
+          window.addEventListener("resize", this.promptResizeHandler, {passive: true});
           this.loadState();
+          this.schedulePromptLayoutMeasure();
+        },
+        updated() {
+          this.schedulePromptLayoutMeasure();
+        },
+        beforeUnmount() {
+          if (this.promptResizeHandler) {
+            window.removeEventListener("resize", this.promptResizeHandler);
+            this.promptResizeHandler = null;
+          }
+          if (this.promptModalVisible && typeof document !== "undefined") {
+            document.body.style.overflow = this.promptBodyOverflowBackup || "";
+          }
+          if (this.promptMeasureFrame) {
+            window.cancelAnimationFrame(this.promptMeasureFrame);
+            this.promptMeasureFrame = 0;
+          }
         },
         methods: {
           uuid() {
             if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID().replaceAll("-", "");
             return Date.now().toString(16) + Math.random().toString(16).slice(2);
+          },
+          docKey(doc) {
+            return doc.doc_id || doc.relative_path || doc.title || "";
+          },
+          normalizeText(value) {
+            return String(value || "").trim().toLowerCase();
+          },
+          stripFileExtension(value) {
+            return String(value || "").replace(/\.[^.\\/]+$/, "");
+          },
+          promptLocationFromFile(file) {
+            const relative = String(file && file.relative_path || "").replace(/\\/g, "/").replace(/^\/+/, "");
+            if (!relative) return file && file.kindLabel ? file.kindLabel : "未命名位置";
+            const friendlyMap = {
+              "global_prompt.md": "项目配置 > 全局提示词",
+              "identity_settings.json": "项目配置 > 人员身份",
+              "project.json": "项目配置 > 项目信息",
+            };
+            if (friendlyMap[relative]) return friendlyMap[relative];
+            const parts = relative.split("/").filter(Boolean);
+            if (!parts.length) return file && file.kindLabel ? file.kindLabel : relative;
+            if (parts[0] === "knowledge" && parts[1] === "files") {
+              return parts.slice(2).map((part, index, list) => index === list.length - 1 ? this.stripFileExtension(part) : part).join(" > ");
+            }
+            if (parts[0] === "knowledge") {
+              return ["知识库索引", this.stripFileExtension(parts[1] || parts[0])].filter(Boolean).join(" > ");
+            }
+            if (parts[0] === "scenes" && parts.length >= 3) {
+              const sceneId = parts[1];
+              const scene = (this.sceneTemplates.templates || []).find(item => item.template_id === sceneId);
+              const sceneName = scene && scene.title ? scene.title : sceneId;
+              const tail = parts.slice(2).map((part, index, list) => index === list.length - 1 ? this.stripFileExtension(part) : part);
+              return ["场景模板", sceneName, ...tail].filter(Boolean).join(" > ");
+            }
+            return parts.map((part, index, list) => index === list.length - 1 ? this.stripFileExtension(part) : part).join(" > ");
+          },
+          promptLocationFromTemplate(template) {
+            if (!template) return "业务提示词";
+            return ["场景模板", template.title || template.template_id || "未命名模板"].filter(Boolean).join(" > ");
+          },
+          promptLocationFromActivity(activity) {
+            if (!activity) return "活动提示词";
+            return ["活动设置", activity.title || activity.activity_id || "未命名活动"].filter(Boolean).join(" > ");
+          },
+          promptLocationFromFlow(module) {
+            const keyMap = {
+              user_context: "调试输入 > 用户上下文",
+              global_prompt: "项目配置 > 全局提示词",
+              sender_identity: "项目配置 > 人员身份",
+              scene_template: "业务提示词 > 场景模板",
+              task_prompt: "任务提示词 > 任务模块",
+              activity_settings: "活动提示词 > 活动模块",
+              retrieved_knowledge: "知识库检索 > 命中文档",
+              final_prompt: "最终输出 > 最终 Prompt",
+            };
+            return keyMap[module && module.key] || ["最终提示词组装流程", module && module.title ? module.title : module && module.key ? module.key : "模块"].join(" > ");
+          },
+          promptItemLocation(item) {
+            if (!item) return "";
+            return item.location || item.relative_path || item.kindLabel || "";
+          },
+          isPromptGroupExpanded(key) {
+            return !!this.expandedPromptGroups[key];
+          },
+          promptVisibleLimit(key) {
+            const limit = Number(this.promptGroupVisibleLimits[key]);
+            return Number.isFinite(limit) && limit > 0 ? limit : 4;
+          },
+          visiblePromptItems(group) {
+            const items = group && Array.isArray(group.items) ? group.items : [];
+            if (this.isPromptGroupExpanded(group.key)) return items;
+            return items.slice(0, this.promptVisibleLimit(group.key));
+          },
+          promptHiddenCount(group) {
+            const items = group && Array.isArray(group.items) ? group.items : [];
+            const limit = this.promptVisibleLimit(group.key);
+            if (this.isPromptGroupExpanded(group.key)) return items.length > limit ? items.length - limit : 0;
+            return Math.max(0, items.length - limit);
+          },
+          togglePromptGroup(key) {
+            this.expandedPromptGroups = {
+              ...this.expandedPromptGroups,
+              [key]: !this.expandedPromptGroups[key],
+            };
+            this.$nextTick(() => this.schedulePromptLayoutMeasure());
+          },
+          schedulePromptLayoutMeasure() {
+            if (this.promptMeasureFrame || typeof window === "undefined") return;
+            this.promptMeasureFrame = window.requestAnimationFrame(() => {
+              this.promptMeasureFrame = 0;
+              this.measurePromptRows();
+            });
+          },
+          measurePromptRows() {
+            if (this.activeMenu !== "prompts") return;
+            const rows = document.querySelectorAll(".prompt-row[data-prompt-group]");
+            if (!rows || !rows.length) return;
+            const nextLimits = {};
+            rows.forEach(row => {
+              const key = row.getAttribute("data-prompt-group");
+              if (!key) return;
+              const group = (this.promptCatalog || []).find(item => item.key === key);
+              const items = group && Array.isArray(group.items) ? group.items : [];
+              if (!items.length) return;
+              const style = window.getComputedStyle(row);
+              const paddingLeft = parseFloat(style.paddingLeft) || 0;
+              const paddingRight = parseFloat(style.paddingRight) || 0;
+              const gap = parseFloat(style.columnGap || style.gap) || 10;
+              const contentWidth = Math.max(0, row.clientWidth - paddingLeft - paddingRight);
+              const sampleCard = row.querySelector(".prompt-card:not(.prompt-more-card)");
+              const sampleMore = row.querySelector(".prompt-more-card");
+              const cardWidth = sampleCard ? Math.ceil(sampleCard.getBoundingClientRect().width) : (parseFloat(style.getPropertyValue("--prompt-card-width")) || 210);
+              const moreWidth = sampleMore ? Math.ceil(sampleMore.getBoundingClientRect().width) : (parseFloat(style.getPropertyValue("--prompt-more-width")) || 128);
+              const limit = Math.max(1, Math.floor((contentWidth - moreWidth) / (cardWidth + gap)));
+              nextLimits[key] = Math.min(items.length, limit);
+            });
+            const current = this.promptGroupVisibleLimits || {};
+            const changed = Object.keys(nextLimits).some(key => nextLimits[key] !== current[key])
+              || Object.keys(current).some(key => !(key in nextLimits));
+            if (changed) {
+              this.promptGroupVisibleLimits = nextLimits;
+            }
+          },
+          knowledgeBaseDescription(base) {
+            if (base.description) return base.description;
+            const domains = (base.domains || []).map(domain => domain.name).filter(Boolean);
+            const firstDoc = (base.domains || []).flatMap(domain => domain.documents || []).find(doc => doc.description || doc.summary);
+            if (firstDoc) return firstDoc.description || firstDoc.summary;
+            if (domains.length) return "包含 " + domains.slice(0, 3).join("、") + " 等业务资料，可继续进入文件预览与编辑。";
+            return "暂无描述，上传资料后会自动形成业务目录和标签。";
+          },
+          knowledgeBaseTags(base) {
+            const tags = [];
+            for (const domain of base.domains || []) {
+              if (domain.name) tags.push(domain.name);
+              for (const doc of domain.documents || []) {
+                for (const tag of doc.tags || []) tags.push(tag);
+              }
+            }
+            return Array.from(new Set(tags.filter(Boolean))).slice(0, 4);
+          },
+          domainDescription(domain) {
+            if (domain.description) return domain.description;
+            const firstDoc = (domain.documents || []).find(doc => doc.description || doc.summary);
+            if (firstDoc) return firstDoc.description || firstDoc.summary;
+            return "包含 " + ((domain.documents || []).length) + " 个资料文件，点击进入查看文件卡片。";
+          },
+          domainTags(domain) {
+            const tags = [];
+            for (const doc of domain.documents || []) {
+              for (const tag of doc.tags || []) tags.push(tag);
+              if (doc.section) tags.push(doc.section);
+            }
+            return Array.from(new Set(tags.filter(Boolean))).slice(0, 4);
+          },
+          safePathSegment(value, fallback = "默认") {
+            const clean = String(value || "").trim().replace(/[\\/:*?"<>|\r\n\t]+/g, "_").replace(/^[ ._]+|[ ._]+$/g, "");
+            return (clean || fallback).slice(0, 60);
+          },
+          knowledgeBaseFolderPath(base) {
+            return "knowledge/files/" + this.safePathSegment(base && base.name || "", "默认知识库");
+          },
+          knowledgeDomainFolderPath(domain) {
+            return this.knowledgeBaseFolderPath({name: this.selectedKnowledgeBaseName}) + "/" + this.safePathSegment(domain && domain.name || "", "默认领域");
+          },
+          openKnowledgeBase(base) {
+            if (!base) return;
+            this.selectedKnowledgeBaseName = base.name;
+            this.selectedKnowledgeDomainName = "";
+            this.selectedDocKey = "";
+            this.selectedDocDraft = {};
+            this.knowledgeLevel = "domains";
+            this.upload.knowledge_base = base.name;
+          },
+          openKnowledgeDomain(domain) {
+            if (!domain) return;
+            this.selectedKnowledgeDomainName = domain.name;
+            this.selectedDocKey = "";
+            this.selectedDocDraft = {};
+            this.knowledgeLevel = "files";
+            this.upload.domain = domain.name;
+          },
+          async renameKnowledgeBase(base) {
+            if (!base || !base.name) return;
+            const nextName = window.prompt("修改知识库名称", base.name);
+            if (nextName == null) return;
+            const cleanName = nextName.trim();
+            if (!cleanName || cleanName === base.name) return;
+            try {
+              const data = await this.fetchJson("/api/admin/knowledge/base/update", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                  project_id: this.projectId,
+                  old_name: base.name,
+                  new_name: cleanName,
+                  description: base.description || this.knowledgeBaseDescription(base)
+                })
+              });
+              this.documentDescriptions = data.document_descriptions || this.documentDescriptions;
+              this.selectedKnowledgeBaseName = cleanName;
+              this.upload.knowledge_base = cleanName;
+              await this.loadProjectMaterials();
+              this.setStatus("知识库已修改：" + cleanName, "ok");
+            } catch (error) {
+              this.setStatus(error.message || "修改知识库失败", "error");
+            }
+          },
+          async renameKnowledgeDomain(domain) {
+            if (!domain || !domain.name || !this.selectedKnowledgeBaseName) return;
+            const nextName = window.prompt("修改业务文件夹名称", domain.name);
+            if (nextName == null) return;
+            const cleanName = nextName.trim();
+            if (!cleanName || cleanName === domain.name) return;
+            try {
+              const data = await this.fetchJson("/api/admin/knowledge/domain/update", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                  project_id: this.projectId,
+                  knowledge_base: this.selectedKnowledgeBaseName,
+                  old_name: domain.name,
+                  new_name: cleanName,
+                  description: this.domainDescription(domain)
+                })
+              });
+              this.documentDescriptions = data.document_descriptions || this.documentDescriptions;
+              this.selectedKnowledgeDomainName = cleanName;
+              this.upload.domain = cleanName;
+              await this.loadProjectMaterials();
+              this.setStatus("业务文件夹已修改：" + cleanName, "ok");
+            } catch (error) {
+              this.setStatus(error.message || "修改业务文件夹失败", "error");
+            }
+          },
+          async deleteKnowledgeBase(base) {
+            if (!base || !base.name) return;
+            const count = base.count || 0;
+            if (!window.confirm("确定删除知识库“" + base.name + "”吗？这会删除下面 " + count + " 个文件、索引记录和本地文件夹。")) return;
+            try {
+              const data = await this.fetchJson("/api/admin/knowledge/base/delete", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({project_id: this.projectId, name: base.name})
+              });
+              this.documentDescriptions = data.document_descriptions || this.documentDescriptions;
+              await this.loadProjectMaterials();
+              this.selectedKnowledgeBaseName = "";
+              this.selectedKnowledgeDomainName = "";
+              this.selectedDocKey = "";
+              this.selectedDocDraft = {};
+              this.knowledgeLevel = "bases";
+              this.setStatus("知识库已删除：" + base.name, "ok");
+            } catch (error) {
+              this.setStatus(error.message || "删除知识库失败", "error");
+            }
+          },
+          async deleteKnowledgeDomain(domain) {
+            if (!domain || !domain.name || !this.selectedKnowledgeBaseName) return;
+            const count = (domain.documents || []).length;
+            if (!window.confirm("确定删除业务文件夹“" + domain.name + "”吗？这会删除下面 " + count + " 个文件、索引记录和本地文件夹。")) return;
+            try {
+              const data = await this.fetchJson("/api/admin/knowledge/domain/delete", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({project_id: this.projectId, knowledge_base: this.selectedKnowledgeBaseName, name: domain.name})
+              });
+              this.documentDescriptions = data.document_descriptions || this.documentDescriptions;
+              await this.loadProjectMaterials();
+              this.selectedKnowledgeDomainName = "";
+              this.selectedDocKey = "";
+              this.selectedDocDraft = {};
+              this.knowledgeLevel = "domains";
+              this.setStatus("业务文件夹已删除：" + domain.name, "ok");
+            } catch (error) {
+              this.setStatus(error.message || "删除业务文件夹失败", "error");
+            }
+          },
+          async openKnowledgeBaseFolder(base) {
+            await this.openKnowledgeFolder(this.knowledgeBaseFolderPath(base), "知识库文件夹");
+          },
+          async openKnowledgeDomainFolder(domain) {
+            await this.openKnowledgeFolder(this.knowledgeDomainFolderPath(domain), "业务文件夹");
+          },
+          async openKnowledgeFolder(relativePath, label = "本地文件夹") {
+            if (!this.isLocalRuntime) {
+              this.setStatus("仅本地启动时支持打开本地文件夹", "error");
+              return;
+            }
+            if (!relativePath) {
+              this.setStatus("该文件夹没有记录路径", "error");
+              return;
+            }
+            try {
+              const data = await this.fetchJson("/api/admin/open-file-location", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({project_id: this.projectId, relative_path: relativePath, type: "folder"})
+              });
+              this.setStatus("已打开" + label + "：" + (data.relative_path || relativePath), "ok");
+            } catch (error) {
+              this.setStatus(error.message || "打开本地文件夹失败", "error");
+            }
+          },
+          openKnowledgeFile(doc) {
+            if (!doc) return;
+            this.selectDoc(doc);
+            this.knowledgeLevel = "editor";
+          },
+          goKnowledgeLevel(level) {
+            this.knowledgeLevel = level;
+            if (level === "bases") {
+              this.selectedKnowledgeBaseName = "";
+              this.selectedKnowledgeDomainName = "";
+              this.selectedDocKey = "";
+              this.selectedDocDraft = {};
+            } else if (level === "domains") {
+              this.selectedKnowledgeDomainName = "";
+              this.selectedDocKey = "";
+              this.selectedDocDraft = {};
+            } else if (level === "files") {
+              this.selectedDocKey = "";
+              this.selectedDocDraft = {};
+            }
+          },
+          toggleKnowledgeUpload() {
+            this.showKnowledgeUpload = !this.showKnowledgeUpload;
+            this.$nextTick(() => {
+              const input = document.getElementById("knowledge-upload-name");
+              if (input) input.focus();
+            });
           },
           setStatus(text, type = "") {
             this.status = text || "";
@@ -930,27 +2409,51 @@
           async fetchJson(url, options = {}) {
             const response = await fetch(url, options);
             const body = await response.json().catch(() => ({}));
-            if (!response.ok || !body.ok) throw new Error(body.error || response.statusText || "请求失败");
+            if (!response.ok || body.code !== 0) throw new Error(body.msg || response.statusText || "请求失败");
             return body.data || {};
           },
-          async loadState() {
-            this.setStatus("正在读取后台数据...");
+          async copyText(text, successText = "已复制") {
+            if (!text) {
+              this.setStatus("没有可复制内容", "error");
+              return;
+            }
             try {
-              const url = "/api/admin/state" + (this.projectId ? "?project_id=" + encodeURIComponent(this.projectId) : "");
-              const data = await this.fetchJson(url);
-              this.projects = data.projects || [];
-              this.projectId = data.project && data.project.project_id || this.projectId || (this.projects[0] && this.projects[0].project_id) || "";
-              this.documentDescriptions = data.document_descriptions || {knowledge_bases: [], domains: []};
-              this.sceneTemplates = data.scene_templates || {templates: []};
-              this.activitySettings = data.activity_settings || {activities: []};
-              this.reloadDescriptionText();
-              this.setStatus("已加载：" + ((data.project && data.project.name) || this.projectId), "ok");
+              await navigator.clipboard.writeText(text);
+              this.setStatus(successText, "ok");
+            } catch (_) {
+              this.setStatus("复制失败，请手动选择文本", "error");
+            }
+          },
+          async loadState() {
+            this.setStatus("正在读取项目数据...");
+            try {
+              const stateUrl = "/api/admin/state" + (this.projectId ? "?project_id=" + encodeURIComponent(this.projectId) : "");
+              const state = await this.fetchJson(stateUrl);
+              this.projects = state.projects || [];
+              this.project = state.project || {};
+              this.projectId = this.project.project_id || this.projectId || (this.projects[0] && this.projects[0].project_id) || "";
+              this.documentDescriptions = state.document_descriptions || {knowledge_bases: [], domains: []};
+              this.sceneTemplates = state.scene_templates || {templates: []};
+              this.activitySettings = state.activity_settings || {activities: []};
+              await this.loadProjectMaterials();
+              this.ensureInitialSelections();
+              this.setStatus("已加载：" + ((this.project && this.project.name) || this.projectId), "ok");
             } catch (error) {
               this.setStatus(error.message || "加载失败", "error");
             }
           },
-          reloadDescriptionText() {
-            this.knowledgeJsonText = JSON.stringify(this.documentDescriptions, null, 2);
+          async loadProjectMaterials() {
+            const url = "/api/project-materials" + (this.projectId ? "?project_id=" + encodeURIComponent(this.projectId) : "");
+            const data = await this.fetchJson(url);
+            this.projectFiles = data.files || [];
+          },
+          async reloadAll() {
+            await this.loadState();
+          },
+          ensureInitialSelections() {
+            if (!this.activePromptItem && this.promptCatalog.length && this.promptCatalog[0].items.length) {
+              this.selectPromptItem(this.promptCatalog[0].items[0]);
+            }
           },
           onUploadFile(event) {
             this.upload.file = event.target.files && event.target.files[0] || null;
@@ -970,41 +2473,92 @@
               const conf = this.modelConfigPayload();
               Object.entries(conf).forEach(([key, value]) => form.append(key, value == null ? "" : String(value)));
             }
-            this.setStatus("正在上传并生成文档描述...");
+            this.setStatus("正在上传并生成资料描述...");
             try {
               const data = await this.fetchJson("/api/admin/knowledge/upload", {method: "POST", body: form});
               this.documentDescriptions = data.document_descriptions || this.documentDescriptions;
-              this.reloadDescriptionText();
+              await this.loadProjectMaterials();
+              if (data.document) {
+                this.selectDoc(data.document);
+                this.knowledgeLevel = "editor";
+                this.showKnowledgeUpload = false;
+              }
               this.setStatus("已上传：" + (data.document && data.document.title || this.upload.file.name), "ok");
             } catch (error) {
               this.setStatus(error.message || "上传失败", "error");
             }
           },
-          async saveKnowledgeJson() {
+          selectDoc(doc) {
+            const path = String(doc.relative_path || "").replace(/\\/g, "/");
+            const file = this.materialByPath[path] || {};
+            this.selectedDocKey = this.docKey(doc);
+            this.selectedKnowledgeBaseName = doc.knowledge_base || this.selectedKnowledgeBaseName;
+            this.selectedKnowledgeDomainName = doc.domain || this.selectedKnowledgeDomainName;
+            this.selectedDocDraft = {
+              ...doc,
+              relative_path: path,
+              content: file.content || "",
+              tagsText: (doc.tags || []).join(", "),
+            };
+          },
+          updateDocMetaInDescriptions(doc) {
+            const targetKey = this.docKey(doc);
+            const tags = String(doc.tagsText || "").split(/[,，、]/).map(item => item.trim()).filter(Boolean);
+            for (const base of this.documentDescriptions.knowledge_bases || []) {
+              for (const domain of base.domains || []) {
+                for (const section of domain.sections || []) {
+                  for (const item of section.documents || []) {
+                    const itemKey = this.docKey(item);
+                    if (itemKey && itemKey === targetKey) {
+                      item.title = doc.title;
+                      item.description = doc.description;
+                      item.summary = doc.summary || doc.description;
+                      item.sender_identity = doc.sender_identity;
+                      item.tags = tags;
+                      item.updated_at = new Date().toISOString();
+                      return;
+                    }
+                  }
+                }
+              }
+            }
+          },
+          async saveSelectedDoc() {
+            if (!this.selectedDocDraft.relative_path) return;
+            this.setStatus("正在保存知识库文件...");
             try {
-              const parsed = JSON.parse(this.knowledgeJsonText);
-              const data = await this.fetchJson("/api/admin/knowledge/save", {
+              await this.fetchJson("/api/project-materials/save", {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({project_id: this.projectId, document_descriptions: parsed})
+                body: JSON.stringify({
+                  project_id: this.projectId,
+                  relative_path: this.selectedDocDraft.relative_path,
+                  content: this.selectedDocDraft.content || "",
+                })
               });
-              this.documentDescriptions = data.document_descriptions;
-              this.reloadDescriptionText();
-              this.setStatus("文档描述 JSON 已保存", "ok");
+              this.updateDocMetaInDescriptions(this.selectedDocDraft);
+              const saved = await this.fetchJson("/api/admin/knowledge/save", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({project_id: this.projectId, document_descriptions: this.documentDescriptions})
+              });
+              this.documentDescriptions = saved.document_descriptions || this.documentDescriptions;
+              await this.loadProjectMaterials();
+              this.selectDoc(this.selectedDocDraft);
+              this.setStatus("知识库文件已保存", "ok");
             } catch (error) {
-              this.setStatus(error.message || "JSON 保存失败", "error");
+              this.setStatus(error.message || "保存失败", "error");
             }
-          },
-          async saveKnowledgeDescriptionsFromForm() {
-            this.knowledgeJsonText = JSON.stringify(this.documentDescriptions, null, 2);
-            await this.saveKnowledgeJson();
           },
           async openFileLocation(doc) {
-            if (!doc || !doc.relative_path) {
-              this.setStatus("该文档没有记录文件位置", "error");
+            if (!this.isLocalRuntime) {
+              this.setStatus("仅本地启动时支持打开本地文件", "error");
               return;
             }
-            this.setStatus("正在打开文件位置...");
+            if (!doc || !doc.relative_path) {
+              this.setStatus("该文件没有记录路径", "error");
+              return;
+            }
             try {
               const data = await this.fetchJson("/api/admin/open-file-location", {
                 method: "POST",
@@ -1018,169 +2572,172 @@
           },
           async deleteKnowledgeDocument(doc) {
             if (!doc || (!doc.doc_id && !doc.relative_path)) {
-              this.setStatus("该文档缺少删除标识", "error");
+              this.setStatus("文件缺少删除标识", "error");
               return;
             }
             const name = doc.title || doc.relative_path || doc.doc_id;
-            if (!window.confirm("确定删除“" + name + "”吗？这会删除文件、文档描述和知识库索引记录。")) {
-              return;
-            }
-            this.setStatus("正在删除文件...");
+            if (!window.confirm("确定删除“" + name + "”吗？这会删除文件、描述和知识库索引记录。")) return;
             try {
               const data = await this.fetchJson("/api/admin/knowledge/delete", {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({
-                  project_id: this.projectId,
-                  doc_id: doc.doc_id || "",
-                  relative_path: doc.relative_path || ""
-                })
+                body: JSON.stringify({project_id: this.projectId, doc_id: doc.doc_id || "", relative_path: doc.relative_path || ""})
               });
               this.documentDescriptions = data.document_descriptions || this.documentDescriptions;
-              this.reloadDescriptionText();
+              await this.loadProjectMaterials();
+              this.selectedDocKey = "";
+              this.selectedDocDraft = {};
+              this.knowledgeLevel = this.selectedKnowledgeDomainName ? "files" : (this.selectedKnowledgeBaseName ? "domains" : "bases");
               this.setStatus("已删除：" + name, "ok");
-            } catch (error) {
-              this.setStatus(error.message || "删除文件失败", "error");
-            }
-          },
-          newTemplate() {
-            this.templateForm = {template_id: "", title: "", purpose: "", applicable_scene: "", tags: [], steps: []};
-            this.templateTagsText = "";
-            this.templateStepsText = "";
-          },
-          returnTemplateList() {
-            this.newTemplate();
-            this.setStatus("已返回模板列表", "ok");
-          },
-          editTemplate(tpl) {
-            this.templateForm = JSON.parse(JSON.stringify(tpl));
-            this.templateTagsText = (tpl.tags || []).join(", ");
-            this.templateStepsText = (tpl.steps || []).join("\n");
-            this.setStatus("正在编辑：" + (tpl.title || "未命名模板"));
-          },
-          templatePayload() {
-            return {
-              ...this.templateForm,
-              tags: this.templateTagsText.split(/[,，]/).map(item => item.trim()).filter(Boolean),
-              steps: this.templateStepsText.split(/\n+/).map(item => item.trim()).filter(Boolean)
-            };
-          },
-          async generateTemplate() {
-            if (!this.templateForm.purpose.trim()) {
-              this.setStatus("请先输入目的", "error");
-              return;
-            }
-            this.setStatus("正在生成场景模板...");
-            try {
-              const data = await this.fetchJson("/api/admin/scene-template/generate", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({purpose: this.templateForm.purpose, use_ai_selector: true, ...this.modelConfigPayload()})
-              });
-              this.editTemplate(data.template);
-              this.setStatus("模板已生成，可人工修改后保存", "ok");
-            } catch (error) {
-              this.setStatus(error.message || "模板生成失败", "error");
-            }
-          },
-          async saveTemplate() {
-            const template = this.templatePayload();
-            try {
-              const data = await this.fetchJson("/api/admin/scene-template/save", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({project_id: this.projectId, template})
-              });
-              this.sceneTemplates = data.scene_templates;
-              this.editTemplate(data.template);
-              this.setStatus("场景模板已保存", "ok");
-            } catch (error) {
-              this.setStatus(error.message || "保存失败", "error");
-            }
-          },
-          async deleteTemplate(tpl) {
-            try {
-              const data = await this.fetchJson("/api/admin/scene-template/delete", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({project_id: this.projectId, template_id: tpl.template_id})
-              });
-              this.sceneTemplates = data.scene_templates;
-              this.newTemplate();
-              this.setStatus("场景模板已删除", "ok");
             } catch (error) {
               this.setStatus(error.message || "删除失败", "error");
             }
           },
-          newActivity() {
-            this.activityForm = {
-              activity_id: "",
-              title: "",
-              activity_type: "活动",
-              applicable_scene: "",
-              description: "",
-              benefit: "",
-              claim_method: "",
-              deadline: "",
-              quota: "",
-              compliance_note: "",
-              tags: [],
-              enabled: true
-            };
-            this.activityTagsText = "";
+          selectPromptItem(item) {
+            this.activePromptItem = item;
+            this.activePromptDraft = {...item, content: item.content || ""};
           },
-          editActivity(act) {
-            this.activityForm = JSON.parse(JSON.stringify(act));
-            if (this.activityForm.enabled === undefined) this.activityForm.enabled = true;
-            this.activityTagsText = (act.tags || []).join(", ");
-            this.setStatus("正在编辑活动：" + (act.title || "未命名活动"));
+          findPromptItemById(itemId) {
+            if (!itemId) return null;
+            for (const group of this.promptCatalog || []) {
+              const match = (group.items || []).find(item => item.id === itemId);
+              if (match) return match;
+            }
+            return null;
           },
-          activityPayload() {
-            return {
-              ...this.activityForm,
-              tags: this.activityTagsText.split(/[,，]/).map(item => item.trim()).filter(Boolean)
-            };
+          openPromptPopup(item) {
+            if (!item) return;
+            this.selectPromptItem(item);
+            if (typeof document !== "undefined" && !this.promptModalVisible) {
+              this.promptBodyOverflowBackup = document.body.style.overflow || "";
+              document.body.style.overflow = "hidden";
+            }
+            this.promptModalVisible = true;
+            this.$nextTick(() => {
+              const editor = document.querySelector(".prompt-modal .prompt-modal-editor");
+              if (editor && editor.focus) editor.focus();
+            });
           },
-          async saveActivity() {
-            const activity = this.activityPayload();
-            if (!activity.title.trim()) {
-              this.setStatus("请填写活动名称", "error");
+          closePromptPopup() {
+            this.promptModalVisible = false;
+            if (typeof document !== "undefined") {
+              document.body.style.overflow = this.promptBodyOverflowBackup || "";
+            }
+            this.promptBodyOverflowBackup = "";
+          },
+          async editPromptItem(item) {
+            this.openPromptPopup(item);
+          },
+          async deletePromptItem(item) {
+            if (!item || !this.promptItemLocation(item)) {
+              this.setStatus("请选择一个可删除的提示词项", "error");
               return;
             }
+            if (item.canDelete === false) {
+              this.setStatus("该项是只读结果，不能删除", "error");
+              return;
+            }
+            const name = item.title || item.id || "未命名项";
+            const location = this.promptItemLocation(item);
+            if (!window.confirm("确定删除“" + name + "”吗？\n位置：" + location)) return;
             try {
-              const data = await this.fetchJson("/api/admin/activity/save", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({project_id: this.projectId, activity})
-              });
-              this.activitySettings = data.activity_settings || {activities: []};
-              this.editActivity(data.activity);
-              this.setStatus("活动设置已保存", "ok");
+              this.setStatus("正在删除提示词资产...");
+              if (item.kind === "file") {
+                await this.fetchJson("/api/project-materials/delete", {
+                  method: "POST",
+                  headers: {"Content-Type": "application/json"},
+                  body: JSON.stringify({
+                    project_id: this.projectId,
+                    relative_path: item.relative_path,
+                  })
+                });
+                await this.loadProjectMaterials();
+              } else if (item.kind === "template") {
+                const data = await this.fetchJson("/api/admin/scene-template/delete", {
+                  method: "POST",
+                  headers: {"Content-Type": "application/json"},
+                  body: JSON.stringify({
+                    project_id: this.projectId,
+                    template_id: item.raw && item.raw.template_id || item.id.replace(/^template:/, ""),
+                  })
+                });
+                this.sceneTemplates = data.scene_templates || this.sceneTemplates;
+              } else if (item.kind === "activity") {
+                const data = await this.fetchJson("/api/admin/activity/delete", {
+                  method: "POST",
+                  headers: {"Content-Type": "application/json"},
+                  body: JSON.stringify({
+                    project_id: this.projectId,
+                    activity_id: item.raw && item.raw.activity_id || item.id.replace(/^activity:/, ""),
+                  })
+                });
+                this.activitySettings = data.activity_settings || this.activitySettings;
+              } else {
+                this.setStatus("该项不是可删除的提示词资产", "error");
+                return;
+              }
+              this.promptResult = {prompt_modules: []};
+              this.activePromptItem = null;
+              this.activePromptDraft = {};
+              this.closePromptPopup();
+              this.setStatus("提示词已删除：" + name, "ok");
             } catch (error) {
-              this.setStatus(error.message || "活动保存失败", "error");
+              this.setStatus(error.message || "删除失败", "error");
             }
           },
-          async deleteActivity(act) {
-            if (!window.confirm("确定删除活动“" + (act.title || act.activity_id) + "”吗？")) return;
+          async savePromptItem() {
+            if (!this.activePromptItem || !this.activePromptItem.editable) return;
+            this.setStatus("正在保存提示词资产...");
             try {
-              const data = await this.fetchJson("/api/admin/activity/delete", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({project_id: this.projectId, activity_id: act.activity_id})
-              });
-              this.activitySettings = data.activity_settings || {activities: []};
-              this.newActivity();
-              this.setStatus("活动设置已删除", "ok");
+              const activeId = this.activePromptItem.id;
+              if (this.activePromptItem.kind === "file") {
+                await this.fetchJson("/api/project-materials/save", {
+                  method: "POST",
+                  headers: {"Content-Type": "application/json"},
+                  body: JSON.stringify({
+                    project_id: this.projectId,
+                    relative_path: this.activePromptItem.relative_path,
+                    content: this.activePromptDraft.content || "",
+                  })
+                });
+                await this.loadProjectMaterials();
+              } else if (this.activePromptItem.kind === "template") {
+                const template = JSON.parse(this.activePromptDraft.content || "{}");
+                const data = await this.fetchJson("/api/admin/scene-template/save", {
+                  method: "POST",
+                  headers: {"Content-Type": "application/json"},
+                  body: JSON.stringify({project_id: this.projectId, template})
+                });
+                this.sceneTemplates = data.scene_templates || this.sceneTemplates;
+              } else if (this.activePromptItem.kind === "activity") {
+                const activity = JSON.parse(this.activePromptDraft.content || "{}");
+                const data = await this.fetchJson("/api/admin/activity/save", {
+                  method: "POST",
+                  headers: {"Content-Type": "application/json"},
+                  body: JSON.stringify({project_id: this.projectId, activity})
+                });
+                this.activitySettings = data.activity_settings || this.activitySettings;
+              }
+              this.promptResult = {prompt_modules: []};
+              const refreshed = this.findPromptItemById(activeId);
+              if (refreshed) {
+                this.selectPromptItem(refreshed);
+              } else {
+                this.activePromptItem = null;
+                this.activePromptDraft = {};
+                this.closePromptPopup();
+              }
+              this.setStatus("提示词资产已保存", "ok");
             } catch (error) {
-              this.setStatus(error.message || "活动删除失败", "error");
+              this.setStatus(error.message || "保存失败，请检查 JSON 格式", "error");
             }
           },
           async restorePrompt() {
             if (!this.promptForm.question.trim()) {
-              this.setStatus("请输入用户评论", "error");
+              this.setStatus("请输入用户评论后再还原 Prompt", "error");
               return;
             }
-            this.setStatus("正在还原 prompt 组装...");
+            this.setStatus("正在还原最终 Prompt...");
             try {
               const data = await this.fetchJson("/api/admin/prompt/restore", {
                 method: "POST",
@@ -1197,8 +2754,9 @@
                 })
               });
               this.promptResult = data;
-              this.activeModuleKey = "final_prompt";
-              this.setStatus("prompt 组装已还原", "ok");
+              const finalItem = (this.promptCatalog.find(group => group.key === "flow") || {items: []}).items.find(item => item.id === "flow:final_prompt");
+              if (finalItem) this.selectPromptItem(finalItem);
+              this.setStatus("最终 Prompt 已还原", "ok");
             } catch (error) {
               this.setStatus(error.message || "还原失败", "error");
             }
@@ -1220,18 +2778,19 @@
                   project_id: this.projectId,
                   session_id: this.dmForm.session_id || this.uuid(),
                   conversation_stage: this.dmForm.conversation_stage,
-                  template_id: this.dmForm.template_id,
-                  activity_id: this.dmForm.activity_id,
                   source_platform: this.dmForm.source_platform,
                   conversion_target: this.dmForm.conversion_target,
                   target_note: this.dmForm.target_note
                 })
               });
-              this.dmAnswer = data.result && data.result.answer || "";
+              this.dmAnswer = data.reply || "";
               this.dmMeta = data;
+              this.activeDmPromptKey = (data.prompts || []).some(item => item.key === "final_prompt")
+                ? "final_prompt"
+                : ((data.prompts || [])[0] && (data.prompts || [])[0].key) || "final_prompt";
               this.setStatus("私信已生成", "ok");
             } catch (error) {
-              this.setStatus(error.message || "生成失败，请先检查模型配置", "error");
+              this.setStatus(error.message || "生成失败，请检查模型配置", "error");
             }
           }
         }

@@ -79,7 +79,7 @@ class EmbeddingContentAPI(Resource):
             KnowledgeCRUDLogic().add_content(form.content, form.topic, form.file_name, form.file_id)
             return Ret().dict()
         except Exception as e:
-            return Ret(err_no=500, msg=str(e)).dict()
+            return Ret(code=500, msg=str(e)).dict()
 
     @form_validate(EmbeddingContentForm)
     def patch(self):
@@ -89,7 +89,7 @@ class EmbeddingContentAPI(Resource):
             KnowledgeCRUDLogic().revise_content(form.id, form.topic, form.content)
             return Ret().dict()
         except Exception as e:
-            return Ret(err_no=500, msg=str(e)).dict()
+            return Ret(code=500, msg=str(e)).dict()
 
     @form_validate(EmbeddingContentForm)
     def delete(self):
@@ -99,7 +99,7 @@ class EmbeddingContentAPI(Resource):
             KnowledgeCRUDLogic().delete_content(form.id, form.topic)
             return Ret().dict()
         except Exception as e:
-            return Ret(err_no=500, msg=str(e)).dict()
+            return Ret(code=500, msg=str(e)).dict()
 
 
 ## 备份一下
@@ -141,4 +141,4 @@ class CorpusCRUDAPI(Resource):
             CorpusCRUDLogic().force_replace_bulk(form.topic, form.corpus)
             return Ret().dict()
         except Exception as e:
-            return Ret(err_no=500, msg=str(e)).dict()
+            return Ret(code=500, msg=str(e)).dict()
