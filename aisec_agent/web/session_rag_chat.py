@@ -7751,6 +7751,10 @@ DM_FAILURE_STEP_STAGE_MAP = {
     "apply_account_cookies": "session_prepare",
     "paste_message": "prefill",
     "click_send_button": "send_action",
+    "click_send": "send_action",
+    "click_send_unconfirmed": "send_confirm",
+    "press_enter_send": "send_action",
+    "press_enter_unconfirmed": "send_confirm",
     "send_message": "send_confirm",
     "playwright_error": "browser_runtime",
 }
@@ -8093,18 +8097,103 @@ def _dm_message_editor_text(page: Any) -> str:
         return ""
 
 
-def _dm_wait_message_sent(page: Any, message: str, timeout_ms: int = 8000) -> Dict[str, Any]:
+def _dm_collect_message_bubble_matches(page: Any, message: str) -> List[Dict[str, Any]]:
     needle = str(message or "").strip()
-    if len(needle) > 48:
-        needle = needle[:48]
+    script = """
+    (needle) => {
+      const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+      const fullNeedle = normalize(needle);
+      const headNeedle = fullNeedle.slice(0, 64);
+      const tailNeedle = fullNeedle.length > 96 ? fullNeedle.slice(-32) : '';
+      const matchesNeedle = (text) => {
+        const haystack = normalize(text);
+        if (!haystack || !fullNeedle || !headNeedle || !haystack.includes(headNeedle)) return false;
+        if (haystack.includes(fullNeedle) || fullNeedle.includes(haystack)) return true;
+        return !tailNeedle || haystack.includes(tailNeedle);
+      };
+      const isVisible = (el) => {
+        if (!el || !el.getBoundingClientRect) return false;
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width >= 32 && rect.height >= 18 && rect.right > 0 && rect.bottom > 0 &&
+          style.visibility !== 'hidden' && style.display !== 'none' && style.opacity !== '0';
+      };
+      const editors = Array.from(document.querySelectorAll('[contenteditable="true"], textarea, .public-DraftEditor-content')).filter(isVisible);
+      const inEditor = (el) => editors.some((editor) => editor === el || editor.contains(el) || el.contains(editor));
+      const matches = [];
+      for (const el of document.querySelectorAll('div, span, p, li, article, section, a')) {
+        if (!isVisible(el) || inEditor(el)) continue;
+        const text = normalize(el.innerText || el.textContent || '');
+        if (!matchesNeedle(text)) continue;
+        if (text.length > Math.max(fullNeedle.length + 240, 420)) continue;
+        const rect = el.getBoundingClientRect();
+        if (rect.width > window.innerWidth * 0.95 || rect.height > window.innerHeight * 0.8) continue;
+        if (rect.bottom > window.innerHeight - 60) continue;
+        const style = window.getComputedStyle(el);
+        let score = 0;
+        if (rect.left >= window.innerWidth * 0.45) score += 40;
+        if (rect.left >= window.innerWidth * 0.55) score += 20;
+        if (rect.width <= window.innerWidth * 0.7) score += 10;
+        if (/right|end/i.test(String(style.textAlign || ''))) score += 10;
+        if (String(style.justifyContent || '').includes('flex-end')) score += 10;
+        if (String(style.backgroundColor || '') !== 'rgba(0, 0, 0, 0)') score += 4;
+        if (el.childElementCount <= 6) score += 6;
+        matches.push({
+          signature: `${text.slice(0, 160)}|${Math.round(rect.left)}|${Math.round(rect.top)}|${Math.round(rect.width)}|${Math.round(rect.height)}`,
+          text: text.slice(0, 160),
+          x: Math.round(rect.left),
+          y: Math.round(rect.top),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          score,
+        });
+      }
+      matches.sort((a, b) => b.score - a.score || a.width * a.height - b.width * b.height);
+      return matches;
+    }
+    """
+    try:
+        raw = page.evaluate(script, needle) or []
+    except Exception:
+        raw = []
+    if not isinstance(raw, list):
+        return []
+    result: List[Dict[str, Any]] = []
+    for item in raw[:8]:
+        if not isinstance(item, dict):
+            continue
+        signature = str(item.get("signature") or "").strip()
+        if not signature:
+            continue
+        result.append({
+            "signature": signature,
+            "text": str(item.get("text") or ""),
+            "x": int(item.get("x") or 0),
+            "y": int(item.get("y") or 0),
+            "width": int(item.get("width") or 0),
+            "height": int(item.get("height") or 0),
+            "score": int(item.get("score") or 0),
+        })
+    return result
+
+
+def _dm_wait_message_sent(page: Any, message: str, timeout_ms: int = 8000, baseline: Optional[Iterable[str]] = None) -> Dict[str, Any]:
+    baseline_signatures = {str(item).strip() for item in (baseline or []) if str(item).strip()}
     deadline = time.time() + max(1, timeout_ms / 1000)
     last_text = ""
+    editor_cleared = False
     while time.time() < deadline:
         last_text = _dm_message_editor_text(page)
         if not last_text:
-            return {"name": "send_message", "ok": True, "detail": "editor cleared"}
-        if needle and needle not in last_text:
-            return {"name": "send_message", "ok": True, "detail": "editor changed after send"}
+            editor_cleared = True
+        matches = _dm_collect_message_bubble_matches(page, message)
+        for match in matches:
+            if editor_cleared and match.get("signature") not in baseline_signatures:
+                return {
+                    "name": "send_message",
+                    "ok": True,
+                    "detail": f"outgoing bubble confirmed at {match['x']},{match['y']}",
+                }
         try:
             page.wait_for_timeout(250)
         except Exception:
@@ -8160,6 +8249,14 @@ def _dm_click_editor_send_icon(page: Any) -> Optional[str]:
     script = """
     () => {
       const items = Array.from(document.querySelectorAll('[contenteditable="true"], textarea, .public-DraftEditor-content'));
+      const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+      const isVisible = (el) => {
+        if (!el || !el.getBoundingClientRect) return false;
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width >= 8 && rect.height >= 8 && rect.right > 0 && rect.bottom > 0 &&
+          style.visibility !== 'hidden' && style.display !== 'none' && style.pointerEvents !== 'none' && style.opacity !== '0';
+      };
       const visible = items.filter((el) => {
         const rect = el.getBoundingClientRect();
         const style = window.getComputedStyle(el);
@@ -8168,6 +8265,81 @@ def _dm_click_editor_send_icon(page: Any) -> Optional[str]:
       });
       const editor = visible[0];
       if (!editor) return '';
+      const editorRect = editor.getBoundingClientRect();
+      const panelRects = [];
+      for (let node = editor, depth = 0; node && depth < 8; depth += 1, node = node.parentElement) {
+        if (!node.getBoundingClientRect) continue;
+        const rect = node.getBoundingClientRect();
+        if (
+          rect.width >= editorRect.width * 0.8 &&
+          rect.height >= editorRect.height &&
+          rect.height <= window.innerHeight * 0.45 &&
+          rect.left >= 0 &&
+          rect.top >= 0
+        ) {
+          panelRects.push(rect);
+        }
+      }
+      panelRects.sort((a, b) => b.bottom - a.bottom || a.width * a.height - b.width * b.height);
+      const panelRect = panelRects[0] || editorRect;
+      const seen = new Set();
+      const scored = [];
+      const collectCandidate = (raw, bias) => {
+        let el = raw;
+        for (let depth = 0; el && depth < 5; depth += 1, el = el.parentElement) {
+          if (seen.has(el) || !isVisible(el)) continue;
+          seen.add(el);
+          const rect = el.getBoundingClientRect();
+          const centerX = rect.left + rect.width / 2;
+          const centerY = rect.top + rect.height / 2;
+          const nearComposer =
+            centerX >= panelRect.left &&
+            centerX <= panelRect.right + 8 &&
+            centerY >= editorRect.top - 24 &&
+            centerY <= Math.max(panelRect.bottom + 12, editorRect.bottom + 88);
+          if (!nearComposer) continue;
+          const label = normalize([
+            el.getAttribute && el.getAttribute('aria-label'),
+            el.getAttribute && el.getAttribute('title'),
+            el.innerText,
+            el.textContent,
+          ].filter(Boolean).join(' '));
+          const style = window.getComputedStyle(el);
+          const tag = String(el.tagName || '').toLowerCase();
+          const role = String(el.getAttribute && el.getAttribute('role') || '').toLowerCase();
+          const clickable = tag === 'button' || role === 'button' || style.cursor === 'pointer' ||
+            (el.onclick != null) || el.querySelector('svg,path,img');
+          if (!clickable) continue;
+          let score = bias;
+          score += Math.max(0, 90 - Math.abs(panelRect.right - centerX));
+          score += Math.max(0, 90 - Math.abs(Math.max(panelRect.bottom, editorRect.bottom + 40) - centerY));
+          if (centerY > editorRect.bottom) score += 80;
+          if (centerX > editorRect.left + editorRect.width * 0.75) score += 50;
+          if (/send/i.test(label)) score += 120;
+          if (rect.width <= 56 && rect.height <= 56) score += 30;
+          if (/rgb\\(255,\\s*44,\\s*85\\)|rgb\\(254,\\s*44,\\s*85\\)|rgb\\(255,\\s*22,\\s*81\\)/i.test(style.backgroundColor + ' ' + style.color)) score += 40;
+          if (/emoji|image|picture|photo|upload/i.test(label)) score -= 120;
+          scored.push({el, score, label, x: centerX, y: centerY, width: rect.width, height: rect.height});
+          break;
+        }
+      };
+      for (const selector of ['button', '[role="button"]', 'svg', 'path', 'img', 'div', 'span']) {
+        for (const el of document.querySelectorAll(selector)) collectCandidate(el, selector === 'button' ? 20 : 0);
+      }
+      scored.sort((a, b) => b.score - a.score || a.width * a.height - b.width * b.height);
+      for (const item of scored.slice(0, 8)) {
+        try {
+          const x = Math.max(1, Math.min(window.innerWidth - 1, item.x));
+          const y = Math.max(1, Math.min(window.innerHeight - 1, item.y));
+          item.el.dispatchEvent(new MouseEvent('mousemove', {bubbles: true, cancelable: true, clientX: x, clientY: y, buttons: 0}));
+          item.el.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true, clientX: x, clientY: y, buttons: 1}));
+          item.el.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, cancelable: true, clientX: x, clientY: y, buttons: 0}));
+          item.el.click();
+          return `${Math.round(x)},${Math.round(y)}:${item.label || 'icon'}:${Math.round(item.score)}`;
+        } catch (error) {
+          void error;
+        }
+      }
       const containers = [];
       let node = editor;
       for (let i = 0; node && i < 8; i += 1, node = node.parentElement) {
@@ -8189,6 +8361,9 @@ def _dm_click_editor_send_icon(page: Any) -> Optional[str]:
       };
       for (const rect of containers.concat([editor.getBoundingClientRect()])) {
         const points = [
+          [rect.right - 22, Math.min(window.innerHeight - 8, editorRect.bottom + 38)],
+          [rect.right - 28, Math.min(window.innerHeight - 8, editorRect.bottom + 44)],
+          [rect.right - 44, Math.min(window.innerHeight - 8, editorRect.bottom + 38)],
           [rect.right - 22, rect.bottom - 22],
           [rect.right - 28, rect.bottom - 24],
           [rect.right - 36, rect.bottom - 24],
@@ -8348,9 +8523,29 @@ def _dm_send_current_message(page: Any, timeout_ms: int = 8000) -> Dict[str, Any
 
 
 def _dm_send_and_confirm_current_message(page: Any, message: str, timeout_ms: int = 8000) -> List[Dict[str, Any]]:
+    baseline_matches = _dm_collect_message_bubble_matches(page, message)
+    baseline = [match.get("signature") for match in baseline_matches]
+    steps: List[Dict[str, Any]] = []
+
+    try:
+        page.keyboard.press("Enter")
+        steps.append({"name": "press_enter_send", "ok": True, "detail": "pressed Enter in focused message editor"})
+    except Exception as exc:
+        steps.append({"name": "press_enter_send", "ok": False, "detail": str(exc)})
+
+    try:
+        steps.append(_dm_wait_message_sent(page, message, timeout_ms=timeout_ms, baseline=baseline))
+        return steps
+    except RuntimeError as exc:
+        last_text = _dm_message_editor_text(page)
+        if not last_text:
+            raise
+        steps.append({"name": "press_enter_unconfirmed", "ok": False, "detail": str(exc)})
+
     click_step = _dm_send_current_message(page, timeout_ms=timeout_ms)
-    confirm_step = _dm_wait_message_sent(page, message, timeout_ms=timeout_ms)
-    return [click_step, confirm_step]
+    steps.append(click_step)
+    steps.append(_dm_wait_message_sent(page, message, timeout_ms=timeout_ms, baseline=baseline))
+    return steps
 
 
 def _douyin_private_message_playwright_executor(
@@ -8398,8 +8593,7 @@ def _douyin_private_message_playwright_executor(
         sent = False
         if auto_send:
             _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page, timeout_ms=1200))
-            steps.append(_dm_send_current_message(page, timeout_ms=min(timeout_ms, 10000)))
-            steps.append(_dm_wait_message_sent(page, message, timeout_ms=min(timeout_ms, 10000)))
+            steps.extend(_dm_send_and_confirm_current_message(page, message, timeout_ms=min(timeout_ms, 10000)))
             sent = True
         if not keep_browser_open:
             _dm_stop_playwright_context(context, browser, playwright)
@@ -8610,6 +8804,8 @@ def _dm_demo_failure_context(demo_result: Dict[str, Any]) -> Dict[str, Any]:
     last_failed = failed_steps[-1] if failed_steps else (steps[-1] if steps else {})
     last_name = str(last_failed.get("name") or "")
     last_detail = str(last_failed.get("detail") or "")
+    if last_name == "playwright_error" and "message send was not confirmed" in last_detail.lower():
+        last_name = "send_message"
     trace = []
     for index, step in enumerate(steps, 1):
         trace.append({

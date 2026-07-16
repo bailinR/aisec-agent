@@ -46,6 +46,7 @@ from aisec_agent.web.session_rag_chat import (
     DM_REDIS_PROCESSING_ZSET,
     build_douyin_account_cookie_apply_response,
     build_douyin_private_message_demo_response,
+    _dm_collect_message_bubble_matches,
     build_model_config_save_response,
     build_project_create_response,
     build_project_material_save_response,
@@ -54,7 +55,9 @@ from aisec_agent.web.session_rag_chat import (
     _public_model_configs,
     _dm_pending_queue_for_account,
     _dm_redis_hash_set,
+    _dm_send_and_confirm_current_message,
     _dm_send_current_message,
+    _dm_wait_message_sent,
     process_douyin_dm_task_once,
     parse_topics,
     parse_uploaded_file,
@@ -1029,6 +1032,147 @@ class SessionRAGWebTest(unittest.TestCase):
         dom_click.assert_called_once()
         generic_click.assert_not_called()
         coordinate_click.assert_not_called()
+
+    def test_douyin_dm_wait_message_sent_requires_new_bubble(self):
+        class DummyPage:
+            def wait_for_timeout(self, *_args, **_kwargs):
+                return None
+
+        page = DummyPage()
+        old_match = {
+            "signature": "old|100|200|300|120",
+            "text": "old",
+            "x": 100,
+            "y": 200,
+            "width": 300,
+            "height": 120,
+            "score": 10,
+        }
+        with patch(
+            "aisec_agent.web.session_rag_chat._dm_collect_message_bubble_matches",
+            return_value=[old_match],
+        ), patch(
+            "aisec_agent.web.session_rag_chat._dm_message_editor_text",
+            return_value="draft still here",
+        ), patch(
+            "aisec_agent.web.session_rag_chat.time.time",
+            side_effect=[0.0, 0.2, 1.2],
+        ):
+            with self.assertRaises(RuntimeError) as ctx:
+                _dm_wait_message_sent(page, "hello", timeout_ms=500, baseline=[old_match["signature"]])
+
+        self.assertIn("message send was not confirmed", str(ctx.exception))
+
+    def test_douyin_dm_wait_message_sent_accepts_new_bubble(self):
+        class DummyPage:
+            def wait_for_timeout(self, *_args, **_kwargs):
+                return None
+
+        page = DummyPage()
+        old_match = {
+            "signature": "old|100|200|300|120",
+            "text": "old",
+            "x": 100,
+            "y": 200,
+            "width": 300,
+            "height": 120,
+            "score": 10,
+        }
+        new_match = {
+            "signature": "new|500|220|320|128",
+            "text": "new outgoing message",
+            "x": 500,
+            "y": 220,
+            "width": 320,
+            "height": 128,
+            "score": 80,
+        }
+        with patch(
+            "aisec_agent.web.session_rag_chat._dm_collect_message_bubble_matches",
+            return_value=[old_match, new_match],
+        ), patch(
+            "aisec_agent.web.session_rag_chat._dm_message_editor_text",
+            return_value="",
+        ):
+            result = _dm_wait_message_sent(page, "new outgoing message", timeout_ms=500, baseline=[old_match["signature"]])
+
+        self.assertEqual(result["name"], "send_message")
+        self.assertIn("outgoing bubble confirmed", result["detail"])
+
+    def test_douyin_dm_wait_message_sent_rejects_new_bubble_until_editor_clears(self):
+        class DummyPage:
+            def wait_for_timeout(self, *_args, **_kwargs):
+                return None
+
+        page = DummyPage()
+        new_match = {
+            "signature": "new|500|220|320|128",
+            "text": "new outgoing message",
+            "x": 500,
+            "y": 220,
+            "width": 320,
+            "height": 128,
+            "score": 80,
+        }
+        with patch(
+            "aisec_agent.web.session_rag_chat._dm_collect_message_bubble_matches",
+            return_value=[new_match],
+        ), patch(
+            "aisec_agent.web.session_rag_chat._dm_message_editor_text",
+            return_value="draft still here",
+        ), patch(
+            "aisec_agent.web.session_rag_chat.time.time",
+            side_effect=[0.0, 0.2, 1.2],
+        ):
+            with self.assertRaises(RuntimeError) as ctx:
+                _dm_wait_message_sent(page, "new outgoing message", timeout_ms=500, baseline=[])
+
+        self.assertIn("message send was not confirmed", str(ctx.exception))
+
+    def test_douyin_dm_send_and_confirm_uses_enter_before_click_fallback(self):
+        class DummyKeyboard:
+            def __init__(self):
+                self.pressed = []
+
+            def press(self, key):
+                self.pressed.append(key)
+
+        class DummyPage:
+            def __init__(self):
+                self.keyboard = DummyKeyboard()
+
+        page = DummyPage()
+        wait_calls = []
+
+        def fake_wait(_page, _message, timeout_ms=8000, baseline=None):
+            wait_calls.append(list(baseline or []))
+            if len(wait_calls) == 1:
+                raise RuntimeError("message send was not confirmed; editor still contains: hello")
+            return {"name": "send_message", "ok": True, "detail": "confirmed"}
+
+        with patch(
+            "aisec_agent.web.session_rag_chat._dm_collect_message_bubble_matches",
+            return_value=[],
+        ), patch(
+            "aisec_agent.web.session_rag_chat._dm_wait_message_sent",
+            side_effect=fake_wait,
+        ), patch(
+            "aisec_agent.web.session_rag_chat._dm_message_editor_text",
+            return_value="hello",
+        ), patch(
+            "aisec_agent.web.session_rag_chat._dm_send_current_message",
+            return_value={"name": "click_send", "ok": True, "detail": "clicked"},
+        ) as click_send:
+            steps = _dm_send_and_confirm_current_message(page, "hello", timeout_ms=500)
+
+        self.assertEqual(page.keyboard.pressed, ["Enter"])
+        click_send.assert_called_once()
+        self.assertEqual([step["name"] for step in steps], [
+            "press_enter_send",
+            "press_enter_unconfirmed",
+            "click_send",
+            "send_message",
+        ])
 
     def test_douyin_dm_failure_reason_keeps_demo_step_trace(self):
         redis = FakeRedis()
