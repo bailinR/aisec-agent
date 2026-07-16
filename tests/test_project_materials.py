@@ -87,6 +87,7 @@ class ProjectMaterialStoreTest(unittest.TestCase):
             self.assertIn("识别用户是否具备意向", context)
             self.assertIn("强意向", context)
             self.assertIn("暂时不要发送优惠券或企业名片", context)
+            self.assertIn("不要在私信里明说“视频里讲的是/视频介绍的是/看到这个视频”", context)
             self.assertIn("给【专属评估入口】", context)
             self.assertIn("关节健康", context)
 

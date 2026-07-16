@@ -2,6 +2,7 @@ import unittest
 import tempfile
 from pathlib import Path
 from io import BytesIO
+from unittest.mock import patch
 from zipfile import ZipFile
 
 from aisec_agent.logic.session_rag_chat import SessionRAGChatLogic
@@ -26,12 +27,35 @@ from aisec_agent.web.session_rag_chat import (
     build_public_private_message_response,
     build_public_prompt_preview_response,
     build_public_route_debug_response,
+    build_open_url_response,
+    build_http_audit_log_clear_response,
+    build_http_audit_log_list_response,
+    HTTP_AUDIT_REDIS_KEY,
+    build_douyin_dm_task_status_response,
+    build_douyin_dm_task_list_response,
+    build_douyin_dm_task_submit_response,
+    build_douyin_dm_task_clear_response,
+    DM_DEBUG_ARTIFACT_DIR,
+    _dm_click_editor_send_button,
+    DM_REDIS_PENDING_QUEUE,
+    DM_REDIS_AUTO_PENDING_QUEUE,
+    DM_REDIS_FAILED_QUEUE,
+    DM_REDIS_RETRY_ZSET,
+    DM_REDIS_MANUAL_QUEUE,
+    DM_REDIS_DEAD_LETTER_QUEUE,
+    DM_REDIS_PROCESSING_ZSET,
+    build_douyin_account_cookie_apply_response,
+    build_douyin_private_message_demo_response,
     build_model_config_save_response,
     build_project_create_response,
     build_project_material_save_response,
     build_project_materials_response,
     build_project_route_debug_response,
     _public_model_configs,
+    _dm_pending_queue_for_account,
+    _dm_redis_hash_set,
+    _dm_send_current_message,
+    process_douyin_dm_task_once,
     parse_topics,
     parse_uploaded_file,
 )
@@ -77,6 +101,170 @@ class FakeConfigTestLLM:
     def deepseek_chat(self, **kwargs):
         self.calls.append(kwargs)
         return "OK"
+
+
+def fake_douyin_demo_executor(profile_url, message, browser, auto_send, options):
+    return {
+        "success": True,
+        "opened": True,
+        "prefilled": True,
+        "sent": bool(auto_send),
+        "resolved_browser": browser,
+        "engine": "playwright",
+        "steps": [
+            {"name": "open_profile", "ok": True},
+            {"name": "paste_message", "ok": True},
+        ],
+        "seen": {
+            "profile_url": profile_url,
+            "message": message,
+            "browser": browser,
+            "auto_send": auto_send,
+            "options": options,
+        },
+    }
+
+
+def fake_douyin_account_cookie_executor(raw_cookies, browser, options):
+    return {
+        "success": True,
+        "opened": True,
+        "resolved_browser": browser,
+        "engine": "playwright",
+        "account_cookie_loaded": True,
+        "account_cookie_count": 1,
+        "seen": {
+            "browser": browser,
+            "options": options,
+            "account_cookies": raw_cookies,
+        },
+        "steps": [
+            {"name": "connect_browser", "ok": True},
+            {"name": "apply_account_cookies", "ok": True, "detail": "1 cookies"},
+        ],
+    }
+
+
+class FakeRedis:
+    def __init__(self):
+        self.hashes = {}
+        self.lists = {}
+        self.zsets = {}
+        self.sets = {}
+
+    def hset(self, key, field=None, value=None, mapping=None, **kwargs):
+        self.hashes.setdefault(key, {})
+        if mapping:
+            self.hashes[key].update(mapping)
+            return len(mapping)
+        if field is not None:
+            self.hashes[key][field] = value
+            return 1
+        return 0
+
+    def hgetall(self, key):
+        return dict(self.hashes.get(key, {}))
+
+    def expire(self, key, seconds):
+        return True
+
+    def rpush(self, key, value):
+        self.lists.setdefault(key, []).append(value)
+        return len(self.lists[key])
+
+    def lpush(self, key, *values):
+        self.lists.setdefault(key, [])
+        for value in values:
+            self.lists[key].insert(0, value)
+        return len(self.lists[key])
+
+    def ltrim(self, key, start, end):
+        items = list(self.lists.get(key, []))
+        if end == -1:
+            end = len(items) - 1
+        self.lists[key] = items[start:end + 1]
+        return True
+
+    def blpop(self, key, timeout=0):
+        items = self.lists.get(key) or []
+        if not items:
+            return None
+        return key, items.pop(0)
+
+    def lrange(self, key, start, end):
+        items = list(self.lists.get(key, []))
+        if end == -1:
+            end = len(items) - 1
+        return items[start:end + 1]
+
+    def lrem(self, key, count, value):
+        items = self.lists.get(key, [])
+        original_len = len(items)
+        self.lists[key] = [item for item in items if item != value]
+        return original_len - len(self.lists[key])
+
+    def llen(self, key):
+        return len(self.lists.get(key, []))
+
+    def zadd(self, key, mapping):
+        self.zsets.setdefault(key, {}).update(mapping)
+        return len(mapping)
+
+    def zrem(self, key, member):
+        self.zsets.setdefault(key, {}).pop(member, None)
+        return 1
+
+    def zrange(self, key, start, end):
+        items = list(self.zsets.get(key, {}).keys())
+        if end == -1:
+            end = len(items) - 1
+        return items[start:end + 1]
+
+    def zrangebyscore(self, key, min_score, max_score, start=0, num=None):
+        items = [
+            member
+            for member, score in sorted(self.zsets.get(key, {}).items(), key=lambda item: item[1])
+            if float(min_score) <= float(score) <= float(max_score)
+        ]
+        if num is None:
+            return items[start:]
+        return items[start:start + num]
+
+    def zcard(self, key):
+        return len(self.zsets.get(key, {}))
+
+    def sadd(self, key, *values):
+        target = self.sets.setdefault(key, set())
+        before = len(target)
+        target.update(values)
+        return len(target) - before
+
+    def smembers(self, key):
+        return set(self.sets.get(key, set()))
+
+    def delete(self, *keys):
+        deleted = 0
+        for key in keys:
+            existed = key in self.hashes or key in self.lists or key in self.zsets or key in self.sets
+            self.hashes.pop(key, None)
+            self.lists.pop(key, None)
+            self.zsets.pop(key, None)
+            self.sets.pop(key, None)
+            deleted += int(existed)
+        return deleted
+
+    def scan_iter(self, pattern="*"):
+        prefix = pattern[:-1] if pattern.endswith("*") else pattern
+        for key in list(self.hashes) + list(self.lists) + list(self.zsets) + list(self.sets):
+            if pattern == "*" or key.startswith(prefix):
+                yield key
+
+
+class LegacyHsetRedis(FakeRedis):
+    def hset(self, key, field=None, value=None, mapping=None, **kwargs):
+        if mapping is not None:
+            raise Exception("wrong number of arguments for 'hset' command")
+        return super().hset(key, field, value, **kwargs)
 
 
 class FakeStreamMemory:
@@ -328,6 +516,769 @@ class FakeBusinessLogic(SessionRAGChatLogic):
 
 
 class SessionRAGWebTest(unittest.TestCase):
+    def test_douyin_dm_redis_task_submit_status_and_dry_run_process(self):
+        redis = FakeRedis()
+
+        submit = build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_test_001",
+                "video_info": "video about knee pain",
+                "account_cookie": "sessionid=SECRET_COOKIE",
+                "comment_info": "my mom has knee pain",
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+
+        self.assertEqual(submit["accepted"], 1)
+        self.assertEqual(submit["task_ids"], ["dm_test_001"])
+        self.assertEqual(submit["tasks"][0]["account_cookie"], "[redacted]")
+
+        status = build_douyin_dm_task_status_response("dm_test_001", redis_client=redis)
+        self.assertEqual(status["task"]["status"], "pending")
+        self.assertEqual(status["task"]["account_cookie"], "[redacted]")
+
+        processed = process_douyin_dm_task_once(redis_client=redis, mode="dry_run", block_timeout=1)
+
+        self.assertEqual(processed["task_id"], "dm_test_001")
+        self.assertEqual(processed["status"], "generated")
+        self.assertFalse(processed["sent"])
+        self.assertIn("my mom has knee pain", processed["reply"])
+
+        completed = build_douyin_dm_task_status_response("dm_test_001", redis_client=redis)
+        self.assertEqual(completed["task"]["status"], "generated")
+        self.assertEqual(completed["task"]["sent"], "false")
+        self.assertEqual(completed["task"]["error"], "")
+
+        snapshot = build_douyin_dm_task_list_response(redis_client=redis)
+        self.assertEqual(snapshot["counts"]["pending"], 0)
+        self.assertEqual(snapshot["counts"]["done"], 1)
+        self.assertEqual(snapshot["tasks"]["done"][0]["task_id"], "dm_test_001")
+
+    def test_douyin_dm_task_submit_supports_legacy_hset(self):
+        redis = LegacyHsetRedis()
+
+        submit = build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_legacy_hset_001",
+                "video_info": "video about knee pain",
+                "account_cookie": "sessionid=SECRET_COOKIE",
+                "comment_info": "my mom has knee pain",
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+
+        self.assertEqual(submit["accepted"], 1)
+        status = build_douyin_dm_task_status_response("dm_legacy_hset_001", redis_client=redis)
+        self.assertEqual(status["task"]["status"], "pending")
+
+    def test_douyin_dm_resubmit_clears_stale_queue_state(self):
+        redis = FakeRedis()
+        task_id = "dm_resubmit_001"
+        redis.rpush(DM_REDIS_FAILED_QUEUE, task_id)
+        redis.rpush(DM_REDIS_DEAD_LETTER_QUEUE, task_id)
+        redis.zadd(DM_REDIS_PROCESSING_ZSET, {task_id: 1})
+
+        submit = build_douyin_dm_task_submit_response(
+            {
+                "task_id": task_id,
+                "video_info": "video about knee pain",
+                "account_cookie": "sessionid=SECRET_COOKIE",
+                "comment_info": "my mom has knee pain",
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+
+        self.assertEqual(submit["accepted"], 1)
+        self.assertEqual(redis.lrange(DM_REDIS_FAILED_QUEUE, 0, -1), [])
+        self.assertEqual(redis.lrange(DM_REDIS_DEAD_LETTER_QUEUE, 0, -1), [])
+        self.assertEqual(redis.zrange(DM_REDIS_PROCESSING_ZSET, 0, -1), [])
+        self.assertEqual(redis.lrange(DM_REDIS_PENDING_QUEUE, 0, -1), [task_id])
+        self.assertEqual(redis.lrange(DM_REDIS_AUTO_PENDING_QUEUE, 0, -1), [task_id])
+
+    def test_douyin_dm_resubmit_clears_previous_account_queue(self):
+        redis = FakeRedis()
+        task_id = "dm_resubmit_account_001"
+        first = build_douyin_dm_task_submit_response(
+            {
+                "task_id": task_id,
+                "video_info": "video about knee pain",
+                "account_cookie": "sessionid=OLD_COOKIE",
+                "comment_info": "my mom has knee pain",
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+        old_account_key = first["account_queues"][0]
+
+        second = build_douyin_dm_task_submit_response(
+            {
+                "task_id": task_id,
+                "video_info": "video about knee pain",
+                "account_cookie": "sessionid=NEW_COOKIE",
+                "comment_info": "my mom has knee pain",
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+        new_account_key = second["account_queues"][0]
+
+        self.assertNotEqual(old_account_key, new_account_key)
+        self.assertEqual(redis.lrange(_dm_pending_queue_for_account(old_account_key), 0, -1), [])
+        self.assertEqual(redis.lrange(_dm_pending_queue_for_account(new_account_key), 0, -1), [task_id])
+
+    def test_douyin_dm_redis_task_requires_five_fields(self):
+        with self.assertRaises(WebInputError):
+            build_douyin_dm_task_submit_response(
+                {
+                    "video_info": "video",
+                    "account_cookie": "cookie",
+                    "comment_info": "comment",
+                    "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                },
+                redis_client=FakeRedis(),
+            )
+
+    def test_douyin_dm_submit_forces_send_and_auto_queue_for_upstream(self):
+        redis = FakeRedis()
+        submit = build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_send_001",
+                "video_info": "video",
+                "account_cookie": "cookie",
+                "comment_info": "comment",
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "project_name": "test project",
+                "run_mode": "generate",
+                "auto_send": False,
+            },
+            redis_client=redis,
+        )
+
+        self.assertEqual(submit["tasks"][0]["run_mode"], "send")
+        self.assertEqual(submit["tasks"][0]["headless"], "true")
+        self.assertEqual(submit["tasks"][0]["use_cdp"], "false")
+        self.assertEqual(submit["tasks"][0]["keep_browser_open"], "false")
+        self.assertEqual(submit["tasks"][0]["persistent_context"], "false")
+        self.assertEqual(submit["tasks"][0]["auto_send"], "true")
+        self.assertEqual(submit["tasks"][0]["auto_process"], "true")
+        self.assertEqual(redis.lrange(DM_REDIS_AUTO_PENDING_QUEUE, 0, -1), ["dm_send_001"])
+
+    def test_douyin_private_message_demo_passes_visible_persistent_browser_options(self):
+        response = build_douyin_private_message_demo_response(
+            {
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "reply": "hello",
+                "browser_name": "edge",
+                "auto_send": True,
+                "headless": False,
+                "user_data_dir": "D:\\tmp\\douyin-profile",
+            },
+            executor=fake_douyin_demo_executor,
+        )
+
+        self.assertFalse(response["seen"]["options"]["headless"])
+        self.assertTrue(response["seen"]["options"]["use_cdp"])
+        self.assertTrue(response["seen"]["options"]["keep_browser_open"])
+        self.assertTrue(response["seen"]["options"]["persistent_context"])
+        self.assertEqual(response["seen"]["options"]["user_data_dir"], "D:\\tmp\\douyin-profile")
+
+    def test_douyin_dm_submit_debug_mode_does_not_auto_send_or_auto_process(self):
+        redis = FakeRedis()
+        submit = build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_debug_001",
+                "video_info": "video",
+                "account_cookie": "cookie",
+                "comment_info": "comment",
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "project_name": "test project",
+                "run_mode": "prefill",
+                "debug_mode": True,
+            },
+            redis_client=redis,
+        )
+
+        self.assertEqual(submit["tasks"][0]["run_mode"], "prefill")
+        self.assertEqual(submit["tasks"][0]["auto_send"], "false")
+        self.assertEqual(redis.lrange(DM_REDIS_AUTO_PENDING_QUEUE, 0, -1), [])
+
+    def test_douyin_dm_success_result_does_not_report_unknown_failure(self):
+        redis = FakeRedis()
+        build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_success_001",
+                "video_info": "video",
+                "account_cookie": "cookie",
+                "comment_info": "comment",
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+        _dm_redis_hash_set(redis, "dm:task:dm_success_001", {
+            "status": "success",
+            "queue_status": "done",
+            "sent": "true",
+            "error": "first private message recorded",
+            "first_private_message_detail": "first private message recorded",
+            "result_ready": "true",
+        })
+
+        status = build_douyin_dm_task_status_response("dm_success_001", redis_client=redis)
+
+        self.assertTrue(status["result"]["success"])
+        self.assertTrue(status["result"]["sent"])
+        self.assertEqual(status["result"]["failure_code"], "")
+        self.assertEqual(status["result"]["failure_summary"], "")
+
+    def test_douyin_dm_retryable_failure_moves_to_retry_wait(self):
+        redis = FakeRedis()
+        build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_retry_001",
+                "video_info": "video",
+                "account_cookie": "cookie",
+                "comment_info": "comment",
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "project_name": "test project",
+                "max_retries": 2,
+            },
+            redis_client=redis,
+        )
+
+        with patch(
+            "aisec_agent.web.session_rag_chat.build_public_private_message_response",
+            side_effect=TimeoutError("model timeout"),
+        ):
+            processed = process_douyin_dm_task_once(redis_client=redis, mode="send", block_timeout=1)
+
+        self.assertEqual(processed["status"], "retry_wait")
+        self.assertEqual(processed["error_code"], "model_timeout")
+        self.assertEqual(processed["failure_type"], "retryable")
+        self.assertEqual(redis.zrange(DM_REDIS_RETRY_ZSET, 0, -1), ["dm_retry_001"])
+
+        status = build_douyin_dm_task_status_response("dm_retry_001", redis_client=redis)
+        self.assertEqual(status["result"]["queue_status"], "retry_wait")
+        self.assertFalse(status["result"]["result_ready"])
+        self.assertEqual(status["result"]["retry_count"], 1)
+        self.assertEqual(status["result"]["max_retries"], 2)
+        self.assertTrue(status["result"]["next_retry_at"])
+
+    def test_douyin_dm_final_failure_moves_to_dead_letter(self):
+        redis = FakeRedis()
+        build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_dead_001",
+                "video_info": "video",
+                "account_cookie": "cookie",
+                "comment_info": "comment",
+                "target_profile_url": "not-a-valid-url",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+
+        with patch(
+            "aisec_agent.web.session_rag_chat.build_public_private_message_response",
+            return_value={"reply": "hello"},
+        ):
+            processed = process_douyin_dm_task_once(redis_client=redis, mode="send", block_timeout=1)
+
+        self.assertEqual(processed["status"], "failed")
+        self.assertEqual(processed["queue_status"], "dead_letter")
+        self.assertEqual(processed["error_code"], "invalid_profile_url")
+        self.assertTrue(processed["dead_letter"])
+        self.assertEqual(redis.lrange(DM_REDIS_DEAD_LETTER_QUEUE, 0, -1), ["dm_dead_001"])
+
+        status = build_douyin_dm_task_status_response("dm_dead_001", redis_client=redis)
+        self.assertEqual(status["result"]["failure_type"], "final")
+        self.assertTrue(status["result"]["dead_letter"])
+
+    def test_douyin_dm_manual_failure_moves_to_manual_queue(self):
+        redis = FakeRedis()
+        build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_manual_001",
+                "video_info": "video",
+                "account_cookie": "cookie",
+                "comment_info": "comment",
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+
+        demo_result = {
+            "success": False,
+            "opened": True,
+            "prefilled": False,
+            "sent": False,
+            "requires_login": True,
+            "steps": [
+                {"name": "playwright_error", "ok": False, "detail": "抖音登录或二次验证弹层挡住了页面"}
+            ],
+        }
+        with patch(
+            "aisec_agent.web.session_rag_chat.build_public_private_message_response",
+            return_value={"reply": "hello"},
+        ), patch(
+            "aisec_agent.web.session_rag_chat.build_douyin_private_message_demo_response",
+            return_value=demo_result,
+        ):
+            processed = process_douyin_dm_task_once(redis_client=redis, mode="send", block_timeout=1)
+
+        self.assertEqual(processed["status"], "manual_required")
+        self.assertEqual(processed["queue_status"], "manual_required")
+        self.assertEqual(processed["error_code"], "verification_required")
+        self.assertTrue(processed["manual_required"])
+        self.assertEqual(redis.lrange(DM_REDIS_MANUAL_QUEUE, 0, -1), ["dm_manual_001"])
+
+        status = build_douyin_dm_task_status_response("dm_manual_001", redis_client=redis)
+        self.assertEqual(status["result"]["failure_type"], "manual")
+        self.assertTrue(status["result"]["manual_required"])
+        self.assertTrue(status["result"]["manual_takeover"]["available"])
+        self.assertEqual(status["result"]["manual_takeover"]["url"], "https://www.douyin.com/user/test-sec-uid")
+        self.assertEqual(status["result"]["manual_takeover"]["action"], "open_url")
+
+        task_list = build_douyin_dm_task_list_response(redis_client=redis, limit=20)
+        manual_task = task_list["tasks"]["manual_required"][0]
+        self.assertTrue(manual_task["manual_takeover"]["available"])
+        self.assertEqual(manual_task["manual_takeover"]["browser"], "edge")
+
+    def test_open_url_response_uses_injected_opener(self):
+        calls = []
+
+        def fake_opener(url, browser):
+            calls.append((url, browser))
+            return True
+
+        response = build_open_url_response(
+            {
+                "url": "https://www.douyin.com/user/test-sec-uid",
+                "browser": "edge",
+                "new_window": True,
+            },
+            opener=fake_opener,
+        )
+
+        self.assertTrue(response["opened"])
+        self.assertEqual(response["resolved_browser"], "edge")
+        self.assertEqual(calls, [("https://www.douyin.com/user/test-sec-uid", "edge")])
+
+    def test_http_audit_log_list_and_clear(self):
+        redis = FakeRedis()
+        redis.lpush(
+            HTTP_AUDIT_REDIS_KEY,
+            '{"request_id":"1","timestamp":"2026-07-15 10:00:00","method":"POST","path":"/api/open-url","status":200,"remote_ip":"127.0.0.1","body":{"keys":["url"]},"response":{"opened":true}}',
+        )
+
+        listed = build_http_audit_log_list_response(redis_client=redis, limit=10, offset=0)
+        self.assertEqual(listed["count"], 1)
+        self.assertEqual(listed["entries"][0]["path"], "/api/open-url")
+        self.assertEqual(listed["entries"][0]["response"]["opened"], True)
+
+        cleared = build_http_audit_log_clear_response(redis_client=redis)
+        self.assertTrue(cleared["cleared"])
+        self.assertEqual(redis.lrange(HTTP_AUDIT_REDIS_KEY, 0, -1), [])
+
+    def test_douyin_dm_failure_reason_exposes_missing_api_key(self):
+        redis = FakeRedis()
+        build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_api_key_001",
+                "video_info": "video",
+                "account_cookie": "cookie",
+                "comment_info": "comment",
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+
+        missing_key_error = RuntimeError(
+            "missing config: api_key (minimax has no saved key; save model config once via the page or /api/v1/model/config/save)"
+        )
+        with patch(
+            "aisec_agent.web.session_rag_chat.build_public_private_message_response",
+            side_effect=missing_key_error,
+        ):
+            processed = process_douyin_dm_task_once(redis_client=redis, mode="send", block_timeout=1)
+
+        self.assertEqual(processed["failure_code"], "missing_model_api_key")
+        self.assertIn("api_key", processed["failure_summary"])
+
+        status = build_douyin_dm_task_status_response("dm_api_key_001", redis_client=redis)
+        self.assertEqual(status["result"]["failure_code"], "missing_model_api_key")
+        self.assertEqual(status["result"]["failure_stage"], "model_config")
+        self.assertIn("MiniMax", status["result"]["failure_hint"])
+        self.assertIn("/api/v1/model/config/save", status["result"]["failure_summary"])
+
+    def test_douyin_dm_task_clear_response_removes_dm_keys(self):
+        redis = FakeRedis()
+        build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_clear_001",
+                "video_info": "video",
+                "account_cookie": "cookie",
+                "comment_info": "comment",
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+
+        response = build_douyin_dm_task_clear_response(redis_client=redis)
+
+        self.assertTrue(response["cleared"])
+        self.assertGreaterEqual(response["deleted_keys"], 1)
+        self.assertEqual(redis.hashes, {})
+        self.assertEqual(redis.lists, {})
+        self.assertEqual(redis.zsets, {})
+        self.assertEqual(redis.sets, {})
+
+    def test_douyin_dm_task_clear_response_handles_byte_keys(self):
+        class ByteScanRedis(FakeRedis):
+            def scan_iter(self, pattern="*"):
+                for key in super().scan_iter(pattern):
+                    yield key.encode("utf-8") if isinstance(key, str) else key
+
+        redis = ByteScanRedis()
+        build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_clear_bytes_001",
+                "video_info": "video",
+                "account_cookie": "cookie",
+                "comment_info": "comment",
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+
+        response = build_douyin_dm_task_clear_response(redis_client=redis)
+
+        self.assertTrue(response["cleared"])
+        self.assertGreaterEqual(response["deleted_keys"], 1)
+        self.assertEqual(redis.hashes, {})
+        self.assertEqual(redis.lists, {})
+        self.assertEqual(redis.zsets, {})
+        self.assertEqual(redis.sets, {})
+
+    def test_douyin_dm_failure_reason_exposes_message_send_unconfirmed(self):
+        redis = FakeRedis()
+        build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_send_fail_001",
+                "video_info": "video",
+                "account_cookie": "cookie",
+                "comment_info": "comment",
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+
+        send_error = RuntimeError("message send was not confirmed")
+        with patch(
+            "aisec_agent.web.session_rag_chat.build_public_private_message_response",
+            return_value={"reply": "hello"},
+        ), patch(
+            "aisec_agent.web.session_rag_chat.build_douyin_private_message_demo_response",
+            side_effect=send_error,
+        ):
+            processed = process_douyin_dm_task_once(redis_client=redis, mode="send", block_timeout=1)
+
+        self.assertEqual(processed["failure_code"], "message_send_unconfirmed")
+        self.assertIn("message send was not confirmed", processed["failure_summary"])
+
+        status = build_douyin_dm_task_status_response("dm_send_fail_001", redis_client=redis)
+        self.assertEqual(status["result"]["failure_code"], "message_send_unconfirmed")
+        self.assertEqual(status["result"]["failure_stage"], "send_confirm")
+        self.assertIn("发送", status["result"]["failure_reason"])
+        self.assertIn("message send was not confirmed", status["result"]["failure_step_detail"])
+
+    def test_douyin_dm_send_current_message_prefers_dom_button_click(self):
+        class DummyPage:
+            pass
+
+        page = DummyPage()
+
+        with patch(
+            "aisec_agent.web.session_rag_chat._dm_visible_message_editor",
+            return_value=object(),
+        ), patch(
+            "aisec_agent.web.session_rag_chat._dm_click_editor_send_button",
+            return_value="1200,740:send",
+        ) as dom_click, patch(
+            "aisec_agent.web.session_rag_chat._dm_click_first",
+        ) as generic_click, patch(
+            "aisec_agent.web.session_rag_chat._dm_editor_send_click_point",
+        ) as coordinate_click:
+            result = _dm_send_current_message(page, timeout_ms=1)
+
+        self.assertEqual(result["name"], "click_send")
+        self.assertIn("editor send button", result["detail"])
+        dom_click.assert_called_once()
+        generic_click.assert_not_called()
+        coordinate_click.assert_not_called()
+
+    def test_douyin_dm_failure_reason_keeps_demo_step_trace(self):
+        redis = FakeRedis()
+        build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_send_fail_trace_001",
+                "video_info": "video",
+                "account_cookie": "cookie",
+                "comment_info": "comment",
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+
+        failing_demo_result = {
+            "success": False,
+            "opened": True,
+            "prefilled": True,
+            "sent": False,
+            "resolved_browser": "edge",
+            "engine": "playwright",
+            "failure_screenshot_path": str(DM_DEBUG_ARTIFACT_DIR / "dm_send_fail_trace_001.png"),
+            "steps": [
+                {"name": "open_profile", "ok": True, "detail": "opened"},
+                {"name": "send_message", "ok": False, "detail": "message send was not confirmed"},
+            ],
+            "error": "message send was not confirmed",
+        }
+        with patch(
+            "aisec_agent.web.session_rag_chat.build_public_private_message_response",
+            return_value={"reply": "hello"},
+        ), patch(
+            "aisec_agent.web.session_rag_chat.build_douyin_private_message_demo_response",
+            return_value=failing_demo_result,
+        ):
+            processed = process_douyin_dm_task_once(redis_client=redis, mode="send", block_timeout=1)
+
+        self.assertEqual(processed["failure_code"], "message_send_unconfirmed")
+        self.assertEqual(processed["failure_step"], "send_message")
+        self.assertIn("send_message", processed["failure_trace"])
+        self.assertEqual(processed["failure_screenshot_name"], "dm_send_fail_trace_001.png")
+        self.assertEqual(
+            processed["failure_screenshot_url"],
+            "/api/v1/douyin/private-message/artifacts/dm_send_fail_trace_001.png",
+        )
+
+        status = build_douyin_dm_task_status_response("dm_send_fail_trace_001", redis_client=redis)
+        self.assertEqual(status["result"]["failure_code"], "message_send_unconfirmed")
+        self.assertEqual(status["result"]["failure_step"], "send_message")
+        self.assertIn("send_message", status["result"]["failure_trace"])
+        self.assertEqual(
+            status["result"]["failure_screenshot_path"],
+            str(DM_DEBUG_ARTIFACT_DIR / "dm_send_fail_trace_001.png"),
+        )
+
+    def test_douyin_dm_failure_reason_exposes_playwright_missing(self):
+        redis = FakeRedis()
+        build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_playwright_001",
+                "video_info": "video",
+                "account_cookie": "cookie",
+                "comment_info": "comment",
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+
+        with patch(
+            "aisec_agent.web.session_rag_chat.build_public_private_message_response",
+            side_effect=ModuleNotFoundError("No module named 'playwright'"),
+        ):
+            processed = process_douyin_dm_task_once(redis_client=redis, mode="send", block_timeout=1)
+
+        self.assertEqual(processed["failure_code"], "playwright_missing")
+        self.assertEqual(processed["failure_stage"], "browser_runtime")
+
+        status = build_douyin_dm_task_status_response("dm_playwright_001", redis_client=redis)
+        self.assertEqual(status["result"]["failure_code"], "playwright_missing")
+        self.assertIn("playwright", status["result"]["failure_hint"].lower())
+
+    def test_douyin_private_message_demo_exposes_failure_metadata(self):
+        def failing_executor(profile_url, message, browser, auto_send, options):
+            return {
+                "success": False,
+                "opened": True,
+                "prefilled": True,
+                "sent": False,
+                "resolved_browser": browser,
+                "engine": "playwright",
+                "failure_screenshot_path": str(DM_DEBUG_ARTIFACT_DIR / "dm_send_fail_001.png"),
+                "steps": [
+                    {"name": "open_profile", "ok": True},
+                    {"name": "send_message", "ok": False, "detail": "message send was not confirmed"},
+                ],
+                "error": "message send was not confirmed",
+            }
+
+        response = build_douyin_private_message_demo_response(
+            {
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid?from_tab_name=main",
+                "reply": "hello",
+                "browser_name": "edge",
+                "auto_send": True,
+            },
+            executor=failing_executor,
+        )
+
+        self.assertFalse(response["success"])
+        self.assertEqual(response["failure_code"], "message_send_unconfirmed")
+        self.assertEqual(response["failure_stage"], "send_confirm")
+        self.assertEqual(response["failure_step"], "send_message")
+        self.assertIn("message send was not confirmed", response["failure_summary"])
+        self.assertEqual(response["failure_screenshot_path"], str(DM_DEBUG_ARTIFACT_DIR / "dm_send_fail_001.png"))
+        self.assertEqual(response["failure_screenshot_name"], "dm_send_fail_001.png")
+        self.assertEqual(
+            response["failure_screenshot_url"],
+            "/api/v1/douyin/private-message/artifacts/dm_send_fail_001.png",
+        )
+
+    def test_douyin_private_message_demo_prefills_by_default(self):
+        response = build_douyin_private_message_demo_response(
+            {
+                "profile_url": "https://www.douyin.com/user/MS4wLjABAAAA0VPGcVLBTV9KuvOPi18HdpZGEDnltASrLJOsMDqs5cY",
+                "message": "hello",
+                "browser": "edge",
+            },
+            executor=fake_douyin_demo_executor,
+        )
+
+        self.assertTrue(response["success"])
+        self.assertTrue(response["prefilled"])
+        self.assertFalse(response["sent"])
+        self.assertFalse(response["auto_send"])
+        self.assertEqual(response["browser"], "edge")
+        self.assertEqual(response["message_chars"], 5)
+        self.assertEqual(response["engine"], "playwright")
+
+    def test_douyin_private_message_demo_can_auto_send(self):
+        response = build_douyin_private_message_demo_response(
+            {
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid?from_tab_name=main",
+                "reply": "hello",
+                "browser_name": "chrome",
+                "auto_send": True,
+                "input_ratio_x": 0.5,
+                "headless": True,
+                "use_cdp": True,
+            },
+            executor=fake_douyin_demo_executor,
+        )
+
+        self.assertTrue(response["sent"])
+        self.assertTrue(response["seen"]["auto_send"])
+        self.assertEqual(response["seen"]["options"]["input_ratio_x"], 0.5)
+        self.assertTrue(response["seen"]["options"]["headless"])
+        self.assertFalse(response["seen"]["options"]["use_cdp"])
+        self.assertEqual(response["seen"]["options"]["cdp_url"], "")
+        self.assertEqual(response["seen"]["options"]["viewport_width"], 1440)
+        self.assertEqual(response["seen"]["options"]["viewport_height"], 900)
+        self.assertTrue(response["seen"]["options"]["screenshot_on_failure"])
+        self.assertIn("douyin_dm_artifacts", response["seen"]["options"]["screenshot_dir"])
+
+    def test_douyin_account_cookie_apply_exposes_failure_metadata(self):
+        def failing_executor(raw_cookies, browser, options):
+            return {
+                "success": False,
+                "opened": True,
+                "resolved_browser": browser,
+                "engine": "playwright",
+                "account_cookie_loaded": True,
+                "account_cookie_count": 1,
+                "steps": [
+                    {"name": "connect_browser", "ok": True},
+                    {"name": "apply_account_cookies", "ok": False, "detail": "Authentication required."},
+                ],
+                "error": "Authentication required.",
+            }
+
+        response = build_douyin_account_cookie_apply_response(
+            {
+                "browser": "chrome",
+                "account_cookies": "sessionid=SECRET_COOKIE",
+                "headless": True,
+            },
+            executor=failing_executor,
+        )
+
+        self.assertFalse(response["success"])
+        self.assertEqual(response["failure_code"], "cookie_invalid")
+        self.assertEqual(response["failure_stage"], "session_prepare")
+        self.assertEqual(response["failure_step"], "apply_account_cookies")
+        self.assertIn("Authentication required", response["failure_summary"])
+
+    def test_douyin_private_message_demo_accepts_and_redacts_account_cookies(self):
+        cookie_text = '{"cookies":[{"name":"sessionid","value":"SECRET_COOKIE","domain":".douyin.com","path":"/"}]}'
+
+        response = build_douyin_private_message_demo_response(
+            {
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid?from_tab_name=main",
+                "reply": "hello",
+                "browser_name": "edge",
+                "account_cookies": cookie_text,
+            },
+            executor=fake_douyin_demo_executor,
+        )
+
+        self.assertTrue(response["account_cookie_loaded"])
+        self.assertEqual(response["account_cookie_count"], 1)
+        self.assertEqual(response["seen"]["options"]["account_cookies"], "[redacted]")
+        self.assertNotIn("SECRET_COOKIE", str(response))
+
+    def test_douyin_account_cookie_apply_accepts_and_redacts_account_cookies(self):
+        cookie_text = "sessionid=SECRET_COOKIE; sid_guard=ANOTHER_SECRET"
+
+        response = build_douyin_account_cookie_apply_response(
+            {
+                "browser": "chrome",
+                "account_cookies": cookie_text,
+                "headless": True,
+                "use_cdp": True,
+            },
+            executor=fake_douyin_account_cookie_executor,
+        )
+
+        self.assertTrue(response["account_cookie_loaded"])
+        self.assertEqual(response["account_cookie_count"], 2)
+        self.assertEqual(response["browser"], "chrome")
+        self.assertEqual(response["seen"]["account_cookies"], "[redacted]")
+        self.assertTrue(response["seen"]["options"]["headless"])
+        self.assertFalse(response["seen"]["options"]["use_cdp"])
+        self.assertEqual(response["seen"]["options"]["cdp_url"], "")
+        self.assertEqual(response["seen"]["options"]["viewport_width"], 1440)
+        self.assertEqual(response["seen"]["options"]["viewport_height"], 900)
+        self.assertTrue(response["seen"]["options"]["screenshot_on_failure"])
+        self.assertNotIn("SECRET_COOKIE", str(response))
+        self.assertNotIn("ANOTHER_SECRET", str(response))
+
+    def test_douyin_private_message_demo_rejects_non_douyin_url(self):
+        with self.assertRaises(WebInputError):
+            build_douyin_private_message_demo_response(
+                {
+                    "profile_url": "https://example.com/user/test",
+                    "message": "hello",
+                },
+                executor=fake_douyin_demo_executor,
+            )
+
     def test_parse_topics_accepts_string_and_list(self):
         self.assertEqual(parse_topics("faq, scripts, "), ["faq", "scripts"])
         self.assertEqual(parse_topics(["faq", "", " scripts "]), ["faq", "scripts"])

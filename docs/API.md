@@ -478,6 +478,134 @@ Content-Type：`application/json`
 
 说明：页面内部路由调试接口，入参与响应同 `/api/v1/private-message/route-debug`。
 
+#### POST `/api/open-url`
+
+说明：本地演示用接口，在默认浏览器、Edge 或 Google Chrome 中打开指定链接。
+
+入参：
+
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+|---|---|---:|---|---|
+| url | string | 是 | - | 要打开的 `http` / `https` 链接 |
+| browser / browser_name | string | 否 | `default` | `default`、`edge`、`chrome` |
+
+响应 `data`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| url | string | 已打开链接 |
+| browser | string | 请求的浏览器 |
+| resolved_browser | string | 实际使用的浏览器，找不到指定浏览器时会回落到默认浏览器 |
+| opened | bool | 是否已触发打开 |
+
+#### POST `/api/douyin/private-message/demo`
+
+说明：本地演示用接口。使用 Playwright 打开指定抖音主页，点击页面上的“私信”，通过 Draft.js 粘贴事件把生成的私信文案注入输入框；`auto_send=true` 时继续点击发送按钮。默认只预填不发送。
+
+入参：
+
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+|---|---|---:|---|---|
+| profile_url / target_profile_url / url | string | 是 | - | 抖音用户主页链接，必须是 `douyin.com` |
+| message / reply / text | string | 是 | - | 要填入私信输入框的文本 |
+| browser / browser_name | string | 否 | `default` | `default`、`edge`、`chrome` |
+| auto_send | bool | 否 | `false` | 是否粘贴后自动点击发送 |
+| account_cookies / account_cookie / cookies / cookie | string/object/array | 否 | - | 账号 Cookie，用于本地 Playwright 调试时跳过登录；支持 `{"cookies":[...]}`、Cookie 数组、单个 Cookie 对象或 `name=value; name2=value2` 字符串。不会在响应中回显原文 |
+| options.user_data_dir | string | 否 | `content/playwright_profiles/douyin-{browser}` | Playwright 持久化浏览器目录，用于保存抖音登录态 |
+| options.use_cdp | bool | 否 | `true` | 是否启动/复用 remote debugging 浏览器，推荐保持默认 |
+| options.cdp_url | string | 否 | - | 可选，连接已开启 remote debugging 的浏览器 |
+| options.cdp_port | int | 否 | Edge `9333` 起 / Chrome `9444` 起 | 本地 remote debugging 端口 |
+
+请求示例：
+
+```json
+{
+  "profile_url": "https://www.douyin.com/user/MS4wLjABAAAA0VPGcVLBTV9KuvOPi18HdpZGEDnltASrLJOsMDqs5cY?from_tab_name=main",
+  "message": "您好，看到您刚才评论里提到想了解这个方向，我先把资料发您看看。",
+  "browser": "edge",
+  "auto_send": false,
+  "account_cookies": {
+    "cookies": [
+      {"name": "sessionid", "value": "你的 Cookie 值", "domain": ".douyin.com", "path": "/"}
+    ]
+  }
+}
+```
+
+响应 `data` 示例：
+
+```json
+{
+  "profile_url": "https://www.douyin.com/user/MS4wLjABAAAA0VPGcVLBTV9KuvOPi18HdpZGEDnltASrLJOsMDqs5cY?from_tab_name=main",
+  "browser": "edge",
+  "auto_send": false,
+  "message_chars": 31,
+  "account_cookie_loaded": true,
+  "account_cookie_count": 1,
+  "success": true,
+  "opened": true,
+  "prefilled": true,
+  "sent": false,
+  "resolved_browser": "edge",
+  "engine": "playwright",
+  "profile_dir": "D:\\project\\sixin\\aisec-agent\\content\\playwright_profiles\\douyin-edge",
+  "steps": [
+    {"name": "connect_browser", "ok": true, "detail": "http://127.0.0.1:9333"},
+    {"name": "open_profile", "ok": true, "detail": "https://www.douyin.com/user/..."},
+    {"name": "click_private_button", "ok": true, "detail": "clicked"},
+    {"name": "paste_message", "ok": true, "detail": "draftjs-paste"},
+    {"name": "send_message", "ok": false, "detail": "auto_send is disabled; message is only prefilled"}
+  ]
+}
+```
+
+#### POST `/api/douyin/account-cookie/apply`
+
+说明：本地演示用接口。只把账号 Cookie 写入当前选择的 Edge/Chrome Playwright 调试会话，不生成或发送私信。默认不打开抖音首页，适合先跳过登录，再回到调试页点击“生成并演示”。
+
+入参：
+
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+|---|---|---:|---|---|
+| account_cookies / account_cookie / cookies / cookie | string/object/array | 是 | - | 账号 Cookie，格式同私信演示接口；建议从浏览器插件导出的 `{"cookies":[...]}` JSON 粘贴 |
+| browser / browser_name | string | 否 | `default` | `default`、`edge`、`chrome` |
+| options.user_data_dir | string | 否 | `content/playwright_profiles/douyin-{browser}` | Playwright 持久化浏览器目录 |
+| options.use_cdp | bool | 否 | `true` | 是否启动/复用 remote debugging 浏览器 |
+| options.cdp_url | string | 否 | - | 可选，连接已开启 remote debugging 的浏览器 |
+| options.cdp_port | int | 否 | Edge `9333` 起 / Chrome `9444` 起 | 本地 remote debugging 端口 |
+| options.home_timeout_ms | int | 否 | `0` | 是否打开抖音首页确认，`0` 表示只写入 Cookie 不打开首页；需要确认时可设为 `5000` |
+
+请求示例：
+
+```json
+{
+  "browser": "edge",
+  "account_cookies": {
+    "cookies": [
+      {"name": "sessionid", "value": "你的 Cookie 值", "domain": ".douyin.com", "path": "/"}
+    ]
+  }
+}
+```
+
+响应 `data` 示例：
+
+```json
+{
+  "browser": "edge",
+  "success": true,
+  "opened": false,
+  "resolved_browser": "edge",
+  "engine": "playwright",
+  "account_cookie_loaded": true,
+  "account_cookie_count": 1,
+  "steps": [
+    {"name": "connect_browser", "ok": true, "detail": "http://127.0.0.1:9333"},
+    {"name": "apply_account_cookies", "ok": true, "detail": "1 cookies"}
+  ]
+}
+```
+
 ### 8. 文件解析与项目资料
 
 #### POST `/api/files/parse`
@@ -2918,3 +3046,13 @@ data: {"code":0,"msg":"success","data":true}
   "data": null
 }
 ```
+
+## HTTP 审计日志
+
+#### GET `/api/admin/http-audit-logs?limit=50&offset=0`
+
+返回最近的请求审计记录，包含 `remote_ip`、`method`、`path`、`query`、`body`、`status`、`response`、`timestamp`。
+
+#### POST `/api/admin/http-audit-logs/clear`
+
+清空审计日志。

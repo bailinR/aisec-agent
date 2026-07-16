@@ -25,6 +25,7 @@ GLOBAL_OPERATOR_PROMPT = """
   联系方式应直接、自然地写在私信文本里。
 - 不要在同一条回复里同时说“回复关键词/回我一句后再发”和“已经发了入口/联系方式”。
 - 回复要像真人私信，不要像客服模板或知识库问答。
+- 视频概述只用于判断用户可能感兴趣的方向，不要在私信里明说“视频里讲的是/视频介绍的是/看到这个视频”；可以自然表达为“看到您对xx比较感兴趣”，信息不足时也可以不提视频。
 - 优先用本地部署大模型；如果页面配置为第三方 API，则按页面配置执行。
 - 短对话优先使用完整原始上下文；长对话使用压缩核心记忆，信息不足时再读取原始上下文。
 - 输出要围绕项目资料和场景提示词生成，避免跨项目串话。
@@ -353,6 +354,10 @@ class ProjectMaterialStore:
         for project_dir in self._project_dirs():
             self.ensure_default_knowledge_documents(project_dir, create_missing_defaults=False)
 
+    @staticmethod
+    def _knowledge_base_id(name: str) -> str:
+        return "kb_" + uuid.uuid5(uuid.NAMESPACE_URL, str(name or DEFAULT_KNOWLEDGE_BASE_NAME)).hex[:10]
+
     def ensure_default_project(self) -> str:
         existing = self._project_dirs()
         if existing:
@@ -482,6 +487,7 @@ class ProjectMaterialStore:
                 resolved_relative = doc["relative_path"]
 
             merged["knowledge_base"] = doc.get("knowledge_base") or merged.get("knowledge_base") or DEFAULT_KNOWLEDGE_BASE_NAME
+            merged["kb_id"] = merged.get("kb_id") or self._knowledge_base_id(merged["knowledge_base"])
             merged["domain"] = doc.get("domain") or merged.get("domain") or merged.get("category") or "默认领域"
             merged["section"] = doc.get("section") or merged.get("section") or "默认板块"
             merged["category"] = doc.get("category") or merged.get("category") or merged["domain"]
@@ -501,6 +507,10 @@ class ProjectMaterialStore:
             and item.get("doc_id") not in deleted_doc_ids
             and self._manifest_document_file_exists(project_dir, item)
         ]
+        for item in custom_docs:
+            knowledge_base = str(item.get("knowledge_base") or DEFAULT_KNOWLEDGE_BASE_NAME).strip() or DEFAULT_KNOWLEDGE_BASE_NAME
+            item["knowledge_base"] = knowledge_base
+            item["kb_id"] = item.get("kb_id") or self._knowledge_base_id(knowledge_base)
         documents.extend(custom_docs)
 
         seen_doc_ids = {item.get("doc_id") for item in documents if item.get("doc_id")}
@@ -525,6 +535,7 @@ class ProjectMaterialStore:
             documents.append({
                 "doc_id": doc_id,
                 "title": item.get("title") or item.get("source_file_name") or relative_path,
+                "kb_id": self._knowledge_base_id(knowledge_base_name),
                 "knowledge_base": knowledge_base_name,
                 "domain": domain_name,
                 "section": section_name,
@@ -623,6 +634,7 @@ class ProjectMaterialStore:
                 "doc_id": doc_id,
                 "title": title,
                 "category": category,
+                "kb_id": self._knowledge_base_id(knowledge_base),
                 "knowledge_base": knowledge_base,
                 "domain": domain,
                 "section": section,
@@ -641,6 +653,7 @@ class ProjectMaterialStore:
             "doc_id": doc_id,
             "title": title,
             "category": category,
+            "kb_id": self._knowledge_base_id(knowledge_base),
             "knowledge_base": knowledge_base,
             "domain": domain,
             "section": section,
@@ -1276,6 +1289,12 @@ class ProjectMaterialStore:
     def _upsert_manifest_document(self, project_dir: Path, document: Dict[str, Any]) -> None:
         manifest_path = project_dir / "knowledge" / "manifest.json"
         manifest = self._read_json(manifest_path) or {"version": 1, "documents": []}
+        knowledge_base = str(document.get("knowledge_base") or DEFAULT_KNOWLEDGE_BASE_NAME).strip() or DEFAULT_KNOWLEDGE_BASE_NAME
+        document = {
+            **document,
+            "knowledge_base": knowledge_base,
+            "kb_id": document.get("kb_id") or document.get("knowledge_base_id") or self._knowledge_base_id(knowledge_base),
+        }
         documents = [
             item for item in manifest.get("documents", [])
             if item.get("doc_id") != document.get("doc_id")
@@ -1331,11 +1350,26 @@ class ProjectMaterialStore:
         llm_tools: Any = None,
         model_conf: Optional[Dict[str, Any]] = None,
         max_documents: int = 3,
+        allowed_kb_ids: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         project_dir = self._resolve_project_dir(project_id)
         docs = self.list_knowledge_documents(project_dir.name)
+        allowed = {str(item) for item in (allowed_kb_ids or []) if str(item or "").strip()}
+        if allowed_kb_ids is not None:
+            docs = [
+                doc for doc in docs
+                if str(doc.get("kb_id") or doc.get("knowledge_base_id") or self._knowledge_base_id(doc.get("knowledge_base") or "") or "") in allowed
+            ]
         selected_ids: List[str] = []
         reason = ""
+
+        if not docs:
+            return {
+                "documents": [],
+                "document_ids": [],
+                "context": "",
+                "reason": "no_authorized_knowledge_base",
+            }
 
         if llm_tools is not None and model_conf:
             try:

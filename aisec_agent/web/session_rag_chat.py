@@ -3,6 +3,7 @@
 import argparse
 import cgi
 import json
+import logging
 import mimetypes
 import os
 import re
@@ -10,6 +11,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import time
 import threading
 import uuid
 import webbrowser
@@ -44,10 +46,319 @@ FILE_PARSER_HTML_FILE = STATIC_DIR / "file_parser.html"
 PROJECT_MATERIALS_HTML_FILE = STATIC_DIR / "project_materials.html"
 ADMIN_VUE_HTML_FILE = STATIC_DIR / "admin_vue.html"
 ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+DEFAULT_COMPANY_NAME = "默认公司"
 
 
 class WebInputError(ValueError):
     pass
+
+
+HTTP_AUDIT_LOGGER = logging.getLogger("aisec_agent.http")
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return int(str(raw).strip() or default)
+    except Exception:
+        return default
+
+
+HTTP_AUDIT_ENABLED = _env_bool("AISEC_HTTP_AUDIT_LOG", True)
+HTTP_AUDIT_VERBOSE = _env_bool("AISEC_HTTP_AUDIT_VERBOSE", False)
+HTTP_AUDIT_TEXT_LIMIT = max(32, _env_int("AISEC_HTTP_AUDIT_TEXT_LIMIT", 160))
+HTTP_AUDIT_LIST_LIMIT = max(1, _env_int("AISEC_HTTP_AUDIT_LIST_LIMIT", 6))
+HTTP_AUDIT_REDIS_KEY = os.getenv("AISEC_HTTP_AUDIT_REDIS_KEY", "http:audit:entries")
+HTTP_AUDIT_MAX_ENTRIES = max(100, _env_int("AISEC_HTTP_AUDIT_MAX_ENTRIES", 1000))
+HTTP_AUDIT_TTL_SECONDS = max(0, _env_int("AISEC_HTTP_AUDIT_TTL_SECONDS", 7 * 24 * 3600))
+
+
+def _audit_text(value: Any, limit: int = HTTP_AUDIT_TEXT_LIMIT) -> str:
+    text = str(value or "").strip()
+    if len(text) <= limit:
+        return text
+    return f"{text[: limit - 1]}..."
+
+
+def _audit_value(value: Any) -> Any:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) or value is None:
+        return value
+    if isinstance(value, str):
+        return _audit_text(value)
+    return _audit_text(value)
+
+
+def _audit_brief_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            "type": "dict",
+            "keys": sorted(str(key) for key in value.keys())[:HTTP_AUDIT_LIST_LIMIT],
+        }
+    if isinstance(value, list):
+        return {
+            "type": "list",
+            "len": len(value),
+            "sample": [_audit_brief_value(item) for item in value[:HTTP_AUDIT_LIST_LIMIT]],
+        }
+    if isinstance(value, tuple):
+        return {
+            "type": "tuple",
+            "len": len(value),
+            "sample": [_audit_brief_value(item) for item in value[:HTTP_AUDIT_LIST_LIMIT]],
+        }
+    return _audit_value(value)
+
+
+def _audit_selected_fields(data: Dict[str, Any], keys: Iterable[str]) -> Dict[str, Any]:
+    result: Dict[str, Any] = {}
+    for key in keys:
+        if key in data and data.get(key) is not None and str(data.get(key)).strip() != "":
+            result[key] = _audit_value(data.get(key))
+    return result
+
+
+def _audit_request_summary(method: str, path: str, query: Dict[str, List[str]], body: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    summary: Dict[str, Any] = {"method": method, "path": path}
+    if query:
+        summary["query"] = {k: [_audit_value(v) for v in values[:HTTP_AUDIT_LIST_LIMIT]] for k, values in query.items()}
+    if isinstance(body, dict) and body:
+        body_summary = {
+            "keys": sorted(str(key) for key in body.keys()),
+            "fields": {},
+        }
+        for key, value in body.items():
+            key_text = str(key).lower()
+            if any(token in key_text for token in ("cookie", "token", "secret", "password", "api_key", "authorization")):
+                body_summary["fields"][str(key)] = "[redacted]"
+            else:
+                body_summary["fields"][str(key)] = _audit_brief_value(value)
+        if HTTP_AUDIT_VERBOSE:
+            preview: Dict[str, Any] = {}
+            for index, (key, value) in enumerate(body.items()):
+                if index >= HTTP_AUDIT_LIST_LIMIT:
+                    break
+                key_text = str(key).lower()
+                if any(token in key_text for token in ("cookie", "token", "secret", "password", "api_key", "authorization")):
+                    preview[str(key)] = "[redacted]"
+                else:
+                    preview[str(key)] = _audit_value(value)
+            body_summary["preview"] = preview
+        summary["body"] = body_summary
+    return summary
+
+
+def _audit_response_summary(data: Any) -> Dict[str, Any]:
+    if not isinstance(data, dict):
+        return {"type": type(data).__name__}
+
+    payload = data
+    if isinstance(data.get("data"), dict) and (("ok" in data) or ("code" in data)):
+        payload = data["data"]
+
+    summary: Dict[str, Any] = _audit_selected_fields(
+        payload,
+        (
+            "task_id",
+            "status",
+            "queue_status",
+            "error_code",
+            "failure_code",
+            "failure_type",
+            "manual_required",
+            "dead_letter",
+            "opened",
+            "prefilled",
+            "sent",
+            "success",
+            "resolved_browser",
+            "browser",
+            "browser_name",
+            "accepted",
+            "task_count",
+            "deleted_keys",
+            "cleared",
+            "result_ready",
+            "task_cleared",
+            "reply",
+            "error",
+        ),
+    )
+    summary["keys"] = sorted(str(key) for key in payload.keys())
+    summary["fields"] = {}
+    for key, value in payload.items():
+        key_text = str(key).lower()
+        if any(token in key_text for token in ("cookie", "token", "secret", "password", "api_key", "authorization")):
+            summary["fields"][str(key)] = "[redacted]"
+        else:
+            summary["fields"][str(key)] = _audit_brief_value(value)
+
+    if isinstance(payload.get("manual_takeover"), dict):
+        summary["manual_takeover"] = _audit_selected_fields(
+            payload["manual_takeover"],
+            ("available", "action", "browser", "headless", "task_id", "status", "queue_status", "url"),
+        )
+
+    if isinstance(payload.get("result"), dict):
+        summary["result"] = _audit_selected_fields(
+            payload["result"],
+            (
+                "status",
+                "queue_status",
+                "error_code",
+                "failure_code",
+                "failure_type",
+                "manual_required",
+                "dead_letter",
+                "sent",
+                "success",
+                "result_ready",
+                "task_cleared",
+                "retry_count",
+                "max_retries",
+            ),
+        )
+
+    if isinstance(payload.get("counts"), dict):
+        summary["counts"] = _audit_selected_fields(
+            payload["counts"],
+            ("pending", "auto_pending", "processing", "done", "failed", "retry_wait", "manual_required", "dead_letter"),
+        )
+
+    if isinstance(payload.get("queue"), dict):
+        summary["queue"] = _audit_selected_fields(
+            payload["queue"],
+            ("pending", "auto_pending", "processing", "done", "failed", "retry_wait", "manual_required", "dead_letter"),
+        )
+
+    if isinstance(payload.get("tasks"), dict):
+        task_summary: Dict[str, Any] = {}
+        for key, value in payload["tasks"].items():
+            if isinstance(value, list):
+                task_summary[key] = len(value)
+        if task_summary:
+            summary["tasks"] = task_summary
+
+    if isinstance(payload.get("task"), dict):
+        summary["task"] = _audit_selected_fields(
+            payload["task"],
+            ("task_id", "status", "queue_status", "error_code", "failure_code", "manual_required", "dead_letter", "browser", "headless"),
+        )
+
+    if HTTP_AUDIT_VERBOSE:
+        summary["preview"] = {
+            str(key): ("[redacted]" if any(token in str(key).lower() for token in ("cookie", "token", "secret", "password", "api_key", "authorization")) else _audit_brief_value(value))
+            for key, value in list(payload.items())[:HTTP_AUDIT_LIST_LIMIT]
+        }
+
+    return summary
+
+
+def _audit_form_summary(form: Any) -> Dict[str, Any]:
+    summary: Dict[str, Any] = {"type": type(form).__name__}
+    items = getattr(form, "list", None) or []
+    keys: List[str] = []
+    fields: Dict[str, Any] = {}
+    files: List[Dict[str, Any]] = []
+    for field in items:
+        name = str(getattr(field, "name", "") or "").strip()
+        if not name:
+            continue
+        keys.append(name)
+        filename = str(getattr(field, "filename", "") or "").strip()
+        if filename:
+            files.append({
+                "name": name,
+                "filename": Path(filename).name,
+                "type": str(getattr(field, "type", "") or ""),
+            })
+            continue
+        value = str(getattr(field, "value", "") or "")
+        if any(token in name.lower() for token in ("cookie", "token", "secret", "password", "api_key", "authorization")):
+            fields[name] = "[redacted]"
+        else:
+            fields[name] = _audit_text(value)
+    summary["keys"] = sorted(set(keys))
+    if fields:
+        summary["fields"] = fields
+    if files:
+        summary["files"] = files[:HTTP_AUDIT_LIST_LIMIT]
+    return summary
+
+
+def _audit_normalize_headers(headers: Any) -> Dict[str, Any]:
+    result: Dict[str, Any] = {}
+    if not headers:
+        return result
+    for key in ("User-Agent", "X-Forwarded-For", "X-Real-IP", "Referer", "Origin"):
+        value = headers.get(key)
+        if value:
+            result[key.lower().replace("-", "_")] = _audit_text(value, 256)
+    return result
+
+
+def _audit_store_entry(entry: Dict[str, Any]) -> None:
+    if not HTTP_AUDIT_ENABLED or not isinstance(entry, dict):
+        return
+    try:
+        redis_conn = _redis_conn()
+        payload = json.dumps(entry, ensure_ascii=False, separators=(",", ":"))
+        redis_conn.lpush(HTTP_AUDIT_REDIS_KEY, payload)
+        redis_conn.ltrim(HTTP_AUDIT_REDIS_KEY, 0, HTTP_AUDIT_MAX_ENTRIES - 1)
+        if HTTP_AUDIT_TTL_SECONDS > 0:
+            redis_conn.expire(HTTP_AUDIT_REDIS_KEY, HTTP_AUDIT_TTL_SECONDS)
+    except Exception as exc:
+        HTTP_AUDIT_LOGGER.debug("audit store failed: %s", exc)
+
+
+def build_http_audit_log_list_response(
+    redis_client: Optional[Any] = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> Dict[str, Any]:
+    redis_conn = _redis_conn(redis_client)
+    limit = max(1, min(int(limit or 50), HTTP_AUDIT_MAX_ENTRIES))
+    offset = max(0, int(offset or 0))
+    raw_entries = redis_conn.lrange(HTTP_AUDIT_REDIS_KEY, offset, offset + limit - 1)
+    entries: List[Dict[str, Any]] = []
+    for raw in raw_entries or []:
+        try:
+            item = json.loads(_dm_decode_scalar(raw))
+            if isinstance(item, dict):
+                entries.append(item)
+        except Exception:
+            continue
+    return {
+        "entries": entries,
+        "count": int(redis_conn.llen(HTTP_AUDIT_REDIS_KEY)),
+        "limit": limit,
+        "offset": offset,
+        "key": HTTP_AUDIT_REDIS_KEY,
+    }
+
+
+def build_http_audit_log_clear_response(redis_client: Optional[Any] = None) -> Dict[str, Any]:
+    redis_conn = _redis_conn(redis_client)
+    deleted = 0
+    try:
+        deleted = int(redis_conn.delete(HTTP_AUDIT_REDIS_KEY) or 0)
+    except Exception:
+        deleted = 0
+    return {
+        "cleared": True,
+        "deleted_keys": deleted,
+        "key": HTTP_AUDIT_REDIS_KEY,
+    }
 
 
 @dataclass
@@ -68,6 +379,7 @@ class PreparedChatRequest:
     user_id: str
     conversation_stage: str
     project_id: str
+    company_id: str
     scene_id: str
     template_id: str
     activity_id: str
@@ -473,6 +785,7 @@ def prepare_chat_request(payload: Dict[str, Any], use_saved_model_config: bool =
     if conversation_stage not in {"first_comment", "private_followup"}:
         conversation_stage = "private_followup"
     project_id = str(payload.get("project_id") or "").strip()
+    company_id = str(payload.get("company_id") or payload.get("company") or "").strip()
     # The page may still display the last matched scene, but chat routing must
     # always be inferred from the current comment/session context.
     scene_id = "auto"
@@ -500,6 +813,7 @@ def prepare_chat_request(payload: Dict[str, Any], use_saved_model_config: bool =
         user_id=user_id,
         conversation_stage=conversation_stage,
         project_id=project_id,
+        company_id=company_id,
         scene_id=scene_id,
         template_id=template_id,
         activity_id=activity_id,
@@ -568,6 +882,7 @@ def _chat_response_payload(
             "max_len_input": prepared.config["max_len_input"],
             "key_source": prepared.config.get("key_source"),
             "project_id": project_data.get("project_id") or prepared.project_id,
+            "company_id": prepared.company_id,
             "scene_id": project_data.get("scene_id") or prepared.scene_id,
             "template_id": (scene_template or {}).get("template_id") or prepared.template_id,
             "activity_id": (activity_settings or {}).get("activity_id") or prepared.activity_id,
@@ -699,13 +1014,22 @@ def _select_project_documents(
     routing_input: str = "",
 ) -> Dict[str, Any]:
     use_ai_selector = type(chat_logic) is SessionRAGChatLogic
-    return store.select_relevant_documents(
+    allowed_kb_ids, company, _ = _allowed_kb_ids_for_company(
+        store,
+        prepared.project_id,
+        prepared.company_id,
+    )
+    result = store.select_relevant_documents(
         user_input=routing_input or prepared.question,
         project_id=prepared.project_id,
         scene_id=scene_id,
         llm_tools=chat_logic._llm() if use_ai_selector else None,
         model_conf=_document_selection_model_conf(prepared) if use_ai_selector else None,
+        allowed_kb_ids=allowed_kb_ids,
     )
+    result["company"] = company
+    result["allowed_kb_ids"] = allowed_kb_ids
+    return result
 
 
 def _format_scene_template_context(template: Optional[Dict[str, Any]]) -> str:
@@ -1679,6 +2003,10 @@ def _identity_settings_path(store: ProjectMaterialStore, project_id: str) -> tup
     return _admin_json_path(store, project_id, "identity_settings.json")
 
 
+def _company_settings_path(store: ProjectMaterialStore, project_id: str) -> tuple[Path, Path]:
+    return _admin_json_path(store, project_id, "companies.json")
+
+
 def _empty_document_descriptions(project_id: str) -> Dict[str, Any]:
     domains: List[Dict[str, Any]] = []
     return {
@@ -1705,6 +2033,10 @@ def _empty_document_descriptions(project_id: str) -> Dict[str, Any]:
 
 def _knowledge_base_id(name: str) -> str:
     return "kb_" + uuid.uuid5(uuid.NAMESPACE_URL, str(name or DEFAULT_KNOWLEDGE_BASE_NAME)).hex[:10]
+
+
+def _company_id(name: str) -> str:
+    return "company_" + uuid.uuid5(uuid.NAMESPACE_URL, str(name or DEFAULT_COMPANY_NAME)).hex[:10]
 
 
 def _domain_id(name: str) -> str:
@@ -1833,6 +2165,228 @@ def _flatten_description_documents(data: Dict[str, Any]) -> List[Dict[str, Any]]
                         "section_id": section.get("section_id", ""),
                     })
     return docs
+
+
+def _knowledge_base_summaries(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    data = _normalize_description_structure(data)
+    summaries = []
+    for base in data.get("knowledge_bases", []):
+        kb_id = str(base.get("kb_id") or _knowledge_base_id(base.get("name") or "")).strip()
+        if not kb_id:
+            continue
+        count = 0
+        for domain in base.get("domains", []):
+            for section in domain.get("sections", []):
+                count += len(section.get("documents", []) or [])
+        summaries.append({
+            "kb_id": kb_id,
+            "name": base.get("name") or "默认知识库",
+            "description": base.get("description") or "",
+            "document_count": count,
+        })
+    return summaries
+
+
+def _filter_descriptions_by_kb_ids(data: Dict[str, Any], allowed_kb_ids: List[str]) -> Dict[str, Any]:
+    allowed = {str(item) for item in allowed_kb_ids if str(item or "").strip()}
+    data = _normalize_description_structure(data)
+    filtered_bases = [
+        base for base in data.get("knowledge_bases", [])
+        if str(base.get("kb_id") or _knowledge_base_id(base.get("name") or "")) in allowed
+    ]
+    result = {
+        **data,
+        "knowledge_bases": filtered_bases,
+        "domains": (filtered_bases[0].get("domains", []) if filtered_bases else []),
+    }
+    return result
+
+
+def _default_company(company_id: str = "") -> Dict[str, Any]:
+    now = datetime.now().isoformat(timespec="seconds")
+    return {
+        "company_id": company_id or _company_id(DEFAULT_COMPANY_NAME),
+        "name": DEFAULT_COMPANY_NAME,
+        "short_name": DEFAULT_COMPANY_NAME,
+        "status": "active",
+        "description": "默认公司，当前已有知识库默认归属此公司；后续可修改公司信息和知识库分配。",
+        "tags": [],
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
+def _normalize_company_settings(
+    data: Dict[str, Any],
+    project_id: str,
+    knowledge_bases: List[Dict[str, Any]],
+    assign_all_to_default: bool = False,
+) -> Dict[str, Any]:
+    if not isinstance(data, dict):
+        data = {}
+    now = datetime.now().isoformat(timespec="seconds")
+    companies = []
+    seen_company_ids = set()
+    for item in data.get("companies", []) if isinstance(data.get("companies"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip() or DEFAULT_COMPANY_NAME
+        company_id = str(item.get("company_id") or _company_id(name)).strip()
+        if not company_id or company_id in seen_company_ids:
+            continue
+        seen_company_ids.add(company_id)
+        companies.append({
+            **item,
+            "company_id": company_id,
+            "name": name,
+            "short_name": str(item.get("short_name") or name).strip(),
+            "status": str(item.get("status") or "active").strip() or "active",
+            "description": str(item.get("description") or "").strip(),
+            "tags": [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()] if isinstance(item.get("tags"), list) else [],
+            "created_at": item.get("created_at") or now,
+            "updated_at": item.get("updated_at") or now,
+        })
+
+    if not companies:
+        companies.append(_default_company())
+
+    default = next((item for item in companies if item.get("name") == DEFAULT_COMPANY_NAME), companies[0])
+
+    known_kb_ids = {str(base.get("kb_id") or "") for base in knowledge_bases if str(base.get("kb_id") or "").strip()}
+    relations = []
+    seen_relations = set()
+    for item in data.get("company_knowledge_bases", []) if isinstance(data.get("company_knowledge_bases"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        company_id = str(item.get("company_id") or "").strip()
+        kb_id = str(item.get("kb_id") or item.get("knowledge_base_id") or "").strip()
+        if not company_id or not kb_id:
+            continue
+        if known_kb_ids and kb_id not in known_kb_ids:
+            continue
+        key = (company_id, kb_id)
+        if key in seen_relations:
+            continue
+        seen_relations.add(key)
+        relations.append({
+            "company_id": company_id,
+            "kb_id": kb_id,
+            "role": str(item.get("role") or "owner").strip() or "owner",
+            "enabled": bool(item.get("enabled", True)),
+            "created_at": item.get("created_at") or now,
+            "updated_at": item.get("updated_at") or now,
+        })
+
+    if assign_all_to_default:
+        default_id = str(default.get("company_id") or _company_id(DEFAULT_COMPANY_NAME))
+        for kb_id in sorted(known_kb_ids):
+            key = (default_id, kb_id)
+            if key in seen_relations:
+                continue
+            relations.append({
+                "company_id": default_id,
+                "kb_id": kb_id,
+                "role": "owner",
+                "enabled": True,
+                "created_at": now,
+                "updated_at": now,
+            })
+            seen_relations.add(key)
+
+    return {
+        "version": data.get("version") or 1,
+        "project_id": project_id,
+        "updated_at": data.get("updated_at") or now,
+        "companies": companies,
+        "company_knowledge_bases": relations,
+        "knowledge_bases": knowledge_bases,
+    }
+
+
+def _load_company_settings(
+    store: ProjectMaterialStore,
+    project_id: str,
+    descriptions: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    project_dir, path = _company_settings_path(store, project_id)
+    descriptions = descriptions or _load_document_descriptions(store, project_dir.name)
+    knowledge_bases = _knowledge_base_summaries(descriptions)
+    existed = path.exists()
+    data = _load_json_file(path, {})
+    normalized = _normalize_company_settings(
+        data,
+        project_dir.name,
+        knowledge_bases,
+        assign_all_to_default=not existed,
+    )
+    if not existed or normalized != data:
+        normalized["updated_at"] = datetime.now().isoformat(timespec="seconds")
+        _write_json_file(path, normalized)
+    return normalized
+
+
+def _save_company_settings(
+    store: ProjectMaterialStore,
+    project_id: str,
+    data: Dict[str, Any],
+    descriptions: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    project_dir, path = _company_settings_path(store, project_id)
+    descriptions = descriptions or _load_document_descriptions(store, project_dir.name)
+    normalized = _normalize_company_settings(
+        data,
+        project_dir.name,
+        _knowledge_base_summaries(descriptions),
+        assign_all_to_default=False,
+    )
+    normalized["updated_at"] = datetime.now().isoformat(timespec="seconds")
+    for company in normalized.get("companies", []):
+        company["updated_at"] = normalized["updated_at"]
+    _write_json_file(path, normalized)
+    return normalized
+
+
+def _default_company_id(company_settings: Dict[str, Any]) -> str:
+    companies = company_settings.get("companies") or []
+    default = next((item for item in companies if item.get("name") == DEFAULT_COMPANY_NAME), None)
+    default = default or (companies[0] if companies else {})
+    return str(default.get("company_id") or _company_id(DEFAULT_COMPANY_NAME))
+
+
+def _allowed_kb_ids_for_company(
+    store: ProjectMaterialStore,
+    project_id: str,
+    company_id: str = "",
+    descriptions: Optional[Dict[str, Any]] = None,
+) -> tuple[List[str], Dict[str, Any], Dict[str, Any]]:
+    project_dir, _ = _project_root_and_meta(store, project_id)
+    descriptions = descriptions or _load_document_descriptions(store, project_dir.name)
+    company_settings = _load_company_settings(store, project_dir.name, descriptions)
+    resolved_company_id = str(company_id or "").strip()
+    if not resolved_company_id:
+        allowed = [
+            str(base.get("kb_id") or "")
+            for base in company_settings.get("knowledge_bases", [])
+            if str(base.get("kb_id") or "").strip()
+        ]
+        return allowed, {
+            "company_id": "",
+            "name": "全部知识库",
+            "short_name": "全部",
+            "status": "active",
+            "scope": "all",
+        }, company_settings
+    companies = company_settings.get("companies") or []
+    company = next((item for item in companies if item.get("company_id") == resolved_company_id), None)
+    if not company:
+        resolved_company_id = _default_company_id(company_settings)
+        company = next((item for item in companies if item.get("company_id") == resolved_company_id), None) or {}
+    allowed = [
+        str(item.get("kb_id") or "")
+        for item in company_settings.get("company_knowledge_bases", [])
+        if item.get("company_id") == resolved_company_id and item.get("enabled", True) and str(item.get("kb_id") or "").strip()
+    ]
+    return allowed, company, company_settings
 
 
 def _suggest_sender_identity_from_doc(doc: Dict[str, Any], domain: str = "", section: str = "") -> str:
@@ -2110,6 +2664,7 @@ def _sync_manifest_from_document_descriptions(
                 **item,
                 "title": desc.get("title") or item.get("title"),
                 "category": desc.get("category") or item.get("category"),
+                "kb_id": desc.get("knowledge_base_id") or desc.get("kb_id") or item.get("kb_id") or _knowledge_base_id(desc.get("knowledge_base") or item.get("knowledge_base") or DEFAULT_KNOWLEDGE_BASE_NAME),
                 "knowledge_base": desc.get("knowledge_base") or item.get("knowledge_base") or DEFAULT_KNOWLEDGE_BASE_NAME,
                 "domain": desc.get("domain") or item.get("domain") or desc.get("category") or item.get("category") or "",
                 "section": desc.get("section") or item.get("section") or "",
@@ -2137,6 +2692,7 @@ def _sync_manifest_from_document_descriptions(
             "doc_id": doc_id,
             "title": doc.get("title") or doc.get("source_file_name") or relative_path,
             "category": doc.get("category") or domain_name,
+            "kb_id": doc.get("knowledge_base_id") or doc.get("kb_id") or _knowledge_base_id(knowledge_base_name),
             "knowledge_base": knowledge_base_name,
             "domain": domain_name,
             "section": section_name,
@@ -2194,6 +2750,7 @@ def _document_descriptions_from_manifest(store: ProjectMaterialStore, project_id
         section.setdefault("documents", []).append({
             "doc_id": doc.get("doc_id") or uuid.uuid4().hex,
             "title": doc.get("title") or doc.get("source_file_name") or doc.get("relative_path"),
+            "kb_id": doc.get("kb_id") or doc.get("knowledge_base_id") or _knowledge_base_id(knowledge_base_name),
             "source_file_name": doc.get("source_file_name") or "",
             "relative_path": resolved_relative or doc.get("relative_path") or "",
             "description": doc.get("description") or "",
@@ -2236,6 +2793,7 @@ def _merge_manifest_documents_into_descriptions(
         section.setdefault("documents", []).append({
             "doc_id": doc_id,
             "title": doc.get("title") or doc.get("source_file_name") or relative_path,
+            "kb_id": doc.get("kb_id") or doc.get("knowledge_base_id") or _knowledge_base_id(knowledge_base_name),
             "source_file_name": doc.get("source_file_name") or "",
             "relative_path": resolved_relative or relative_path,
             "description": doc.get("description") or "",
@@ -2587,6 +3145,7 @@ def build_admin_state_response(
     templates = _load_scene_templates(store, project_dir.name)
     activities = _load_activity_settings(store, project_dir.name)
     identities = _load_identity_settings(store, project_dir.name)
+    company_settings = _load_company_settings(store, project_dir.name, descriptions)
     return {
         "projects": store.list_projects(),
         "project": {
@@ -2598,7 +3157,22 @@ def build_admin_state_response(
         "scene_templates": templates,
         "activity_settings": activities,
         "identity_settings": identities,
+        "company_settings": company_settings,
     }
+
+
+def build_admin_company_settings_save_response(
+    payload: Dict[str, Any],
+    project_store: Optional[ProjectMaterialStore] = None,
+) -> Dict[str, Any]:
+    store = _project_store(project_store)
+    project_id = str(payload.get("project_id") or "").strip()
+    settings = payload.get("company_settings")
+    if not isinstance(settings, dict):
+        raise WebInputError("company_settings is required")
+    descriptions = _load_document_descriptions(store, project_id)
+    saved = _save_company_settings(store, project_id, settings, descriptions)
+    return {"company_settings": saved}
 
 
 def build_admin_knowledge_save_response(
@@ -2947,11 +3521,13 @@ def build_admin_knowledge_base_delete_response(
             docs.extend(section.get("documents", []))
     descriptions["knowledge_bases"] = [item for item in bases if item.get("name") != name]
     descriptions = _save_document_descriptions(store, project_dir.name, descriptions)
+    company_settings = _load_company_settings(store, project_dir.name, descriptions)
     manifest_removed = _remove_documents_from_manifest(project_dir, docs)
     chunks_removed = _remove_documents_from_chunks(project_dir, docs)
     folder_deleted = _delete_knowledge_folder(project_dir, _knowledge_folder_path(project_dir, name))
     return {
         "document_descriptions": descriptions,
+        "company_settings": company_settings,
         "deleted": {
             "type": "knowledge_base",
             "name": name,
@@ -3115,6 +3691,7 @@ def build_admin_knowledge_upload_response(
     file_name: str,
     file_data: bytes,
     project_id: str = "",
+    company_id: str = "",
     knowledge_base: str = "",
     domain: str = "",
     section: str = "",
@@ -3173,6 +3750,7 @@ def build_admin_knowledge_upload_response(
         "doc_id": doc_id,
         "title": title,
         "category": domain_name,
+        "kb_id": _knowledge_base_id(knowledge_base_name),
         "knowledge_base": knowledge_base_name,
         "domain": domain_name,
         "section": section_name,
@@ -3196,6 +3774,7 @@ def build_admin_knowledge_upload_response(
     document_meta = {
         "doc_id": doc_id,
         "title": title,
+        "kb_id": _knowledge_base_id(knowledge_base_name),
         "knowledge_base": knowledge_base_name,
         "domain": domain_name,
         "section": section_name,
@@ -3212,10 +3791,26 @@ def build_admin_knowledge_upload_response(
     documents.append(document_meta)
     target_section["documents"] = documents
     descriptions = _save_document_descriptions(store, project_dir.name, descriptions)
+    company_settings = _load_company_settings(store, project_dir.name, descriptions)
+    resolved_company_id = str(company_id or "").strip() or _default_company_id(company_settings)
+    kb_id = _knowledge_base_id(knowledge_base_name)
+    relations = company_settings.setdefault("company_knowledge_bases", [])
+    if not any(item.get("company_id") == resolved_company_id and item.get("kb_id") == kb_id for item in relations):
+        now = datetime.now().isoformat(timespec="seconds")
+        relations.append({
+            "company_id": resolved_company_id,
+            "kb_id": kb_id,
+            "role": "owner",
+            "enabled": True,
+            "created_at": now,
+            "updated_at": now,
+        })
+        company_settings = _save_company_settings(store, project_dir.name, company_settings, descriptions)
 
     return {
         "document": document_meta,
         "document_descriptions": descriptions,
+        "company_settings": company_settings,
         "manifest_document": manifest_doc,
         "absolute_path": str(doc_path),
     }
@@ -3681,10 +4276,22 @@ def build_admin_prompt_restore_response(
     project_dir, project_meta = _project_root_and_meta(store, project_id)
     descriptions = _load_document_descriptions(store, project_dir.name)
     all_docs = _flatten_description_documents(descriptions)
+    allowed_kb_ids, company, _ = _allowed_kb_ids_for_company(
+        store,
+        project_dir.name,
+        str(payload.get("company_id") or "").strip(),
+        descriptions,
+    )
+    allowed_kb_id_set = set(allowed_kb_ids)
+    all_docs = [
+        doc for doc in all_docs
+        if str(doc.get("knowledge_base_id") or doc.get("kb_id") or _knowledge_base_id(doc.get("knowledge_base") or "")) in allowed_kb_id_set
+    ]
+    scoped_descriptions = _filter_descriptions_by_kb_ids(descriptions, allowed_kb_ids)
     max_documents = _to_int(payload.get("max_documents"), 4)
     model_conf = _optional_document_selector_conf(payload)
 
-    description_json = json.dumps(descriptions, ensure_ascii=False, indent=2)
+    description_json = json.dumps(scoped_descriptions, ensure_ascii=False, indent=2)
     selector_prompt = f"""
 你是知识库文档路由器。请先阅读总文档描述 JSON，再根据用户评论选择需要读取的具体文档。
 规则：
@@ -3736,6 +4343,7 @@ def build_admin_prompt_restore_response(
         user_id=str(payload.get("user_id") or DEFAULT_USER_ID).strip(),
         conversation_stage=str(payload.get("conversation_stage") or "first_comment"),
         project_id=project_dir.name,
+        company_id=str(payload.get("company_id") or "").strip(),
         scene_id=selected_template.get("scene_id") if isinstance(selected_template, dict) else "",
         template_id=str(payload.get("template_id") or "").strip(),
         activity_id=str(payload.get("activity_id") or "").strip(),
@@ -3826,6 +4434,8 @@ def build_admin_prompt_restore_response(
             "document_ids": selected_ids,
             "reason": selector_reason,
             "used_ai_selector": bool(model_conf),
+            "company": company,
+            "allowed_kb_ids": allowed_kb_ids,
         },
         "selected_documents": selected_docs,
         "sender_identity": sender_identity,
@@ -3896,6 +4506,7 @@ def build_project_route_debug_response(
         user_id=str(payload.get("user_id") or DEFAULT_USER_ID).strip(),
         conversation_stage=conversation_stage,
         project_id=str(payload.get("project_id") or "").strip(),
+        company_id=str(payload.get("company_id") or "").strip(),
         scene_id="auto",
         template_id=str(payload.get("template_id") or "").strip(),
         activity_id=str(payload.get("activity_id") or "").strip(),
@@ -3920,13 +4531,21 @@ def build_project_route_debug_response(
     initial_bundle = store.get_bundle(prepared.project_id, "auto", routing_input)
 
     model_conf = _optional_document_selector_conf(payload)
+    allowed_kb_ids, company, _ = _allowed_kb_ids_for_company(
+        store,
+        prepared.project_id,
+        prepared.company_id,
+    )
     project_documents = store.select_relevant_documents(
         user_input=routing_input,
         project_id=prepared.project_id,
         scene_id=initial_bundle.scene_id,
         llm_tools=chat_logic._llm() if model_conf else None,
         model_conf=model_conf,
+        allowed_kb_ids=allowed_kb_ids,
     )
+    project_documents["company"] = company
+    project_documents["allowed_kb_ids"] = allowed_kb_ids
     bundle = store.get_bundle(
         prepared.project_id,
         initial_bundle.scene_id,
@@ -4105,6 +4724,8 @@ def _normalize_public_api_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     )
     if question is not None:
         normalized["question"] = question
+    if normalized.get("company") and not normalized.get("company_id"):
+        normalized["company_id"] = normalized.get("company")
 
     model = normalized.get("model")
     if isinstance(model, dict):
@@ -4184,6 +4805,7 @@ def build_public_private_message_response(
         extra_input={
             "conversation_stage": normalized.get("conversation_stage"),
             "project_id": normalized.get("project_id"),
+            "company_id": normalized.get("company_id"),
             "template_id": normalized.get("template_id"),
             "activity_id": normalized.get("activity_id"),
             "source_platform": normalized.get("source_platform"),
@@ -5861,9 +6483,75 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         return
 
+    def _audit_begin(self, method: str, path: str, query: Optional[Dict[str, List[str]]] = None):
+        if not HTTP_AUDIT_ENABLED:
+            return
+        self._audit_started_at = time.time()
+        self._audit_request_id = uuid.uuid4().hex
+        self._audit_method = method
+        self._audit_path = path
+        self._audit_query = dict(query or {})
+        self._audit_body = None
+        self._audit_headers = _audit_normalize_headers(self.headers)
+
+    def _audit_set_body(self, body: Optional[Dict[str, Any]]):
+        if not HTTP_AUDIT_ENABLED:
+            return
+        self._audit_body = dict(body or {})
+
+    def _audit_finish(self, status: int, response_data: Any):
+        if not HTTP_AUDIT_ENABLED:
+            return
+        started_at = getattr(self, "_audit_started_at", None)
+        if started_at is None:
+            return
+        elapsed_ms = int((time.time() - float(started_at)) * 1000)
+        remote_ip = self.client_address[0] if getattr(self, "client_address", None) else ""
+        forwarded_for = ""
+        try:
+            forwarded_for = str(self.headers.get("X-Forwarded-For") or "").strip()
+        except Exception:
+            forwarded_for = ""
+        request_summary = _audit_request_summary(
+            getattr(self, "_audit_method", ""),
+            getattr(self, "_audit_path", ""),
+            getattr(self, "_audit_query", {}) or {},
+            getattr(self, "_audit_body", None),
+        )
+        response_summary = _audit_response_summary(response_data)
+        headers_summary = dict(getattr(self, "_audit_headers", {}) or {})
+        if forwarded_for:
+            headers_summary["x_forwarded_for"] = _audit_text(forwarded_for, 256)
+        entry = {
+            "request_id": getattr(self, "_audit_request_id", uuid.uuid4().hex),
+            "timestamp": _dm_now(),
+            "elapsed_ms": elapsed_ms,
+            "remote_ip": remote_ip,
+            "method": request_summary.get("method", ""),
+            "path": request_summary.get("path", ""),
+            "query": request_summary.get("query", {}),
+            "body": request_summary.get("body", {}),
+            "headers": headers_summary,
+            "status": int(status),
+            "response": response_summary,
+        }
+        _audit_store_entry(entry)
+        HTTP_AUDIT_LOGGER.info(
+            "%s %s %s %sms remote=%s req=%s resp=%s",
+            request_summary.get("method", ""),
+            request_summary.get("path", ""),
+            int(status),
+            elapsed_ms,
+            remote_ip,
+            json.dumps(request_summary, ensure_ascii=False, separators=(",", ":")),
+            json.dumps(response_summary, ensure_ascii=False, separators=(",", ":")),
+        )
+        self._audit_started_at = None
+
     def do_GET(self):
         parsed_url = urlparse(self.path)
         path = parsed_url.path
+        self._audit_begin("GET", path, parse_qs(parsed_url.query))
         if path in {"/", "/session-rag-chat"}:
             self._send_html()
         elif path == "/file-parser":
@@ -5872,13 +6560,21 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self.send_response(HTTPStatus.FOUND)
             self.send_header("Location", "/admin-vue")
             self.end_headers()
+            self._audit_finish(HTTPStatus.FOUND, {"location": "/admin-vue"})
         elif path in {"/admin", "/admin-vue"}:
             self._send_html(ADMIN_VUE_HTML_FILE)
         elif path.startswith("/static/"):
             self._send_static(path.removeprefix("/static/"))
+        elif path.startswith(f"{DM_DEBUG_ARTIFACT_URL_PREFIX}/"):
+            self._send_artifact(path.removeprefix(f"{DM_DEBUG_ARTIFACT_URL_PREFIX}/"))
+        elif path == "/api/v1/douyin/private-message/tasks":
+            self._handle_douyin_dm_task_list(parsed_url)
+        elif path.startswith("/api/v1/douyin/private-message/tasks/") and not path.endswith("/clear"):
+            self._handle_douyin_dm_task_status(parsed_url)
         elif path == "/api/presets":
             projects = self.server.project_store.list_projects()
             default_project = projects[0] if projects else {}
+            default_company_settings = _load_company_settings(self.server.project_store, default_project.get("project_id", "")) if default_project else {"companies": []}
             self._send_json({
                 "providers": public_provider_presets(),
                 "defaults": {
@@ -5886,6 +6582,7 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
                     "session_id": uuid.uuid4().hex,
                     "user_id": DEFAULT_USER_ID,
                     "project_id": default_project.get("project_id", ""),
+                    "company_id": _default_company_id(default_company_settings),
                     "scene_id": default_project.get("default_scene", "auto"),
                     "max_len_input": 16000,
                     "summary_max_chars": 4000,
@@ -5911,6 +6608,7 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/v1/presets":
             projects = self.server.project_store.list_projects()
             default_project = projects[0] if projects else {}
+            default_company_settings = _load_company_settings(self.server.project_store, default_project.get("project_id", "")) if default_project else {"companies": []}
             self._send_json({
                 "ok": True,
                 "data": {
@@ -5920,6 +6618,7 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
                         "session_id": uuid.uuid4().hex,
                         "user_id": DEFAULT_USER_ID,
                         "project_id": default_project.get("project_id", ""),
+                        "company_id": _default_company_id(default_company_settings),
                         "conversation_stage": "first_comment",
                         "max_len_input": 16000,
                         "summary_max_chars": 4000,
@@ -5934,6 +6633,8 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self._handle_project_materials(parsed_url)
         elif path == "/api/admin/state":
             self._handle_admin_state(parsed_url)
+        elif path == "/api/admin/http-audit-logs":
+            self._handle_http_audit_log_list(parsed_url)
         elif path == "/api/health":
             self._send_json({"ok": True})
         else:
@@ -5941,6 +6642,7 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
+        self._audit_begin("POST", path)
         if path == "/api/v1/business/reply":
             self._handle_business_reply()
             return
@@ -5967,6 +6669,26 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
 
         if path == "/api/v1/model/config/delete":
             self._handle_model_config_delete()
+            return
+
+        if path in {"/api/douyin/account-cookie/apply", "/api/v1/douyin/account-cookie/apply"}:
+            self._handle_douyin_account_cookie_apply()
+            return
+
+        if path in {"/api/douyin/private-message/demo", "/api/v1/douyin/private-message/demo"}:
+            self._handle_douyin_private_message_demo()
+            return
+
+        if path == "/api/v1/douyin/private-message/tasks":
+            self._handle_douyin_dm_task_submit()
+            return
+
+        if path == "/api/v1/douyin/private-message/tasks/clear":
+            self._handle_douyin_dm_task_clear()
+            return
+
+        if path.startswith("/api/v1/douyin/private-message/tasks/"):
+            self._handle_douyin_dm_task_status()
             return
 
         if path == "/api/files/parse":
@@ -6029,6 +6751,10 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self._handle_admin_knowledge_domain_delete()
             return
 
+        if path == "/api/admin/company-settings/save":
+            self._handle_admin_company_settings_save()
+            return
+
         if path == "/api/admin/open-file-location":
             self._handle_admin_open_file_location()
             return
@@ -6055,6 +6781,14 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/prompt/restore":
             self._handle_admin_prompt_restore()
+            return
+
+        if path == "/api/admin/http-audit-logs/clear":
+            self._handle_http_audit_log_clear()
+            return
+
+        if path == "/api/open-url":
+            self._handle_open_url()
             return
 
         if path != "/api/chat":
@@ -6133,6 +6867,16 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
+    def _handle_open_url(self):
+        try:
+            payload = self._read_json()
+            data = build_open_url_response(payload)
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
     def _handle_public_model_test(self):
         try:
             payload = self._read_json()
@@ -6189,6 +6933,31 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
                 project_store=self.server.project_store,
                 project_id=project_id,
             )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_http_audit_log_list(self, parsed_url=None):
+        try:
+            params = parse_qs((parsed_url.query if parsed_url is not None else urlparse(self.path).query) or "")
+            limit = _to_int((params.get("limit") or ["50"])[0], 50)
+            offset = _to_int((params.get("offset") or ["0"])[0], 0)
+            data = build_http_audit_log_list_response(
+                redis_client=None,
+                limit=limit,
+                offset=offset,
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_http_audit_log_clear(self):
+        try:
+            data = build_http_audit_log_clear_response()
             self._send_json({"ok": True, "data": data})
         except WebInputError as e:
             self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
@@ -6261,6 +7030,7 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
                 file_name=Path(file_field.filename).name,
                 file_data=file_field.file.read(),
                 project_id=self._form_value(form, "project_id"),
+                company_id=self._form_value(form, "company_id"),
                 knowledge_base=self._form_value(form, "knowledge_base"),
                 domain=self._form_value(form, "domain"),
                 section=self._form_value(form, "section"),
@@ -6343,6 +7113,19 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
         try:
             payload = self._read_json()
             data = build_admin_knowledge_domain_delete_response(
+                payload,
+                project_store=self.server.project_store,
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_admin_company_settings_save(self):
+        try:
+            payload = self._read_json()
+            data = build_admin_company_settings_save_response(
                 payload,
                 project_store=self.server.project_store,
             )
@@ -6458,6 +7241,86 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
+    def _handle_douyin_dm_task_submit(self):
+        try:
+            payload = self._read_json()
+            data = build_douyin_dm_task_submit_response(
+                payload,
+                redis_client=getattr(self.server, "redis_client", None),
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_douyin_dm_task_status(self, parsed_url=None):
+        try:
+            path = (parsed_url.path if parsed_url is not None else urlparse(self.path).path)
+            task_id = path.rsplit("/", 1)[-1].strip()
+            if not task_id or task_id == "tasks":
+                raise WebInputError("task_id is required")
+            data = build_douyin_dm_task_status_response(
+                task_id,
+                redis_client=getattr(self.server, "redis_client", None),
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_douyin_dm_task_list(self, parsed_url=None):
+        try:
+            params = parse_qs((parsed_url.query if parsed_url is not None else urlparse(self.path).query) or "")
+            limit = _to_int((params.get("limit") or [20])[0], 20)
+            data = build_douyin_dm_task_list_response(
+                redis_client=getattr(self.server, "redis_client", None),
+                limit=limit,
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_douyin_dm_task_clear(self):
+        try:
+            data = build_douyin_dm_task_clear_response(
+                redis_client=getattr(self.server, "redis_client", None),
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_douyin_private_message_demo(self):
+        try:
+            payload = self._read_json()
+            data = build_douyin_private_message_demo_response(
+                payload,
+                executor=_douyin_private_message_playwright_executor,
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_douyin_account_cookie_apply(self):
+        try:
+            payload = self._read_json()
+            data = build_douyin_account_cookie_apply_response(
+                payload,
+                executor=_douyin_account_cookie_playwright_executor,
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
     def _handle_project_document_import(self):
         try:
             form = self._read_multipart()
@@ -6538,7 +7401,7 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
         content_type = self.headers.get("Content-Type", "")
         if not content_type.lower().startswith("multipart/form-data"):
             raise WebInputError("multipart/form-data is required")
-        return cgi.FieldStorage(
+        form = cgi.FieldStorage(
             fp=self.rfile,
             headers=self.headers,
             environ={
@@ -6547,6 +7410,8 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
                 "CONTENT_LENGTH": self.headers.get("Content-Length", "0"),
             },
         )
+        self._audit_set_body(_audit_form_summary(form))
+        return form
 
     @staticmethod
     def _form_field(form, name: str):
@@ -6602,6 +7467,7 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(content)))
         self.end_headers()
         self.wfile.write(content)
+        self._audit_finish(HTTPStatus.OK, {"content_type": "text/html", "file": str(html_file.name)})
 
     def _send_static(self, relative_path: str):
         try:
@@ -6624,15 +7490,43 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(content)))
         self.end_headers()
         self.wfile.write(content)
+        self._audit_finish(HTTPStatus.OK, {"content_type": content_type, "file": relative_path})
+
+    def _send_artifact(self, relative_path: str):
+        try:
+            artifact_root = DM_DEBUG_ARTIFACT_DIR.resolve()
+            target = (artifact_root / relative_path).resolve()
+            target.relative_to(artifact_root)
+        except ValueError:
+            self._send_json({"ok": False, "error": "not found"}, status=HTTPStatus.NOT_FOUND)
+            return
+
+        if not target.is_file():
+            self._send_json({"ok": False, "error": "not found"}, status=HTTPStatus.NOT_FOUND)
+            return
+
+        content = target.read_bytes()
+        content_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(content)))
+        self.end_headers()
+        self.wfile.write(content)
+        self._audit_finish(HTTPStatus.OK, {"content_type": content_type, "file": relative_path})
 
     def _read_json(self) -> Dict[str, Any]:
         length = _to_int(self.headers.get("Content-Length"), 0)
         if length <= 0:
+            self._audit_set_body({})
             return {}
         raw = self.rfile.read(length)
-        return json.loads(raw.decode("utf-8"))
+        payload = json.loads(raw.decode("utf-8"))
+        self._audit_set_body(payload if isinstance(payload, dict) else {"_type": type(payload).__name__})
+        return payload
 
     def _send_json(self, data: Dict[str, Any], status: int = HTTPStatus.OK):
+        self._audit_finish(status, data)
         content = json.dumps(self._response_envelope(data, status), ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -6700,22 +7594,2217 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> None:
     args = build_parser().parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     port = choose_port(args.host, args.port)
     server = SessionRAGHTTPServer((args.host, port), SessionRAGRequestHandler)
     port = server.server_port
     display_host = "127.0.0.1" if args.host in {"0.0.0.0", ""} else args.host
     url = f"http://{display_host}:{port}"
 
-    print(f"Session RAG chat page: {url}")
+    logging.info("Session RAG chat page: %s", url)
     if not args.no_open:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
 
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nbye")
+        logging.info("bye")
     finally:
         server.server_close()
+
+
+def _restore_compiled_session_rag_chat_module() -> None:
+    return
+
+
+_restore_compiled_session_rag_chat_module()
+
+
+DM_REDIS_TASK_PREFIX = "dm:task:"
+DM_REDIS_PENDING_QUEUE = "dm:queue:pending"
+DM_REDIS_AUTO_PENDING_QUEUE = "dm:queue:auto_pending"
+DM_REDIS_DONE_QUEUE = "dm:queue:done"
+DM_REDIS_FAILED_QUEUE = "dm:queue:failed"
+DM_REDIS_RETRY_ZSET = "dm:queue:retry_wait"
+DM_REDIS_MANUAL_QUEUE = "dm:queue:manual_required"
+DM_REDIS_DEAD_LETTER_QUEUE = "dm:queue:dead_letter"
+DM_REDIS_PROCESSING_ZSET = "dm:queue:processing"
+DM_REDIS_ACCOUNT_SET = "dm:accounts"
+DM_REDIS_TASK_TTL_SECONDS = 7 * 24 * 3600
+DM_REDIS_DEFAULT_MAX_RETRIES = 1
+DM_REDIS_RETRY_DELAYS_SECONDS = [10, 30, 120]
+DM_DEBUG_ARTIFACT_DIR = Path(__file__).resolve().parents[2] / "content" / "douyin_dm_artifacts"
+DM_DEBUG_ARTIFACT_URL_PREFIX = "/api/v1/douyin/private-message/artifacts"
+DM_DEFAULT_VIEWPORT_WIDTH = 1440
+DM_DEFAULT_VIEWPORT_HEIGHT = 900
+DM_PLAYWRIGHT_PROFILE_ROOT = Path(os.getenv("AISEC_DM_PLAYWRIGHT_PROFILE_ROOT", Path(__file__).resolve().parents[2] / "content" / "playwright_profiles"))
+_DM_PLAYWRIGHT_SESSIONS: Dict[str, Dict[str, Any]] = {}
+
+
+DM_FAILURE_PROFILES = {
+    "missing_model_api_key": {
+        "stage": "model_config",
+        "category": "config",
+        "reason": "模型配置缺少 API Key",
+        "hint": "先调用 /api/v1/model/config/save 保存 MiniMax 的 api_key，再重新提交任务",
+    },
+    "playwright_missing": {
+        "stage": "browser_runtime",
+        "category": "runtime",
+        "reason": "Playwright 运行时缺失或导入失败",
+        "hint": "请检查容器镜像或 Python 环境中是否安装了 playwright",
+    },
+    "message_send_unconfirmed": {
+        "stage": "send_confirm",
+        "category": "automation",
+        "reason": "已点击发送，但页面未确认消息已发出",
+        "hint": "请检查是否被风控、页面结构变化、消息回显延迟，或人工确认是否真的发送成功",
+    },
+    "login_required": {
+        "stage": "browser_login",
+        "category": "account",
+        "reason": "抖音登录态失效或未登录",
+        "hint": "请先在浏览器里完成抖音登录，再重试任务",
+    },
+    "verification_required": {
+        "stage": "browser_login",
+        "category": "account",
+        "reason": "抖音触发二次验证",
+        "hint": "请先人工完成抖音二次验证，再重试任务",
+    },
+    "account_risk": {
+        "stage": "platform_risk",
+        "category": "account",
+        "reason": "抖音风控或发送限制",
+        "hint": "请检查账号风控、发送频率或是否被平台限制私信",
+    },
+    "automation_changed": {
+        "stage": "page_structure",
+        "category": "automation",
+        "reason": "抖音页面结构变化，自动化入口找不到",
+        "hint": "需要更新私信按钮或编辑器的选择器逻辑",
+    },
+    "page_timeout": {
+        "stage": "page_open",
+        "category": "browser",
+        "reason": "页面加载或跳转超时",
+        "hint": "请检查浏览器、网络和抖音页面是否能正常打开",
+    },
+    "element_not_found_once": {
+        "stage": "prefill_or_send",
+        "category": "automation",
+        "reason": "页面元素暂时未找到",
+        "hint": "可能是页面还没渲染完成，或者当前页面有弹层/结构变化",
+    },
+    "account_permission_denied": {
+        "stage": "permission",
+        "category": "account",
+        "reason": "当前账号没有私信权限",
+        "hint": "请检查该抖音账号是否具备私信发送权限",
+    },
+    "browser_closed": {
+        "stage": "browser_runtime",
+        "category": "browser",
+        "reason": "浏览器、上下文或页面已关闭",
+        "hint": "请检查浏览器进程、容器退出状态以及是否有页面崩溃或被手动关闭",
+    },
+    "cookie_invalid": {
+        "stage": "browser_login",
+        "category": "account",
+        "reason": "账号 Cookie 无效、过期或未正确加载",
+        "hint": "请重新导入 Cookie，并确认当前账号已在浏览器里完成登录",
+    },
+    "rate_limited": {
+        "stage": "platform_risk",
+        "category": "account",
+        "reason": "命中平台限流、频控或验证码",
+        "hint": "请降低发送频率，暂停一段时间后重试，或换一个账号再测",
+    },
+    "network_timeout": {
+        "stage": "network",
+        "category": "network",
+        "reason": "网络连接超时或不可达",
+        "hint": "请检查服务器 DNS、代理、出口网络或上游服务状态",
+    },
+    "model_timeout": {
+        "stage": "generation",
+        "category": "llm",
+        "reason": "模型调用超时",
+        "hint": "请检查模型服务、网络连通性和超时时间",
+    },
+    "unknown_error": {
+        "stage": "unknown",
+        "category": "unknown",
+        "reason": "未知错误",
+        "hint": "请结合日志、失败详情和页面截图继续排查",
+    },
+}
+
+DM_FAILURE_STEP_STAGE_MAP = {
+    "load_playwright": "browser_runtime",
+    "connect_browser": "browser_launch",
+    "launch_browser": "browser_launch",
+    "open_profile": "page_open",
+    "open_douyin_home": "page_open",
+    "click_private_button": "open_private_chat",
+    "open_private_chat": "open_private_chat",
+    "apply_account_cookies": "session_prepare",
+    "paste_message": "prefill",
+    "click_send_button": "send_action",
+    "send_message": "send_confirm",
+    "playwright_error": "browser_runtime",
+}
+
+
+def _redis_conn(redis_client: Optional[Any] = None) -> Any:
+    if redis_client is not None:
+        return redis_client
+    import redis
+
+    return redis.Redis.from_url(os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0"))
+
+
+def _dm_now() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _dm_decode_scalar(value: Any) -> str:
+    return value.decode("utf-8", errors="ignore") if isinstance(value, bytes) else str(value)
+
+
+def _dm_bool_text(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _payload_float(payload: Dict[str, Any], key: str, default: float = 0.0) -> float:
+    try:
+        value = payload.get(key)
+        if value is None or value == "":
+            return float(default)
+        return float(value)
+    except Exception:
+        return float(default)
+
+
+def _dm_task_key(task_id: str) -> str:
+    return f"dm:task:{task_id}"
+
+
+def _dm_pending_queue_for_account(account_key: str) -> str:
+    return f"dm:queue:pending:{str(account_key or 'default').strip() or 'default'}"
+
+
+def _dm_account_key_from_values(account_cookie: str = "", account_id: str = "") -> str:
+    seed = str(account_id or account_cookie or "").strip()
+    if not seed:
+        return "default"
+    import hashlib
+
+    return f"cookie_{hashlib.sha256(seed.encode('utf-8', errors='ignore')).hexdigest()[:16]}"
+
+
+def _dm_normalized_target(target_profile_url: str) -> str:
+    return str(target_profile_url or "").strip().split("?", 1)[0]
+
+
+def _dm_parse_account_cookies(raw_cookies: str) -> List[Dict[str, Any]]:
+    text = str(raw_cookies or "").strip()
+    if not text:
+        return []
+    cookies: List[Dict[str, Any]] = []
+    if text.startswith("{") or text.startswith("["):
+        data = json.loads(text)
+        items = data.get("cookies") if isinstance(data, dict) else data
+        if isinstance(items, list):
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("name") or "").strip()
+                value = str(item.get("value") or "").strip()
+                if not name:
+                    continue
+                cookies.append({
+                    "name": name,
+                    "value": value,
+                    "domain": str(item.get("domain") or ".douyin.com").strip() or ".douyin.com",
+                    "path": str(item.get("path") or "/").strip() or "/",
+                })
+        return cookies
+
+    for part in text.split(";"):
+        if "=" not in part:
+            continue
+        name, value = part.split("=", 1)
+        name = name.strip()
+        if not name:
+            continue
+        cookies.append({
+            "name": name,
+            "value": value.strip(),
+            "domain": ".douyin.com",
+            "path": "/",
+        })
+    return cookies
+
+
+def _dm_browser_channel(browser_name: str) -> str:
+    name = str(browser_name or "").strip().lower()
+    if name in {"edge", "msedge", "microsoft-edge"}:
+        return "msedge"
+    if name in {"chrome", "google-chrome"}:
+        return "chrome"
+    return ""
+
+
+def _dm_launch_playwright_browser(playwright: Any, browser_name: str, options: Dict[str, Any]):
+    launch_options = {
+        "headless": bool(options.get("headless")),
+        "slow_mo": int(options.get("slow_mo") or 0),
+    }
+    channel = _dm_browser_channel(browser_name)
+    if channel:
+        launch_options["channel"] = channel
+    try:
+        return playwright.chromium.launch(**launch_options)
+    except Exception:
+        launch_options.pop("channel", None)
+        return playwright.chromium.launch(**launch_options)
+
+
+def _dm_playwright_user_data_dir(browser_name: str, options: Dict[str, Any]) -> Path:
+    raw = str(options.get("user_data_dir") or options.get("profile_dir") or "").strip()
+    if raw:
+        return Path(raw).expanduser()
+    browser_key = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(browser_name or "edge").strip().lower() or "edge")
+    return DM_PLAYWRIGHT_PROFILE_ROOT / f"douyin-{browser_key}"
+
+
+def _dm_persistent_context_alive(context: Any) -> bool:
+    try:
+        _ = context.pages
+        return True
+    except Exception:
+        return False
+
+
+def _dm_launch_persistent_playwright_context(playwright: Any, browser_name: str, options: Dict[str, Any]):
+    user_data_dir = _dm_playwright_user_data_dir(browser_name, options)
+    user_data_dir.mkdir(parents=True, exist_ok=True)
+    launch_options = {
+        "headless": bool(options.get("headless")),
+        "slow_mo": int(options.get("slow_mo") or 0),
+        "viewport": {
+            "width": int(options.get("viewport_width") or DM_DEFAULT_VIEWPORT_WIDTH),
+            "height": int(options.get("viewport_height") or DM_DEFAULT_VIEWPORT_HEIGHT),
+        },
+        "device_scale_factor": float(options.get("device_scale_factor") or 1.0),
+    }
+    channel = _dm_browser_channel(browser_name)
+    if channel:
+        launch_options["channel"] = channel
+    try:
+        return playwright.chromium.launch_persistent_context(str(user_data_dir), **launch_options)
+    except Exception:
+        launch_options.pop("channel", None)
+        return playwright.chromium.launch_persistent_context(str(user_data_dir), **launch_options)
+
+
+def _dm_get_playwright_context(sync_playwright_factory: Any, browser_name: str, options: Dict[str, Any]):
+    headless = bool(options.get("headless"))
+    keep_browser_open = _dm_bool_text(options.get("keep_browser_open", not headless))
+    use_persistent_context = _dm_bool_text(options.get("persistent_context", keep_browser_open or options.get("user_data_dir")))
+    if use_persistent_context:
+        user_data_dir = _dm_playwright_user_data_dir(browser_name, options)
+        key = f"{str(browser_name or 'edge').lower()}|{user_data_dir.resolve()}"
+        session = _DM_PLAYWRIGHT_SESSIONS.get(key)
+        if session and _dm_persistent_context_alive(session.get("context")):
+            return session["playwright"], session["context"], None, keep_browser_open
+        manager = sync_playwright_factory()
+        playwright = manager.start()
+        context = _dm_launch_persistent_playwright_context(playwright, browser_name, options)
+        _DM_PLAYWRIGHT_SESSIONS[key] = {
+            "manager": manager,
+            "playwright": playwright,
+            "context": context,
+            "user_data_dir": str(user_data_dir),
+        }
+        return playwright, context, None, keep_browser_open
+
+    manager = sync_playwright_factory()
+    playwright = manager.start()
+    browser = _dm_launch_playwright_browser(playwright, browser_name, options)
+    context = browser.new_context(
+        viewport={
+            "width": int(options.get("viewport_width") or DM_DEFAULT_VIEWPORT_WIDTH),
+            "height": int(options.get("viewport_height") or DM_DEFAULT_VIEWPORT_HEIGHT),
+        },
+        device_scale_factor=float(options.get("device_scale_factor") or 1.0),
+    )
+    return playwright, context, browser, False
+
+
+def _dm_stop_playwright_context(context: Any, browser: Any, playwright: Any) -> None:
+    try:
+        if context:
+            context.close()
+    except Exception:
+        pass
+    try:
+        if browser:
+            browser.close()
+    except Exception:
+        pass
+    try:
+        if playwright:
+            playwright.stop()
+    except Exception:
+        pass
+
+
+def _dm_screenshot_failure(page: Any, options: Dict[str, Any], reason: str = "") -> Dict[str, Any]:
+    if not page or not _dm_bool_text(options.get("screenshot_on_failure", True)):
+        return {}
+    try:
+        screenshot_dir = Path(str(options.get("screenshot_dir") or DM_DEBUG_ARTIFACT_DIR))
+        screenshot_dir.mkdir(parents=True, exist_ok=True)
+        prefix = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(options.get("screenshot_prefix") or "dm"))[:80]
+        name = f"{prefix}_{int(time.time())}.png"
+        path = screenshot_dir / name
+        page.screenshot(path=str(path), full_page=True)
+        return {
+            "failure_screenshot_path": str(path),
+            "failure_screenshot_name": name,
+            "failure_screenshot_url": f"{DM_DEBUG_ARTIFACT_URL_PREFIX}/{name}",
+            "failure_screenshot_exists": True,
+            "failure_step_detail": reason,
+        }
+    except Exception:
+        return {}
+
+
+def _dm_click_first(page: Any, candidates: List[Any], step_name: str, timeout_ms: int = 8000) -> Dict[str, Any]:
+    last_error = ""
+    for locator in candidates:
+        try:
+            target = locator.first
+            target.wait_for(state="visible", timeout=timeout_ms)
+            target.click(timeout=timeout_ms)
+            return {"name": step_name, "ok": True, "detail": "clicked"}
+        except Exception as exc:
+            last_error = str(exc)
+    raise RuntimeError(f"{step_name} not found: {last_error}")
+
+
+def _dm_handle_douyin_login_save_prompt(page: Any, timeout_ms: int = 2500) -> Optional[Dict[str, Any]]:
+    prompt = page.locator("text=是否保存登录信息").first
+    try:
+        prompt.wait_for(state="visible", timeout=timeout_ms)
+    except Exception:
+        return None
+
+    last_error = ""
+    for label in ("保存", "取消"):
+        candidates = [
+            page.get_by_role("button", name=re.compile(label)),
+            page.locator(f"button:has-text('{label}')"),
+            page.locator(f"[role=button]:has-text('{label}')"),
+            page.locator(f"text={label}"),
+        ]
+        try:
+            step = _dm_click_first(page, candidates, "handle_login_save_prompt", timeout_ms=timeout_ms)
+            step["detail"] = f"clicked {label}"
+            try:
+                prompt.wait_for(state="hidden", timeout=timeout_ms)
+            except Exception:
+                pass
+            return step
+        except Exception as exc:
+            last_error = str(exc)
+    return {"name": "handle_login_save_prompt", "ok": False, "detail": last_error or "prompt button not found"}
+
+
+def _dm_append_optional_step(steps: List[Dict[str, Any]], step: Optional[Dict[str, Any]]) -> None:
+    if step:
+        steps.append(step)
+
+
+def _dm_fill_message_editor(page: Any, message: str, timeout_ms: int = 10000) -> Dict[str, Any]:
+    candidates = [
+        page.locator('[contenteditable="true"]'),
+        page.locator("textarea"),
+        page.locator(".public-DraftEditor-content"),
+        page.get_by_role("textbox"),
+    ]
+    last_error = ""
+    for locator in candidates:
+        try:
+            target = locator.first
+            target.wait_for(state="visible", timeout=timeout_ms)
+            target.click(timeout=timeout_ms)
+            try:
+                target.fill(message, timeout=timeout_ms)
+            except Exception:
+                page.keyboard.press("Control+A")
+                page.keyboard.press("Backspace")
+                page.keyboard.insert_text(message)
+            return {"name": "paste_message", "ok": True, "detail": "message inserted"}
+        except Exception as exc:
+            last_error = str(exc)
+    raise RuntimeError(f"private chat editor not found: {last_error}")
+
+
+def _dm_visible_message_editor(page: Any, timeout_ms: int = 4000) -> Any:
+    candidates = [
+        page.locator('[contenteditable="true"]'),
+        page.locator("textarea"),
+        page.locator(".public-DraftEditor-content"),
+        page.get_by_role("textbox"),
+    ]
+    last_error = ""
+    for locator in candidates:
+        try:
+            target = locator.first
+            target.wait_for(state="visible", timeout=timeout_ms)
+            return target
+        except Exception as exc:
+            last_error = str(exc)
+    raise RuntimeError(f"private chat editor not found: {last_error}")
+
+
+def _dm_message_editor_text(page: Any) -> str:
+    script = """
+    () => {
+      const items = Array.from(document.querySelectorAll('[contenteditable="true"], textarea, .public-DraftEditor-content'));
+      for (const el of items) {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        if (rect.width < 40 || rect.height < 20 || style.visibility === 'hidden' || style.display === 'none') continue;
+        const text = (el.value || el.innerText || el.textContent || '').trim();
+        if (text) return text;
+      }
+      return '';
+    }
+    """
+    try:
+        return str(page.evaluate(script) or "").strip()
+    except Exception:
+        return ""
+
+
+def _dm_wait_message_sent(page: Any, message: str, timeout_ms: int = 8000) -> Dict[str, Any]:
+    needle = str(message or "").strip()
+    if len(needle) > 48:
+        needle = needle[:48]
+    deadline = time.time() + max(1, timeout_ms / 1000)
+    last_text = ""
+    while time.time() < deadline:
+        last_text = _dm_message_editor_text(page)
+        if not last_text:
+            return {"name": "send_message", "ok": True, "detail": "editor cleared"}
+        if needle and needle not in last_text:
+            return {"name": "send_message", "ok": True, "detail": "editor changed after send"}
+        try:
+            page.wait_for_timeout(250)
+        except Exception:
+            time.sleep(0.25)
+    raise RuntimeError(f"message send was not confirmed; editor still contains: {last_text[:80]}")
+
+
+def _dm_editor_send_click_point(page: Any) -> Optional[Dict[str, float]]:
+    script = """
+    () => {
+      const items = Array.from(document.querySelectorAll('[contenteditable="true"], textarea, .public-DraftEditor-content'));
+      const visible = items.filter((el) => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        const text = (el.value || el.innerText || el.textContent || '').trim();
+        return text && rect.width >= 40 && rect.height >= 20 && style.visibility !== 'hidden' && style.display !== 'none';
+      });
+      const editor = visible[0] || items.find((el) => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width >= 40 && rect.height >= 20 && style.visibility !== 'hidden' && style.display !== 'none';
+      });
+      if (!editor) return null;
+      const candidates = [];
+      let node = editor;
+      for (let i = 0; node && i < 6; i += 1, node = node.parentElement) {
+        const rect = node.getBoundingClientRect();
+        if (
+          rect.width >= 120 &&
+          rect.height >= 48 &&
+          rect.width <= window.innerWidth * 0.9 &&
+          rect.height <= window.innerHeight * 0.45 &&
+          rect.left >= 0 &&
+          rect.top >= 0
+        ) {
+          candidates.push({x: rect.left + rect.width - 28, y: rect.top + rect.height - 28, area: rect.width * rect.height});
+        }
+      }
+      candidates.sort((a, b) => a.area - b.area);
+      return candidates[0] || null;
+    }
+    """
+    try:
+        point = page.evaluate(script)
+        if isinstance(point, dict) and point.get("x") is not None and point.get("y") is not None:
+            return {"x": float(point["x"]), "y": float(point["y"])}
+    except Exception:
+        return None
+    return None
+
+
+def _dm_click_editor_send_icon(page: Any) -> Optional[str]:
+    script = """
+    () => {
+      const items = Array.from(document.querySelectorAll('[contenteditable="true"], textarea, .public-DraftEditor-content'));
+      const visible = items.filter((el) => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        const text = (el.value || el.innerText || el.textContent || '').trim();
+        return text && rect.width >= 40 && rect.height >= 20 && style.visibility !== 'hidden' && style.display !== 'none';
+      });
+      const editor = visible[0];
+      if (!editor) return '';
+      const containers = [];
+      let node = editor;
+      for (let i = 0; node && i < 8; i += 1, node = node.parentElement) {
+        const rect = node.getBoundingClientRect();
+        if (rect.width >= 160 && rect.height >= 48 && rect.left >= 0 && rect.top >= 0) containers.push(rect);
+      }
+      containers.sort((a, b) => a.width * a.height - b.width * b.height);
+      const isClickable = (el) => {
+        if (!el || !el.getBoundingClientRect) return false;
+        const tag = String(el.tagName || '').toLowerCase();
+        const role = String(el.getAttribute && el.getAttribute('role') || '').toLowerCase();
+        const label = [
+          el.getAttribute && el.getAttribute('aria-label'),
+          el.getAttribute && el.getAttribute('title'),
+          el.textContent,
+        ].filter(Boolean).join(' ');
+        const style = window.getComputedStyle(el);
+        return tag === 'button' || tag === 'a' || role === 'button' || /发送|send/i.test(label) || style.cursor === 'pointer';
+      };
+      for (const rect of containers.concat([editor.getBoundingClientRect()])) {
+        const points = [
+          [rect.right - 22, rect.bottom - 22],
+          [rect.right - 28, rect.bottom - 24],
+          [rect.right - 36, rect.bottom - 24],
+          [rect.right - 44, rect.bottom - 24],
+          [rect.right - 28, rect.bottom - 38],
+        ];
+        for (const [x, y] of points) {
+          const stack = document.elementsFromPoint(Math.max(1, x), Math.max(1, y));
+          for (const raw of stack) {
+            let el = raw;
+            for (let depth = 0; el && depth < 5; depth += 1, el = el.parentElement) {
+              if (!isClickable(el)) continue;
+              el.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true, clientX: x, clientY: y}));
+              el.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, cancelable: true, clientX: x, clientY: y}));
+              el.click();
+              return `${Math.round(x)},${Math.round(y)}`;
+            }
+          }
+        }
+      }
+      return '';
+    }
+    """
+    try:
+        detail = str(page.evaluate(script) or "").strip()
+        return detail or None
+    except Exception:
+        return None
+
+
+def _dm_click_editor_send_button(page: Any) -> Optional[str]:
+    script = """
+    () => {
+      const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+      const isVisible = (el) => {
+        if (!el || !el.getBoundingClientRect) return false;
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width >= 18 && rect.height >= 18 && style.visibility !== 'hidden' && style.display !== 'none' && style.pointerEvents !== 'none';
+      };
+      const editors = Array.from(document.querySelectorAll('[contenteditable="true"], textarea, .public-DraftEditor-content'));
+      const editor = editors.find((el) => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        const text = (el.value || el.innerText || el.textContent || '').trim();
+        return text && rect.width >= 40 && rect.height >= 20 && style.visibility !== 'hidden' && style.display !== 'none';
+      }) || editors.find(isVisible) || null;
+      if (!editor) return '';
+
+      const editorRect = editor.getBoundingClientRect();
+      const seen = new Set();
+      const scored = [];
+      const selectors = 'button, [role="button"], a, input[type="button"], input[type="submit"]';
+      const collect = (root, bias) => {
+        if (!root || !root.querySelectorAll) return;
+        for (const el of root.querySelectorAll(selectors)) {
+          if (seen.has(el) || el === editor) continue;
+          seen.add(el);
+          if (!isVisible(el)) continue;
+          if (el.disabled || el.getAttribute('aria-disabled') === 'true') continue;
+          const rect = el.getBoundingClientRect();
+          const label = normalize([
+            el.getAttribute('aria-label'),
+            el.getAttribute('title'),
+            el.innerText,
+            el.textContent,
+            el.value,
+          ].filter(Boolean).join(' '));
+          const tag = String(el.tagName || '').toLowerCase();
+          const role = String(el.getAttribute('role') || '').toLowerCase();
+          const nearEditor =
+            rect.left <= editorRect.right + 260 &&
+            rect.right >= editorRect.left - 80 &&
+            rect.top <= editorRect.bottom + 220 &&
+            rect.bottom >= editorRect.top - 100;
+          let score = bias;
+          if (tag === 'button') score += 20;
+          if (role === 'button') score += 14;
+          if (label) score += Math.min(label.length, 12);
+          if (/发送|发私信|私信|send/i.test(label)) score += 120;
+          if (/聊天|message|reply|提交/i.test(label)) score += 35;
+          if (nearEditor) score += 35;
+          const dist = Math.hypot(rect.right - editorRect.right, rect.bottom - editorRect.bottom);
+          score -= Math.min(dist, 150);
+          if (rect.width <= 72 && rect.height <= 56) score += 8;
+          scored.push({el, score, label, tag, width: rect.width, height: rect.height});
+        }
+      };
+
+      let node = editor;
+      for (let depth = 0; node && depth < 6; depth += 1, node = node.parentElement) {
+        collect(node, (6 - depth) * 20);
+      }
+      collect(document.body, 0);
+      scored.sort((a, b) => b.score - a.score || a.width * a.height - b.width * b.height);
+      for (const item of scored) {
+        try {
+          item.el.scrollIntoView({block: 'center', inline: 'center'});
+        } catch (error) {
+          void error;
+        }
+        try {
+          const rect = item.el.getBoundingClientRect();
+          const x = rect.left + rect.width / 2;
+          const y = rect.top + rect.height / 2;
+          item.el.dispatchEvent(new MouseEvent('mousemove', {bubbles: true, cancelable: true, clientX: x, clientY: y, buttons: 0}));
+          item.el.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true, clientX: x, clientY: y, buttons: 1}));
+          item.el.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, cancelable: true, clientX: x, clientY: y, buttons: 0}));
+          item.el.click();
+          return `${Math.round(x)},${Math.round(y)}:${item.label || item.tag || 'button'}`;
+        } catch (error) {
+          continue;
+        }
+      }
+      return '';
+    }
+    """
+    try:
+        detail = str(page.evaluate(script) or "").strip()
+        return detail or None
+    except Exception:
+        return None
+
+
+def _dm_send_current_message(page: Any, timeout_ms: int = 8000) -> Dict[str, Any]:
+    try:
+        _dm_visible_message_editor(page, timeout_ms=min(timeout_ms, 4000))
+        clicked_at = _dm_click_editor_send_button(page)
+        if clicked_at:
+            return {"name": "click_send", "ok": True, "detail": f"clicked editor send button at {clicked_at}"}
+    except Exception:
+        pass
+    candidates = [
+        page.get_by_role("button", name=re.compile(r"发送|Send", re.I)),
+        page.locator("button:has-text('发送')"),
+        page.locator("[role=button]:has-text('发送')"),
+        page.locator("text=发送"),
+    ]
+    last_error = ""
+    try:
+        return _dm_click_first(page, candidates, "click_send", timeout_ms=timeout_ms)
+    except Exception as exc:
+        last_error = str(exc)
+    try:
+        _dm_visible_message_editor(page, timeout_ms=min(timeout_ms, 4000))
+        clicked_at = _dm_click_editor_send_icon(page)
+        if clicked_at:
+            return {"name": "click_send", "ok": True, "detail": f"clicked editor send icon at {clicked_at}"}
+        point = _dm_editor_send_click_point(page)
+        if not point:
+            raise RuntimeError("editor send click point not found")
+        page.mouse.click(point["x"], point["y"])
+        return {"name": "click_send", "ok": True, "detail": "clicked editor bottom-right send icon"}
+    except Exception as exc:
+        last_error = f"{last_error}; {exc}"
+    raise RuntimeError(f"send button not found: {last_error}")
+
+
+def _dm_send_and_confirm_current_message(page: Any, message: str, timeout_ms: int = 8000) -> List[Dict[str, Any]]:
+    click_step = _dm_send_current_message(page, timeout_ms=timeout_ms)
+    confirm_step = _dm_wait_message_sent(page, message, timeout_ms=timeout_ms)
+    return [click_step, confirm_step]
+
+
+def _douyin_private_message_playwright_executor(
+    profile_url: str,
+    message: str,
+    browser_name: str,
+    auto_send: bool,
+    options: Dict[str, Any],
+) -> Dict[str, Any]:
+    from playwright.sync_api import sync_playwright
+
+    steps: List[Dict[str, Any]] = []
+    page = None
+    browser = None
+    context = None
+    playwright = None
+    keep_browser_open = False
+    try:
+        playwright, context, browser, keep_browser_open = _dm_get_playwright_context(sync_playwright, browser_name, options)
+        raw_cookies = str(options.get("_raw_account_cookies") or "")
+        cookies = _dm_parse_account_cookies(raw_cookies)
+        if cookies:
+            context.add_cookies(cookies)
+            steps.append({"name": "apply_account_cookies", "ok": True, "detail": f"{len(cookies)} cookies"})
+        page = context.new_page()
+        timeout_ms = int(options.get("timeout_ms") or 45000)
+        page.goto(profile_url, wait_until="domcontentloaded", timeout=timeout_ms)
+        steps.append({"name": "open_profile", "ok": True, "detail": "opened"})
+        try:
+            page.wait_for_load_state("networkidle", timeout=min(timeout_ms, 12000))
+        except Exception:
+            pass
+        _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page))
+        steps.append(_dm_click_first(page, [
+            page.get_by_role("button", name=re.compile(r"私信|发私信|聊天|Message", re.I)),
+            page.locator("button:has-text('私信')"),
+            page.locator("[role=button]:has-text('私信')"),
+            page.locator("a:has-text('私信')"),
+            page.locator("text=私信"),
+            page.locator("text=发私信"),
+            page.locator("text=聊天"),
+        ], "open_private_message", timeout_ms=min(timeout_ms, 12000)))
+        _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page, timeout_ms=1200))
+        steps.append(_dm_fill_message_editor(page, message, timeout_ms=min(timeout_ms, 12000)))
+        sent = False
+        if auto_send:
+            _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page, timeout_ms=1200))
+            steps.append(_dm_send_current_message(page, timeout_ms=min(timeout_ms, 10000)))
+            steps.append(_dm_wait_message_sent(page, message, timeout_ms=min(timeout_ms, 10000)))
+            sent = True
+        if not keep_browser_open:
+            _dm_stop_playwright_context(context, browser, playwright)
+        return {
+            "success": True,
+            "opened": True,
+            "prefilled": True,
+            "sent": sent,
+            "resolved_browser": browser_name,
+            "engine": "playwright",
+            "steps": steps,
+            "account_cookie_loaded": bool(cookies),
+            "account_cookie_count": len(cookies),
+            "keep_browser_open": keep_browser_open,
+            "user_data_dir": str(_dm_playwright_user_data_dir(browser_name, options)) if _dm_bool_text(options.get("persistent_context", keep_browser_open or options.get("user_data_dir"))) else "",
+        }
+    except Exception as exc:
+        detail = str(exc)
+        steps.append({"name": "playwright_error", "ok": False, "detail": detail})
+        failure = _dm_screenshot_failure(page, options, detail)
+        if not keep_browser_open:
+            _dm_stop_playwright_context(context, browser, playwright)
+        return {
+            "success": False,
+            "opened": any(step.get("name") == "open_profile" and step.get("ok") for step in steps),
+            "prefilled": any(step.get("name") == "paste_message" and step.get("ok") for step in steps),
+            "sent": False,
+            "resolved_browser": browser_name,
+            "engine": "playwright",
+            "steps": steps,
+            "error": detail,
+            "keep_browser_open": keep_browser_open,
+            **failure,
+        }
+
+
+_douyin_private_message_playwright_executor.needs_raw_cookies = True
+
+
+def _douyin_account_cookie_playwright_executor(raw_cookies: str, browser_name: str, options: Dict[str, Any]) -> Dict[str, Any]:
+    from playwright.sync_api import sync_playwright
+
+    steps: List[Dict[str, Any]] = []
+    page = None
+    browser = None
+    cookies = _dm_parse_account_cookies(raw_cookies)
+    try:
+        with sync_playwright() as pw:
+            browser = _dm_launch_playwright_browser(pw, browser_name, options)
+            context = browser.new_context(
+                viewport={
+                    "width": int(options.get("viewport_width") or DM_DEFAULT_VIEWPORT_WIDTH),
+                    "height": int(options.get("viewport_height") or DM_DEFAULT_VIEWPORT_HEIGHT),
+                },
+                device_scale_factor=float(options.get("device_scale_factor") or 1.0),
+            )
+            if cookies:
+                context.add_cookies(cookies)
+            page = context.new_page()
+            page.goto("https://www.douyin.com/", wait_until="domcontentloaded", timeout=int(options.get("timeout_ms") or 45000))
+            steps.append({"name": "apply_account_cookies", "ok": True, "detail": f"{len(cookies)} cookies"})
+            context.close()
+            browser.close()
+            return {
+                "success": True,
+                "opened": True,
+                "resolved_browser": browser_name,
+                "engine": "playwright",
+                "account_cookie_loaded": bool(cookies),
+                "account_cookie_count": len(cookies),
+                "steps": steps,
+            }
+    except Exception as exc:
+        detail = str(exc)
+        steps.append({"name": "apply_account_cookies", "ok": False, "detail": detail})
+        failure = _dm_screenshot_failure(page, options, detail)
+        try:
+            if browser:
+                browser.close()
+        except Exception:
+            pass
+        return {
+            "success": False,
+            "opened": False,
+            "resolved_browser": browser_name,
+            "engine": "playwright",
+            "account_cookie_loaded": False,
+            "account_cookie_count": len(cookies),
+            "steps": steps,
+            "error": detail,
+            **failure,
+        }
+
+
+_douyin_account_cookie_playwright_executor.needs_raw_cookies = True
+
+
+def _dm_redis_hash_all(redis_conn: Any, key: str) -> Dict[str, Any]:
+    try:
+        raw = redis_conn.hgetall(key) or {}
+    except Exception:
+        raw = {}
+    return {str(_dm_decode_scalar(k)): _dm_decode_scalar(v) for k, v in raw.items()}
+
+
+def _dm_redis_hash_set(redis_conn: Any, key: str, fields: Dict[str, Any]) -> None:
+    if not fields:
+        return
+    mapping = {str(field): _dm_decode_scalar(value) for field, value in fields.items()}
+    try:
+        redis_conn.hset(key, mapping=mapping)
+        return
+    except TypeError:
+        pass
+    except Exception as exc:
+        text = str(exc).lower()
+        if "wrong number of arguments" not in text and "unexpected keyword" not in text:
+            raise
+
+    for field, value in mapping.items():
+        redis_conn.hset(key, field, value)
+
+
+def _dm_remove_task_from_queues(redis_conn: Any, task_id: str, account_key: Any = "") -> None:
+    clean_task_id = str(task_id or "").strip()
+    if not clean_task_id:
+        return
+    for queue in (
+        DM_REDIS_PENDING_QUEUE,
+        DM_REDIS_AUTO_PENDING_QUEUE,
+        DM_REDIS_DONE_QUEUE,
+        DM_REDIS_FAILED_QUEUE,
+        DM_REDIS_MANUAL_QUEUE,
+        DM_REDIS_DEAD_LETTER_QUEUE,
+    ):
+        try:
+            redis_conn.lrem(queue, 0, clean_task_id)
+        except Exception:
+            pass
+    account_keys = account_key if isinstance(account_key, (list, tuple, set)) else [account_key]
+    for item in account_keys:
+        clean_account_key = str(item or "").strip()
+        if not clean_account_key:
+            continue
+        try:
+            redis_conn.lrem(_dm_pending_queue_for_account(clean_account_key), 0, clean_task_id)
+        except Exception:
+            pass
+    for zset in (DM_REDIS_RETRY_ZSET, DM_REDIS_PROCESSING_ZSET):
+        try:
+            redis_conn.zrem(zset, clean_task_id)
+        except Exception:
+            pass
+
+
+def _dm_redact_task(task: Dict[str, Any]) -> Dict[str, Any]:
+    redacted = dict(task or {})
+    for key in ("account_cookie", "account_cookies", "cookie", "cookies"):
+        if redacted.get(key):
+            redacted[key] = "[redacted]"
+    redacted["manual_takeover"] = _dm_manual_takeover_payload(redacted)
+    return redacted
+
+
+def _dm_manual_takeover_payload(task: Dict[str, Any]) -> Dict[str, Any]:
+    item = dict(task or {})
+    task_id = str(item.get("task_id") or "").strip()
+    target_profile_url = str(item.get("target_profile_url") or item.get("profile_url") or "").strip()
+    browser = str(item.get("browser") or item.get("browser_name") or "edge").strip() or "edge"
+    status = str(item.get("status") or "").strip()
+    queue_status = str(item.get("queue_status") or "").strip()
+    failure_code = str(item.get("failure_code") or item.get("error_code") or "").strip()
+    failure_type = str(item.get("failure_type") or "").strip()
+    failure_reason = str(item.get("failure_reason") or item.get("error") or "").strip()
+    failure_summary = str(item.get("failure_summary") or failure_reason).strip()
+    manual_required = (
+        _dm_bool_text(item.get("manual_required"))
+        or status == "manual_required"
+        or queue_status == "manual_required"
+        or failure_type == "manual"
+        or failure_code in {"login_required", "verification_required", "account_risk", "automation_changed"}
+    )
+    available = bool(manual_required and target_profile_url)
+    return {
+        "available": available,
+        "action": "open_url" if available else "",
+        "browser": browser,
+        "headless": False,
+        "task_id": task_id,
+        "status": status,
+        "queue_status": queue_status,
+        "target_profile_url": target_profile_url if available else "",
+        "url": target_profile_url if available else "",
+        "failure_code": failure_code,
+        "failure_type": failure_type,
+        "failure_reason": failure_reason,
+        "failure_summary": failure_summary,
+        "label": "人工接管并打开浏览器" if available else "",
+        "hint": "在人工机上用有头浏览器完成扫码、登录或二次验证" if available else "",
+    }
+
+
+def _dm_demo_failure_context(demo_result: Dict[str, Any]) -> Dict[str, Any]:
+    result = demo_result or {}
+    raw_steps = result.get("steps") or []
+    steps = [item for item in raw_steps if isinstance(item, dict)]
+    failed_steps = [item for item in steps if not _dm_bool_text(item.get("ok"))]
+    last_failed = failed_steps[-1] if failed_steps else (steps[-1] if steps else {})
+    last_name = str(last_failed.get("name") or "")
+    last_detail = str(last_failed.get("detail") or "")
+    trace = []
+    for index, step in enumerate(steps, 1):
+        trace.append({
+            "index": index,
+            "name": str(step.get("name") or ""),
+            "ok": bool(step.get("ok")),
+            "detail": str(step.get("detail") or ""),
+        })
+    return {
+        "failure_stage": DM_FAILURE_STEP_STAGE_MAP.get(last_name, ""),
+        "failure_step": last_name,
+        "failure_step_detail": last_detail,
+        "failure_trace": json.dumps(trace, ensure_ascii=False) if trace else "",
+        "demo_error": str(result.get("error") or ""),
+        "requires_login": bool(result.get("requires_login")),
+    }
+
+
+def _dm_artifact_metadata(detail: Optional[Any]) -> Dict[str, Any]:
+    result = {
+        "failure_screenshot_path": "",
+        "failure_screenshot_name": "",
+        "failure_screenshot_url": "",
+        "failure_screenshot_exists": False,
+    }
+    if not isinstance(detail, dict):
+        return result
+
+    candidate_path = ""
+    for key in (
+        "failure_screenshot_path",
+        "screenshot_path",
+        "error_screenshot_path",
+        "screenshot",
+    ):
+        value = detail.get(key)
+        if value is not None and str(value).strip():
+            candidate_path = str(value).strip()
+            break
+
+    candidate_url = ""
+    for key in (
+        "failure_screenshot_url",
+        "screenshot_url",
+        "error_screenshot_url",
+    ):
+        value = detail.get(key)
+        if value is not None and str(value).strip():
+            candidate_url = str(value).strip()
+            break
+
+    if candidate_path:
+        result["failure_screenshot_path"] = candidate_path
+        try:
+            result["failure_screenshot_name"] = Path(candidate_path).name
+        except Exception:
+            result["failure_screenshot_name"] = candidate_path.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+        try:
+            result["failure_screenshot_exists"] = Path(candidate_path).exists()
+        except Exception:
+            result["failure_screenshot_exists"] = False
+
+    if candidate_url:
+        result["failure_screenshot_url"] = candidate_url
+    elif candidate_path:
+        result["failure_screenshot_url"] = _dm_artifact_url_from_path(candidate_path)
+
+    return result
+
+
+def _dm_artifact_url_from_path(path: str) -> str:
+    raw = str(path or "").strip()
+    if not raw:
+        return ""
+    if "://" in raw:
+        return raw
+    try:
+        candidate = Path(raw).resolve()
+        root = DM_DEBUG_ARTIFACT_DIR.resolve()
+        relative = candidate.relative_to(root)
+    except Exception:
+        return ""
+    return f"{DM_DEBUG_ARTIFACT_URL_PREFIX}/{relative.as_posix()}"
+
+
+def _dm_failure_from_demo_result(demo_result: Dict[str, Any]) -> Optional[Exception]:
+    result = demo_result or {}
+    trace = _dm_demo_failure_context(result)
+    text = " ".join(
+        str(part or "")
+        for part in [
+            result.get("error"),
+            trace.get("demo_error"),
+            trace.get("failure_step_detail"),
+            json.dumps(result, ensure_ascii=False),
+        ]
+    ).lower()
+    if trace.get("requires_login") or any(marker in text for marker in ["login", "二次验证", "second_verify", "verification"]):
+        return RuntimeError("verification required")
+    if any(marker in text for marker in ["风控", "risk", "blocked", "限制", "permission"]):
+        return RuntimeError("account risk")
+    if any(marker in text for marker in ["browser has been closed", "page has been closed", "context has been closed", "target page, context or browser has been closed", "browser closed", "page closed"]):
+        return RuntimeError("browser closed")
+    if any(marker in text for marker in ["private message button not found", "private chat editor not found", "message editor not found"]):
+        return RuntimeError("automation changed")
+    if any(marker in text for marker in ["captcha", "challenge", "too many requests", "429", "rate limit", "rate-limited"]):
+        return RuntimeError("rate limited")
+    if any(marker in text for marker in ["authentication required", "cookie expired", "cookie invalid", "session expired", "not authenticated", "login expired"]):
+        return RuntimeError("cookie invalid")
+    if "message send was not confirmed" in text:
+        return RuntimeError("message send was not confirmed")
+    if "message prefill did not persist" in text:
+        return RuntimeError("message prefill did not persist")
+    return None
+
+
+def _dm_infer_failure_code(error_code: str, error_text: str, detail: Optional[Any] = None) -> str:
+    parts = [str(error_code or ""), str(error_text or "")]
+    if isinstance(detail, dict):
+        parts.append(json.dumps(detail, ensure_ascii=False))
+        for step in detail.get("steps") or []:
+            if isinstance(step, dict):
+                parts.append(str(step.get("name") or ""))
+                parts.append(str(step.get("detail") or ""))
+    elif detail is not None:
+        parts.append(str(detail))
+    text = " ".join(part for part in parts if part).lower()
+
+    if "missing config: api_key" in text or "no saved key" in text or "/api/v1/model/config/save" in text:
+        return "missing_model_api_key"
+    if "message send was not confirmed" in text:
+        return "message_send_unconfirmed"
+    if "no module named 'playwright'" in text or 'no module named "playwright"' in text or ("playwrightcontextmanager" in text and "_playwright" in text):
+        return "playwright_missing"
+    if any(marker in text for marker in ["browser has been closed", "page has been closed", "context has been closed", "target page, context or browser has been closed", "browser closed", "page closed"]):
+        return "browser_closed"
+    if any(marker in text for marker in ["timed out", "timeout", "read timed out"]):
+        return "model_timeout" if any(marker in text for marker in ["model", "llm", "minimax", "openai", "deepseek", "anthropic"]) else "network_timeout"
+    if any(marker in text for marker in ["private message button not found", "private chat editor not found", "message editor not found"]):
+        return "automation_changed"
+    if any(marker in text for marker in ["login-full-panel", "second_verify", "二次验证", "verification required", "login required"]):
+        return "verification_required"
+    if any(marker in text for marker in ["captcha", "challenge", "too many requests", "429", "rate limit", "rate-limited"]):
+        return "rate_limited"
+    if any(marker in text for marker in ["authentication required", "cookie expired", "cookie invalid", "session expired", "not authenticated", "login expired"]):
+        return "cookie_invalid"
+    if any(marker in text for marker in ["connection", "network", "temporarily unavailable", "dns", "unreachable"]):
+        return "network_timeout"
+    return str(error_code or "unknown_error") or "unknown_error"
+
+
+def _dm_failure_metadata(error_code: str, failure_type: str, error_text: str, detail: Optional[Any] = None) -> Dict[str, Any]:
+    resolved_code = _dm_infer_failure_code(error_code, error_text, detail)
+    profile = dict(DM_FAILURE_PROFILES.get(resolved_code, DM_FAILURE_PROFILES.get(error_code, DM_FAILURE_PROFILES["unknown_error"])))
+    trace: Dict[str, Any] = _dm_demo_failure_context(detail) if isinstance(detail, dict) else {}
+    artifact = _dm_artifact_metadata(detail)
+
+    failure_stage = str(trace.get("failure_stage") or profile.get("stage") or "unknown")
+    failure_step = str(trace.get("failure_step") or "")
+    failure_step_detail = str(trace.get("failure_step_detail") or "")
+    failure_reason = str(profile.get("reason") or error_text or "")
+    if trace.get("requires_login") and resolved_code not in {"login_required", "verification_required"}:
+        failure_reason = "抖音登录态失效或需要人工验证"
+    if failure_type == "manual" and resolved_code == "message_send_unconfirmed" and not failure_step_detail:
+        failure_step_detail = str(error_text or "")
+    if not failure_step_detail and error_text:
+        failure_step_detail = str(error_text)
+    failure_hint = str(profile.get("hint") or "")
+    summary_parts = [part for part in [failure_reason, failure_hint] if part]
+    failure_summary = "；".join(summary_parts) if summary_parts else str(error_text or failure_reason or failure_hint or "")
+    if failure_step_detail and failure_step_detail not in failure_summary:
+        failure_summary = f"{failure_summary}；{failure_step_detail}" if failure_summary else failure_step_detail
+    return {
+        "failure_code": resolved_code,
+        "failure_stage": failure_stage,
+        "failure_category": str(profile.get("category") or "unknown"),
+        "failure_reason": failure_reason,
+        "failure_hint": failure_hint,
+        "failure_summary": failure_summary or str(error_text or ""),
+        "failure_step": failure_step,
+        "failure_step_detail": failure_step_detail,
+        "failure_trace": str(trace.get("failure_trace") or ""),
+        "failure_screenshot_path": str(artifact.get("failure_screenshot_path") or ""),
+        "failure_screenshot_name": str(artifact.get("failure_screenshot_name") or ""),
+        "failure_screenshot_url": str(artifact.get("failure_screenshot_url") or ""),
+        "failure_screenshot_exists": bool(artifact.get("failure_screenshot_exists")),
+    }
+
+
+def _dm_task_failure_fields(error_code: str, failure_type: str, error_text: str, detail: Optional[Any] = None) -> Dict[str, str]:
+    meta = _dm_failure_metadata(error_code, failure_type, error_text, detail=detail)
+    return {
+        "error": str(error_text or ""),
+        "error_code": str(error_code or ""),
+        "failure_code": str(meta.get("failure_code") or ""),
+        "failure_type": str(failure_type or ""),
+        "failure_stage": str(meta.get("failure_stage") or ""),
+        "failure_category": str(meta.get("failure_category") or ""),
+        "failure_reason": str(meta.get("failure_reason") or ""),
+        "failure_hint": str(meta.get("failure_hint") or ""),
+        "failure_summary": str(meta.get("failure_summary") or ""),
+        "failure_step": str(meta.get("failure_step") or ""),
+        "failure_step_detail": str(meta.get("failure_step_detail") or ""),
+        "failure_trace": str(meta.get("failure_trace") or ""),
+        "failure_screenshot_path": str(meta.get("failure_screenshot_path") or ""),
+        "failure_screenshot_name": str(meta.get("failure_screenshot_name") or ""),
+        "failure_screenshot_url": str(meta.get("failure_screenshot_url") or ""),
+        "failure_screenshot_exists": str(bool(meta.get("failure_screenshot_exists"))).lower(),
+    }
+
+
+def _dm_task_result(task: Dict[str, Any]) -> Dict[str, Any]:
+    status = str(task.get("status") or "")
+    sent = _dm_bool_text(task.get("sent"))
+    success = status == "success" and sent
+    error_text = str(task.get("error") or "")
+    has_failure = False if success else bool(
+        error_text
+        or task.get("error_code")
+        or task.get("failure_code")
+        or task.get("failure_type")
+        or task.get("failure_stage")
+        or task.get("failure_reason")
+        or task.get("failure_summary")
+        or status in {"retry_wait", "manual_required", "failed"}
+        or _dm_bool_text(task.get("dead_letter"))
+    )
+    failure_meta = _dm_failure_metadata(task.get("error_code") or task.get("failure_code") or "", task.get("failure_type") or "", error_text) if has_failure else {}
+    manual_takeover = _dm_manual_takeover_payload(task)
+    return {
+        "task_id": task.get("task_id") or "",
+        "status": status,
+        "result_ready": _dm_bool_text(task.get("result_ready")),
+        "success": success,
+        "sent": sent,
+        "reply": task.get("reply") or "",
+        "error": error_text,
+        "queue_status": task.get("queue_status") or "",
+        "task_cleared": _dm_bool_text(task.get("task_cleared")),
+        "account_key": task.get("account_key") or "",
+        "target_profile_url": task.get("target_profile_url") or "",
+        "first_private_message": _dm_bool_text(task.get("first_private_message")),
+        "first_private_message_status": task.get("first_private_message_status") or "",
+        "first_private_message_detail": task.get("first_private_message_detail") or "",
+        "error_code": task.get("error_code") or "",
+        "failure_code": task.get("failure_code") or str(failure_meta.get("failure_code") or ""),
+        "failure_type": task.get("failure_type") or "",
+        "failure_stage": task.get("failure_stage") or str(failure_meta.get("failure_stage") or ""),
+        "failure_category": task.get("failure_category") or str(failure_meta.get("failure_category") or ""),
+        "failure_reason": task.get("failure_reason") or str(failure_meta.get("failure_reason") or ""),
+        "failure_hint": task.get("failure_hint") or str(failure_meta.get("failure_hint") or ""),
+        "failure_summary": task.get("failure_summary") or str(failure_meta.get("failure_summary") or ""),
+        "failure_step": task.get("failure_step") or str(failure_meta.get("failure_step") or ""),
+        "failure_step_detail": task.get("failure_step_detail") or str(failure_meta.get("failure_step_detail") or ""),
+        "failure_trace": task.get("failure_trace") or str(failure_meta.get("failure_trace") or ""),
+        "failure_screenshot_path": task.get("failure_screenshot_path") or str(failure_meta.get("failure_screenshot_path") or ""),
+        "failure_screenshot_name": task.get("failure_screenshot_name") or str(failure_meta.get("failure_screenshot_name") or ""),
+        "failure_screenshot_url": task.get("failure_screenshot_url") or str(failure_meta.get("failure_screenshot_url") or ""),
+        "failure_screenshot_exists": _dm_bool_text(task.get("failure_screenshot_exists")) or bool(failure_meta.get("failure_screenshot_exists")),
+        "manual_required": _dm_bool_text(task.get("manual_required")),
+        "dead_letter": _dm_bool_text(task.get("dead_letter")),
+        "manual_takeover": manual_takeover,
+        "retry_count": int(_payload_float(task, "retry_count", 0)),
+        "max_retries": int(_payload_float(task, "max_retries", DM_REDIS_DEFAULT_MAX_RETRIES)),
+        "next_retry_at": task.get("next_retry_at") or "",
+        "retry_delay_seconds": int(_payload_float(task, "retry_delay_seconds", 0)),
+        "started_at": task.get("started_at") or "",
+        "finished_at": task.get("finished_at") or "",
+    }
+
+
+def _dm_open_browser_url(url: str, browser: str = "", new_window: bool = True, opener: Optional[Any] = None) -> Dict[str, Any]:
+    clean_url = str(url or "").strip()
+    if not clean_url:
+        raise WebInputError("url is required")
+
+    browser_name = str(browser or "default").strip() or "default"
+    if callable(opener):
+        opened = bool(opener(clean_url, browser_name))
+        return {
+            "opened": opened,
+            "resolved_browser": browser_name,
+            "requested_browser": browser_name,
+            "url": clean_url,
+        }
+
+    candidates: List[str] = []
+    normalized_browser = browser_name.lower()
+    if normalized_browser in {"edge", "msedge", "microsoft-edge"}:
+        candidates = ["microsoft-edge", "edge", "windows-default"]
+    elif normalized_browser in {"chrome", "google chrome", "google-chrome"}:
+        candidates = ["chrome", "google-chrome", "windows-default"]
+    elif normalized_browser not in {"", "default"}:
+        candidates = [browser_name, "windows-default"]
+    else:
+        candidates = ["windows-default"]
+
+    last_error = ""
+    for candidate in candidates:
+        try:
+            controller = webbrowser.get(candidate)
+            if controller.open(clean_url, new=1 if new_window else 0, autoraise=True):
+                return {
+                    "opened": True,
+                    "resolved_browser": candidate,
+                    "requested_browser": browser_name,
+                    "url": clean_url,
+                }
+        except Exception as exc:
+            last_error = str(exc)
+
+    try:
+        if webbrowser.open(clean_url, new=1 if new_window else 0, autoraise=True):
+            return {
+                "opened": True,
+                "resolved_browser": "default",
+                "requested_browser": browser_name,
+                "url": clean_url,
+            }
+    except Exception as exc:
+        last_error = str(exc)
+
+    return {
+        "opened": False,
+        "resolved_browser": browser_name,
+        "requested_browser": browser_name,
+        "url": clean_url,
+        "error": last_error,
+    }
+
+
+def build_open_url_response(
+    payload: Dict[str, Any],
+    opener: Optional[Any] = None,
+) -> Dict[str, Any]:
+    normalized = dict(payload or {})
+    url = str(
+        normalized.get("url")
+        or normalized.get("target_url")
+        or normalized.get("profile_url")
+        or normalized.get("href")
+        or ""
+    ).strip()
+    browser = str(normalized.get("browser") or normalized.get("browser_name") or "default").strip() or "default"
+    new_window = _dm_bool_text(normalized.get("new_window", True))
+    result = _dm_open_browser_url(url, browser=browser, new_window=new_window, opener=opener)
+    result["browser"] = browser
+    result["new_window"] = new_window
+    result["success"] = bool(result.get("opened"))
+    result.setdefault("error", "")
+    return result
+
+
+def _dm_enrich_failure_response(
+    result: Dict[str, Any],
+    *,
+    error_code: str = "",
+    failure_type: str = "",
+    error_text: str = "",
+    detail: Optional[Any] = None,
+) -> Dict[str, Any]:
+    if not isinstance(result, dict):
+        return result
+
+    steps = result.get("steps") if isinstance(result.get("steps"), list) else []
+    has_step_failure = any(isinstance(step, dict) and not _dm_bool_text(step.get("ok")) for step in steps)
+    has_failure = (
+        not _dm_bool_text(result.get("success", True))
+        or bool(str(result.get("error") or "").strip())
+        or bool(str(result.get("failure_code") or "").strip())
+        or bool(str(result.get("failure_reason") or "").strip())
+        or bool(str(result.get("failure_summary") or "").strip())
+        or bool(str(result.get("failure_step_detail") or "").strip())
+        or bool(str(result.get("failure_step") or "").strip())
+        or bool(str(result.get("failure_trace") or "").strip())
+        or bool(str(result.get("requires_login") or "").strip())
+        or has_step_failure
+    )
+    if not has_failure:
+        return result
+
+    meta = _dm_failure_metadata(
+        str(result.get("error_code") or error_code or ""),
+        str(result.get("failure_type") or failure_type or ""),
+        str(result.get("error") or error_text or result.get("failure_step_detail") or ""),
+        detail=detail if detail is not None else result,
+    )
+    for key in (
+        "failure_code",
+        "failure_stage",
+        "failure_category",
+        "failure_reason",
+        "failure_hint",
+        "failure_summary",
+        "failure_step",
+        "failure_step_detail",
+        "failure_trace",
+        "failure_screenshot_path",
+        "failure_screenshot_name",
+        "failure_screenshot_url",
+        "failure_screenshot_exists",
+    ):
+        if not str(result.get(key) or "").strip():
+            result[key] = str(meta.get(key) or "")
+
+    if not str(result.get("error") or "").strip():
+        result["error"] = str(error_text or meta.get("failure_summary") or meta.get("failure_reason") or "")
+    if not str(result.get("error_code") or "").strip() and error_code:
+        result["error_code"] = str(error_code)
+    if not str(result.get("failure_type") or "").strip() and failure_type:
+        result["failure_type"] = str(failure_type)
+    return result
+
+
+def build_douyin_dm_task_status_response(
+    task_id: str,
+    redis_client: Optional[Any] = None,
+) -> Dict[str, Any]:
+    clean_task_id = str(task_id or "").strip()
+    if not clean_task_id:
+        raise WebInputError("task_id is required")
+    redis_conn = _redis_conn(redis_client)
+    key = _dm_task_key(clean_task_id)
+    task = _dm_redis_hash_all(redis_conn, key)
+    if not task:
+        raise WebInputError("task not found")
+    return {
+        "task_id": clean_task_id,
+        "task_key": key,
+        "task": _dm_redact_task(task),
+        "result": _dm_task_result(task),
+    }
+
+
+def build_douyin_dm_task_list_response(
+    redis_client: Optional[Any] = None,
+    limit: int = 20,
+) -> Dict[str, Any]:
+    redis_conn = _redis_conn(redis_client)
+    limit = max(1, int(limit or 20))
+
+    def decode_list(values: Iterable[Any]) -> List[str]:
+        items: List[str] = []
+        for value in values or []:
+            items.append(_dm_decode_scalar(value))
+        return items
+
+    pending_ids = decode_list(redis_conn.lrange(DM_REDIS_PENDING_QUEUE, 0, limit - 1))
+    auto_pending_ids = decode_list(redis_conn.lrange(DM_REDIS_AUTO_PENDING_QUEUE, 0, limit - 1))
+    done_ids = decode_list(redis_conn.lrange(DM_REDIS_DONE_QUEUE, -limit, -1))
+    failed_ids = decode_list(redis_conn.lrange(DM_REDIS_FAILED_QUEUE, -limit, -1))
+    retry_ids = decode_list(redis_conn.zrange(DM_REDIS_RETRY_ZSET, 0, limit - 1))
+    manual_ids = decode_list(redis_conn.lrange(DM_REDIS_MANUAL_QUEUE, 0, limit - 1))
+    dead_letter_ids = decode_list(redis_conn.lrange(DM_REDIS_DEAD_LETTER_QUEUE, -limit, -1))
+    processing_ids = decode_list(redis_conn.zrange(DM_REDIS_PROCESSING_ZSET, 0, -1))
+    account_keys = sorted(set(decode_list(redis_conn.smembers(DM_REDIS_ACCOUNT_SET))))
+
+    def fetch_tasks(task_ids: List[str]) -> List[Dict[str, Any]]:
+        tasks = []
+        for task_id in task_ids:
+            task = _dm_redis_hash_all(redis_conn, _dm_task_key(task_id))
+            if task:
+                tasks.append(_dm_redact_task(task))
+            else:
+                tasks.append({"task_id": task_id, "status": "missing"})
+        return tasks
+
+    return {
+        "queue": {
+            "pending": pending_ids,
+            "auto_pending": auto_pending_ids,
+            "done": done_ids,
+            "failed": failed_ids,
+            "retry_wait": retry_ids,
+            "manual_required": manual_ids,
+            "dead_letter": dead_letter_ids,
+            "processing": processing_ids,
+            "accounts": {
+                account_key: decode_list(redis_conn.lrange(_dm_pending_queue_for_account(account_key), 0, limit - 1))
+                for account_key in account_keys
+            },
+        },
+        "counts": {
+            "pending": int(redis_conn.llen(DM_REDIS_PENDING_QUEUE)),
+            "auto_pending": int(redis_conn.llen(DM_REDIS_AUTO_PENDING_QUEUE)),
+            "done": int(redis_conn.llen(DM_REDIS_DONE_QUEUE)),
+            "failed": int(redis_conn.llen(DM_REDIS_FAILED_QUEUE)),
+            "retry_wait": int(redis_conn.zcard(DM_REDIS_RETRY_ZSET)),
+            "manual_required": int(redis_conn.llen(DM_REDIS_MANUAL_QUEUE)),
+            "dead_letter": int(redis_conn.llen(DM_REDIS_DEAD_LETTER_QUEUE)),
+            "processing": int(redis_conn.zcard(DM_REDIS_PROCESSING_ZSET)),
+            "accounts": {
+                account_key: int(redis_conn.llen(_dm_pending_queue_for_account(account_key)))
+                for account_key in account_keys
+            },
+        },
+        "tasks": {
+            "pending": fetch_tasks(pending_ids),
+            "done": fetch_tasks(done_ids),
+            "failed": fetch_tasks(failed_ids),
+            "retry_wait": fetch_tasks(retry_ids),
+            "manual_required": fetch_tasks(manual_ids),
+            "dead_letter": fetch_tasks(dead_letter_ids),
+            "processing": fetch_tasks(processing_ids),
+        },
+        "limit": limit,
+    }
+
+
+def build_douyin_dm_task_clear_response(
+    redis_client: Optional[Any] = None,
+) -> Dict[str, Any]:
+    redis_conn = _redis_conn(redis_client)
+    keys: List[str] = []
+    try:
+        # Keep Redis keys binary-safe: redis-py may yield bytes when decode_responses=False.
+        # Converting bytes with str() would produce "b'...'" and make delete() miss the real keys.
+        keys = [_dm_decode_scalar(key) for key in redis_conn.scan_iter(match="dm:*")]
+    except Exception:
+        keys = []
+
+    task_count = sum(1 for key in keys if str(key).startswith(DM_REDIS_TASK_PREFIX))
+    queue_count = len(keys) - task_count
+    deleted = 0
+    if keys:
+        try:
+            deleted = int(redis_conn.delete(*keys) or 0)
+        except Exception:
+            deleted = 0
+
+    return {
+        "cleared": True,
+        "deleted_keys": deleted,
+        "task_count": task_count,
+        "queue_count": queue_count,
+    }
+
+
+def build_douyin_private_message_demo_response(
+    payload: Dict[str, Any],
+    executor: Optional[Any] = None,
+) -> Dict[str, Any]:
+    normalized = dict(payload or {})
+    profile_url = str(normalized.get("profile_url") or normalized.get("target_profile_url") or "").strip()
+    if not profile_url or "douyin.com" not in profile_url:
+        raise WebInputError("profile_url must be a douyin.com user page")
+
+    message = str(normalized.get("message") or normalized.get("reply") or "").strip()
+    if not message:
+        raise WebInputError("message is required")
+
+    browser = str(normalized.get("browser_name") or normalized.get("browser") or "edge").strip() or "edge"
+    auto_send = _dm_bool_text(normalized.get("auto_send"))
+    headless = _dm_bool_text(normalized.get("headless"))
+    use_cdp = _dm_bool_text(normalized.get("use_cdp")) if "use_cdp" in normalized else not headless
+    if headless:
+        use_cdp = False
+    viewport_width = int(_payload_float(normalized, "viewport_width", DM_DEFAULT_VIEWPORT_WIDTH))
+    viewport_height = int(_payload_float(normalized, "viewport_height", DM_DEFAULT_VIEWPORT_HEIGHT))
+    options = {
+        "headless": headless,
+        "use_cdp": use_cdp,
+        "cdp_url": "" if not use_cdp else str(normalized.get("cdp_url") or "").strip(),
+        "timeout_ms": int(_payload_float(normalized, "timeout_ms", 45000)),
+        "slow_mo": int(_payload_float(normalized, "slow_mo", 120)),
+        "input_ratio_x": _payload_float(normalized, "input_ratio_x", 0.0) if normalized.get("input_ratio_x") is not None else None,
+        "account_cookies": "[redacted]" if normalized.get("account_cookies") else "",
+        "viewport_width": viewport_width,
+        "viewport_height": viewport_height,
+        "device_scale_factor": _payload_float(normalized, "device_scale_factor", 1.0),
+        "screenshot_on_failure": _dm_bool_text(normalized.get("screenshot_on_failure", True)),
+        "screenshot_dir": str(normalized.get("screenshot_dir") or DM_DEBUG_ARTIFACT_DIR),
+        "screenshot_prefix": str(normalized.get("screenshot_prefix") or normalized.get("task_id") or "dm"),
+        "keep_browser_open": _dm_bool_text(normalized.get("keep_browser_open", not headless)),
+        "persistent_context": _dm_bool_text(normalized.get("persistent_context", (not headless) or normalized.get("user_data_dir"))),
+        "user_data_dir": str(normalized.get("user_data_dir") or "").strip(),
+    }
+    if options.get("input_ratio_x") is None:
+        options.pop("input_ratio_x", None)
+    raw_cookie_text = str(normalized.get("account_cookies") or normalized.get("account_cookie") or "").strip()
+    if raw_cookie_text.startswith("{"):
+        account_cookie_count = 1
+    else:
+        account_cookie_count = len([item for item in raw_cookie_text.split(";") if "=" in item]) if raw_cookie_text else 0
+
+    if callable(executor):
+        if getattr(executor, "needs_raw_cookies", False):
+            options["_raw_account_cookies"] = raw_cookie_text
+        result = dict(executor(profile_url, message, browser, auto_send, options) or {})
+    else:
+        result = {
+            "success": True,
+            "opened": True,
+            "prefilled": True,
+            "sent": bool(auto_send),
+            "resolved_browser": browser,
+            "engine": "playwright",
+            "steps": [],
+        }
+
+    result.setdefault("success", bool(result.get("opened")) and bool(result.get("prefilled")))
+    result.setdefault("opened", False)
+    result.setdefault("prefilled", False)
+    result.setdefault("sent", False)
+    result.setdefault("resolved_browser", browser)
+    result.setdefault("engine", "playwright")
+    result.setdefault("steps", [])
+    result["profile_url"] = profile_url
+    result["browser"] = browser
+    result["auto_send"] = bool(auto_send)
+    result["message_chars"] = len(message)
+    result["account_cookie_loaded"] = bool(result.get("account_cookie_loaded") or raw_cookie_text)
+    result["account_cookie_count"] = max(int(result.get("account_cookie_count") or 0), account_cookie_count)
+    result.setdefault("failure_screenshot_path", "")
+    result.setdefault("failure_screenshot_name", "")
+    result.setdefault("failure_screenshot_url", "")
+    result.setdefault("failure_screenshot_exists", False)
+    return _dm_enrich_failure_response(result)
+
+
+def build_douyin_account_cookie_apply_response(
+    payload: Dict[str, Any],
+    executor: Optional[Any] = None,
+) -> Dict[str, Any]:
+    normalized = dict(payload or {})
+    raw_cookies = str(normalized.get("account_cookies") or normalized.get("account_cookie") or "").strip()
+    browser = str(normalized.get("browser_name") or normalized.get("browser") or "edge").strip() or "edge"
+    headless = _dm_bool_text(normalized.get("headless"))
+    use_cdp = _dm_bool_text(normalized.get("use_cdp"))
+    if headless:
+        use_cdp = False
+    viewport_width = int(_payload_float(normalized, "viewport_width", DM_DEFAULT_VIEWPORT_WIDTH))
+    viewport_height = int(_payload_float(normalized, "viewport_height", DM_DEFAULT_VIEWPORT_HEIGHT))
+    options = {
+        "headless": headless,
+        "use_cdp": use_cdp,
+        "cdp_url": "" if not use_cdp else str(normalized.get("cdp_url") or "").strip(),
+        "timeout_ms": int(_payload_float(normalized, "timeout_ms", 45000)),
+        "slow_mo": int(_payload_float(normalized, "slow_mo", 120)),
+        "account_cookies": "[redacted]" if raw_cookies else "",
+        "viewport_width": viewport_width,
+        "viewport_height": viewport_height,
+        "device_scale_factor": _payload_float(normalized, "device_scale_factor", 1.0),
+        "screenshot_on_failure": _dm_bool_text(normalized.get("screenshot_on_failure", True)),
+        "screenshot_dir": str(normalized.get("screenshot_dir") or DM_DEBUG_ARTIFACT_DIR),
+        "screenshot_prefix": str(normalized.get("screenshot_prefix") or normalized.get("task_id") or "dm"),
+    }
+    if raw_cookies.startswith("{"):
+        account_cookie_count = 1
+    else:
+        account_cookie_count = len([item for item in raw_cookies.split(";") if "=" in item]) if raw_cookies else 0
+    if callable(executor):
+        executor_cookies = raw_cookies if getattr(executor, "needs_raw_cookies", False) else ("[redacted]" if raw_cookies else "")
+        result = dict(executor(executor_cookies, browser, options) or {})
+    else:
+        result = {
+            "success": True,
+            "opened": True,
+            "resolved_browser": browser,
+            "engine": "playwright",
+            "account_cookie_loaded": bool(raw_cookies),
+            "account_cookie_count": 1 if raw_cookies else 0,
+            "steps": [],
+        }
+    result.setdefault("success", True)
+    result.setdefault("opened", False)
+    result.setdefault("resolved_browser", browser)
+    result.setdefault("engine", "playwright")
+    result.setdefault("account_cookie_loaded", bool(raw_cookies))
+    result["account_cookie_count"] = max(int(result.get("account_cookie_count") or 0), account_cookie_count)
+    result.setdefault("steps", [])
+    result["browser"] = browser
+    result.setdefault("failure_screenshot_path", "")
+    result.setdefault("failure_screenshot_name", "")
+    result.setdefault("failure_screenshot_url", "")
+    result.setdefault("failure_screenshot_exists", False)
+    result["seen"] = dict(result.get("seen") or {})
+    return _dm_enrich_failure_response(result)
+
+
+def build_douyin_dm_task_submit_response(
+    payload: Dict[str, Any],
+    redis_client: Optional[Any] = None,
+) -> Dict[str, Any]:
+    redis_conn = _redis_conn(redis_client)
+    raw_items = payload.get("items") if isinstance(payload, dict) else None
+    items = raw_items if isinstance(raw_items, list) else [payload]
+    defaults = {key: value for key, value in (payload or {}).items() if key != "items"} if isinstance(payload, dict) else {}
+    now = _dm_now()
+    accepted: List[Dict[str, Any]] = []
+
+    for item in items:
+        if not isinstance(item, dict):
+            raise WebInputError("task must be an object")
+        merged = {**defaults, **item}
+        required_fields = ["video_info", "account_cookie", "comment_info", "target_profile_url", "project_name"]
+        missing = [field for field in required_fields if not str(merged.get(field) or "").strip()]
+        if missing:
+            raise WebInputError(f"missing required fields: {', '.join(missing)}")
+
+        task_id = str(merged.get("task_id") or merged.get("id") or uuid.uuid4().hex).strip()
+        account_cookie = str(merged.get("account_cookie") or merged.get("account_cookies") or merged.get("cookie") or merged.get("cookies") or "").strip()
+        account_id = str(merged.get("account_id") or merged.get("account") or merged.get("account_name") or "").strip()
+        account_key = _dm_account_key_from_values(account_cookie, account_id)
+        debug_mode = _dm_bool_text(merged.get("debug_mode"))
+        run_mode = str(merged.get("run_mode") or "send").strip().lower()
+        auto_send = _dm_bool_text(merged.get("auto_send", False))
+        auto_process = _dm_bool_text(merged.get("auto_process", False))
+        headless = _dm_bool_text(merged.get("headless", True))
+        force_resend = _dm_bool_text(merged.get("force_resend", False))
+        if not debug_mode:
+            run_mode = "send"
+            auto_send = True
+            auto_process = True
+            headless = True
+        keep_browser_open = _dm_bool_text(merged.get("keep_browser_open", not headless))
+        persistent_context = _dm_bool_text(merged.get("persistent_context", (not headless) or merged.get("user_data_dir")))
+        use_cdp = _dm_bool_text(merged.get("use_cdp", not headless))
+        if headless:
+            use_cdp = False
+            keep_browser_open = False
+            persistent_context = False
+
+        task = {
+            "task_id": task_id,
+            "account_id": account_id,
+            "account_key": account_key,
+            "account_cookie": account_cookie,
+            "video_info": str(merged.get("video_info") or ""),
+            "comment_info": str(merged.get("comment_info") or ""),
+            "target_profile_url": str(merged.get("target_profile_url") or ""),
+            "target_key": _dm_normalized_target(str(merged.get("target_profile_url") or "")),
+            "project_name": str(merged.get("project_name") or ""),
+            "project_id": str(merged.get("project_id") or ""),
+            "run_mode": run_mode,
+            "debug_mode": "true" if debug_mode else "false",
+            "browser": str(merged.get("browser") or merged.get("browser_name") or "edge"),
+            "headless": "true" if headless else "false",
+            "use_cdp": "true" if use_cdp else "false",
+            "keep_browser_open": "true" if keep_browser_open else "false",
+            "persistent_context": "true" if persistent_context else "false",
+            "user_data_dir": str(merged.get("user_data_dir") or "").strip(),
+            "auto_send": "true" if auto_send else "false",
+            "auto_process": "true" if auto_process else "false",
+            "force_resend": "true" if force_resend else "false",
+            "reply": "",
+            "sent": "false",
+            "error": "",
+            "error_code": "",
+            "failure_code": "",
+            "failure_type": "",
+            "failure_stage": "",
+            "failure_category": "",
+            "failure_reason": "",
+            "failure_hint": "",
+            "failure_summary": "",
+            "failure_step": "",
+            "failure_step_detail": "",
+            "failure_trace": "",
+            "failure_screenshot_path": "",
+            "failure_screenshot_name": "",
+            "failure_screenshot_url": "",
+            "failure_screenshot_exists": "false",
+            "retry_count": "0",
+            "max_retries": str(int(_payload_float(merged, "max_retries", DM_REDIS_DEFAULT_MAX_RETRIES))),
+            "manual_required": "false",
+            "dead_letter": "false",
+            "next_retry_at": "",
+            "retry_delay_seconds": "0",
+            "retry_queue": "",
+            "status": "pending",
+            "queue_status": "queued",
+            "result_ready": "false",
+            "task_cleared": "false",
+            "first_private_message": "",
+            "first_private_message_status": "pending",
+            "first_private_message_detail": "",
+            "created_at": str(merged.get("created_at") or now),
+            "updated_at": now,
+            "started_at": "",
+            "finished_at": "",
+        }
+
+        key = _dm_task_key(task_id)
+        previous_task = _dm_redis_hash_all(redis_conn, key)
+        previous_account_key = str(previous_task.get("account_key") or "").strip() if previous_task else ""
+        _dm_remove_task_from_queues(redis_conn, task_id, [account_key, previous_account_key])
+        _dm_redis_hash_set(redis_conn, key, task)
+        try:
+            redis_conn.expire(key, DM_REDIS_TASK_TTL_SECONDS)
+        except Exception:
+            pass
+        redis_conn.rpush(DM_REDIS_PENDING_QUEUE, task_id)
+        redis_conn.rpush(_dm_pending_queue_for_account(account_key), task_id)
+        if auto_process:
+            redis_conn.rpush(DM_REDIS_AUTO_PENDING_QUEUE, task_id)
+        try:
+            redis_conn.sadd(DM_REDIS_ACCOUNT_SET, account_key)
+        except Exception:
+            pass
+        accepted.append(_dm_redact_task(task))
+
+    return {
+        "accepted": len(accepted),
+        "task_ids": [item["task_id"] for item in accepted],
+        "tasks": accepted,
+        "queue": DM_REDIS_PENDING_QUEUE,
+        "task_key_prefix": DM_REDIS_TASK_PREFIX,
+        "account_queues": sorted({item.get("account_key") for item in accepted if item.get("account_key")}),
+    }
+
+
+def process_douyin_dm_task_once(
+    redis_client: Optional[Any] = None,
+    logic: Optional[SessionRAGChatLogic] = None,
+    project_store: Optional[ProjectMaterialStore] = None,
+    mode: str = "",
+    account_key: str = "",
+    account_cookie: str = "",
+    account_id: str = "",
+    queue_name: str = "",
+    block_timeout: int = 1,
+) -> Optional[Dict[str, Any]]:
+    redis_conn = _redis_conn(redis_client)
+    requested_account_key = str(account_key or "").strip()
+    account_selector_provided = bool(requested_account_key or str(account_cookie or "").strip() or str(account_id or "").strip())
+    if not requested_account_key and account_selector_provided:
+        requested_account_key = _dm_account_key_from_values(account_cookie, account_id)
+    pending_queue = str(queue_name or "").strip() or (_dm_pending_queue_for_account(requested_account_key) if account_selector_provided else DM_REDIS_PENDING_QUEUE)
+    popped = redis_conn.blpop(pending_queue, timeout=block_timeout) if block_timeout else None
+    if not popped:
+        return None
+    _, raw_task_id = popped
+    task_id = _dm_decode_scalar(raw_task_id)
+    key = _dm_task_key(task_id)
+    task = _dm_redis_hash_all(redis_conn, key)
+    if not task:
+        redis_conn.rpush(DM_REDIS_FAILED_QUEUE, task_id)
+        return {"task_id": task_id, "status": "failed", "error": "task hash not found", "queue_status": "failed"}
+
+    run_mode = str(mode or task.get("run_mode") or "generate").strip().lower()
+    if run_mode not in {"dry_run", "generate", "prefill", "send"}:
+        run_mode = "generate"
+    now = _dm_now()
+    demo_result: Optional[Dict[str, Any]] = None
+    _dm_redis_hash_set(redis_conn, key, {
+        "status": "running",
+        "queue_status": "processing",
+        "started_at": task.get("started_at") or now,
+        "updated_at": now,
+        "error": "",
+        "error_code": "",
+        "failure_code": "",
+        "failure_type": "",
+        "failure_stage": "",
+        "failure_category": "",
+        "failure_reason": "",
+        "failure_hint": "",
+        "failure_summary": "",
+        "failure_step": "",
+        "failure_step_detail": "",
+        "failure_trace": "",
+        "failure_screenshot_path": "",
+        "failure_screenshot_name": "",
+        "failure_screenshot_url": "",
+        "failure_screenshot_exists": "false",
+        "manual_required": "false",
+        "dead_letter": "false",
+        "next_retry_at": "",
+        "retry_queue": "",
+        "result_ready": "false",
+        "task_cleared": "false",
+    })
+    try:
+        redis_conn.zadd(DM_REDIS_PROCESSING_ZSET, {task_id: time.time()})
+    except Exception:
+        pass
+
+    try:
+        if run_mode == "dry_run":
+            reply = f"测试私信：已读取评论。{task.get('comment_info', '')}"
+            generation = {"reply": reply, "dry_run": True}
+        else:
+            generation = build_public_private_message_response(
+                {
+                    "question": task.get("comment_info") or "",
+                    "comment": task.get("comment_info") or "",
+                    "video_overview": task.get("video_info") or "",
+                    "project_name": task.get("project_name") or "",
+                    "session_id": task_id,
+                    "target_profile_url": task.get("target_profile_url") or "",
+                },
+                logic=logic,
+                project_store=project_store,
+                use_saved_model_config=True,
+            )
+            reply = str(generation.get("reply") or generation.get("answer") or "")
+            if not reply:
+                raise RuntimeError("private message generation returned empty reply")
+
+        result: Dict[str, Any] = {
+            "task_id": task_id,
+            "status": "generated",
+            "reply": reply,
+            "sent": False,
+            "run_mode": run_mode,
+            "generation": generation,
+        }
+
+        if run_mode in {"prefill", "send"}:
+            auto_send = run_mode == "send" or _dm_bool_text(task.get("auto_send"))
+            demo_result = build_douyin_private_message_demo_response({
+                "task_id": task_id,
+                "profile_url": task.get("target_profile_url") or "",
+                "message": reply,
+                "browser": task.get("browser") or "edge",
+                "headless": _dm_bool_text(task.get("headless", True)),
+                "use_cdp": _dm_bool_text(task.get("use_cdp")),
+                "keep_browser_open": _dm_bool_text(task.get("keep_browser_open", not _dm_bool_text(task.get("headless", True)))),
+                "persistent_context": _dm_bool_text(task.get("persistent_context", (not _dm_bool_text(task.get("headless", True))) or task.get("user_data_dir"))),
+                "user_data_dir": task.get("user_data_dir") or "",
+                "auto_send": auto_send,
+                "account_cookies": task.get("account_cookie") or "",
+                "screenshot_prefix": task_id,
+            }, executor=_douyin_private_message_playwright_executor)
+            sent = bool(demo_result.get("sent"))
+            prefilled = bool(demo_result.get("prefilled"))
+            if run_mode == "send" and not sent:
+                raise _dm_failure_from_demo_result(demo_result) or RuntimeError("message send was not confirmed")
+            if run_mode == "prefill" and not prefilled:
+                raise _dm_failure_from_demo_result(demo_result) or RuntimeError("message prefill was not confirmed")
+            result.update({
+                "status": "success" if sent or run_mode == "send" else "prefilled",
+                "sent": sent,
+                "demo": demo_result,
+            })
+
+        sent = bool(result.get("sent"))
+        target_key = task.get("target_key") or _dm_normalized_target(task.get("target_profile_url") or "")
+        first_private_message = False
+        first_private_message_status = "generated_only"
+        first_private_message_detail = "message generated but not sent"
+        if run_mode == "prefill":
+            first_private_message_status = "prefilled_only"
+            first_private_message_detail = "message prefilled but not sent"
+        if sent and target_key:
+            sent_key = f"dm:sent_targets:{task.get('account_key') or 'default'}"
+            try:
+                added = int(redis_conn.sadd(sent_key, target_key) or 0)
+            except Exception:
+                added = 1
+            first_private_message = added > 0
+            first_private_message_status = "sent_first" if first_private_message else "sent_again"
+            first_private_message_detail = "first private message recorded" if first_private_message else "target was already messaged by this account in Redis"
+            try:
+                redis_conn.expire(sent_key, DM_REDIS_TASK_TTL_SECONDS)
+            except Exception:
+                pass
+
+        finished = _dm_now()
+        _dm_redis_hash_set(redis_conn, key, {
+            "status": result["status"],
+            "queue_status": "done",
+            "reply": reply,
+            "sent": "true" if sent else "false",
+            "error": "",
+            "error_code": "",
+            "failure_code": "",
+            "failure_type": "",
+            "failure_stage": "",
+            "failure_category": "",
+            "failure_reason": "",
+            "failure_hint": "",
+            "failure_summary": "",
+            "failure_step": "",
+            "failure_step_detail": "",
+            "failure_trace": "",
+            "manual_required": "false",
+            "dead_letter": "false",
+            "next_retry_at": "",
+            "retry_delay_seconds": "0",
+            "retry_queue": "",
+            "run_mode": run_mode,
+            "result_ready": "true",
+            "task_cleared": "true",
+            "first_private_message": "true" if first_private_message else "false",
+            "first_private_message_status": first_private_message_status,
+            "first_private_message_detail": first_private_message_detail,
+            "updated_at": finished,
+            "finished_at": finished,
+        })
+        try:
+            redis_conn.rpush(DM_REDIS_DONE_QUEUE, task_id)
+        except Exception:
+            pass
+        result.update({
+            "first_private_message": first_private_message,
+            "first_private_message_status": first_private_message_status,
+            "first_private_message_detail": first_private_message_detail,
+            "task_cleared": True,
+            "queue_status": "done",
+        })
+        return _dm_redact_task(result)
+    except Exception as exc:
+        finished = _dm_now()
+        error_text = str(exc)
+        lower = error_text.lower()
+        retry_count = int(_payload_float(task, "retry_count", 0)) + 1
+        max_retries = max(0, int(_payload_float(task, "max_retries", DM_REDIS_DEFAULT_MAX_RETRIES)))
+        if "missing config: api_key" in lower or "no saved key" in lower:
+            error_code = "missing_model_api_key"
+            failure_type = "final"
+            retryable = False
+            manual_required = False
+        elif "profile_url must be a douyin.com user page" in lower or "invalid profile url" in lower or "target_profile_url" in lower and "douyin.com" not in str(task.get("target_profile_url") or "").lower():
+            error_code = "invalid_profile_url"
+            failure_type = "final"
+            retryable = False
+            manual_required = False
+        elif "playwright" in lower and ("no module named" in lower or "playwrightcontextmanager" in lower or "_playwright" in lower):
+            error_code = "playwright_missing"
+            failure_type = "final"
+            retryable = False
+            manual_required = False
+        elif "message send was not confirmed" in lower:
+            error_code = "message_send_unconfirmed"
+            failure_type = "final"
+            retryable = False
+            manual_required = False
+        elif any(marker in lower for marker in ["login", "second_verify", "二次验证", "verification required"]):
+            error_code = "verification_required" if any(marker in lower for marker in ["second_verify", "二次验证", "verification required"]) else "login_required"
+            failure_type = "manual"
+            retryable = False
+            manual_required = True
+        elif any(marker in lower for marker in ["risk", "blocked", "限制", "风控"]):
+            error_code = "account_risk"
+            failure_type = "manual"
+            retryable = False
+            manual_required = True
+        elif any(marker in lower for marker in ["private message button not found", "private chat editor not found", "message editor not found"]):
+            error_code = "automation_changed"
+            failure_type = "manual"
+            retryable = False
+            manual_required = True
+        elif any(marker in lower for marker in ["timeout", "timed out", "model timeout"]):
+            error_code = "model_timeout" if any(marker in lower for marker in ["model", "llm", "minimax", "openai", "deepseek", "anthropic"]) else "network_timeout"
+            failure_type = "retryable"
+            retryable = True
+            manual_required = False
+        elif any(marker in lower for marker in ["visible element not found", "element not found", "not attached", "intercepts pointer events"]):
+            error_code = "element_not_found_once"
+            failure_type = "retryable"
+            retryable = True
+            manual_required = False
+        elif any(marker in lower for marker in ["permission", "forbidden"]):
+            error_code = "account_permission_denied"
+            failure_type = "final"
+            retryable = False
+            manual_required = False
+        else:
+            error_code = "unknown_error"
+            failure_type = "final"
+            retryable = False
+            manual_required = False
+
+        failure_state = _dm_task_failure_fields(
+            error_code,
+            failure_type,
+            error_text,
+            detail=demo_result if isinstance(demo_result, dict) else None,
+        )
+        if retryable and retry_count <= max_retries:
+            delay_seconds = DM_REDIS_RETRY_DELAYS_SECONDS[min(retry_count - 1, len(DM_REDIS_RETRY_DELAYS_SECONDS) - 1)]
+            next_retry_ts = time.time() + delay_seconds
+            next_retry_at = datetime.fromtimestamp(next_retry_ts).strftime("%Y-%m-%d %H:%M:%S")
+            try:
+                redis_conn.zadd(DM_REDIS_RETRY_ZSET, {task_id: next_retry_ts})
+            except Exception:
+                pass
+            _dm_redis_hash_set(redis_conn, key, {
+                "status": "retry_wait",
+                "queue_status": "retry_wait",
+                **failure_state,
+                "retry_count": str(retry_count),
+                "max_retries": str(max_retries),
+                "next_retry_at": next_retry_at,
+                "retry_delay_seconds": str(delay_seconds),
+                "retry_queue": pending_queue,
+                "result_ready": "false",
+                "task_cleared": "false",
+                "manual_required": "false",
+                "dead_letter": "false",
+                "first_private_message": "false",
+                "first_private_message_status": "retry_wait",
+                "first_private_message_detail": error_text,
+                "updated_at": finished,
+                "finished_at": "",
+            })
+            return {
+                "task_id": task_id,
+                "status": "retry_wait",
+                "queue_status": "retry_wait",
+                "error": error_text,
+                "error_code": error_code,
+                "failure_code": failure_state["failure_code"],
+                "failure_type": failure_type,
+                "failure_stage": failure_state["failure_stage"],
+                "failure_category": failure_state["failure_category"],
+                "failure_reason": failure_state["failure_reason"],
+                "failure_hint": failure_state["failure_hint"],
+                "failure_summary": failure_state["failure_summary"],
+                "failure_step": failure_state["failure_step"],
+                "failure_step_detail": failure_state["failure_step_detail"],
+                "failure_trace": failure_state["failure_trace"],
+                "failure_screenshot_path": failure_state["failure_screenshot_path"],
+                "failure_screenshot_name": failure_state["failure_screenshot_name"],
+                "failure_screenshot_url": failure_state["failure_screenshot_url"],
+                "failure_screenshot_exists": failure_state["failure_screenshot_exists"],
+                "retry_count": retry_count,
+                "max_retries": max_retries,
+                "next_retry_at": next_retry_at,
+                "result_ready": False,
+                "task_cleared": False,
+            }
+
+        if manual_required:
+            final_status = "manual_required"
+            final_queue_status = "manual_required"
+            try:
+                redis_conn.rpush(DM_REDIS_MANUAL_QUEUE, task_id)
+            except Exception:
+                pass
+            dead_letter = False
+        else:
+            final_status = "failed"
+            final_queue_status = "dead_letter" if failure_type == "final" else "failed"
+            try:
+                redis_conn.rpush(DM_REDIS_FAILED_QUEUE, task_id)
+            except Exception:
+                pass
+            if final_queue_status == "dead_letter":
+                try:
+                    redis_conn.rpush(DM_REDIS_DEAD_LETTER_QUEUE, task_id)
+                except Exception:
+                    pass
+            dead_letter = final_queue_status == "dead_letter"
+
+        _dm_redis_hash_set(redis_conn, key, {
+            "status": final_status,
+            "queue_status": final_queue_status,
+            **failure_state,
+            "retry_count": str(retry_count),
+            "max_retries": str(max_retries),
+            "next_retry_at": "",
+            "retry_delay_seconds": "0",
+            "retry_queue": "",
+            "result_ready": "true",
+            "task_cleared": "true",
+            "manual_required": "true" if manual_required else "false",
+            "dead_letter": "true" if dead_letter else "false",
+            "first_private_message": "false",
+            "first_private_message_status": final_queue_status,
+            "first_private_message_detail": error_text,
+            "updated_at": finished,
+            "finished_at": finished,
+        })
+        return {
+            "task_id": task_id,
+            "status": final_status,
+            "queue_status": final_queue_status,
+            "error": error_text,
+            "error_code": error_code,
+            "failure_code": failure_state["failure_code"],
+            "failure_type": failure_type,
+            "failure_stage": failure_state["failure_stage"],
+            "failure_category": failure_state["failure_category"],
+            "failure_reason": failure_state["failure_reason"],
+            "failure_hint": failure_state["failure_hint"],
+            "failure_summary": failure_state["failure_summary"],
+            "failure_step": failure_state["failure_step"],
+            "failure_step_detail": failure_state["failure_step_detail"],
+            "failure_trace": failure_state["failure_trace"],
+            "failure_screenshot_path": failure_state["failure_screenshot_path"],
+            "failure_screenshot_name": failure_state["failure_screenshot_name"],
+            "failure_screenshot_url": failure_state["failure_screenshot_url"],
+            "failure_screenshot_exists": failure_state["failure_screenshot_exists"],
+            "result_ready": True,
+            "task_cleared": True,
+            "manual_required": manual_required,
+            "dead_letter": dead_letter,
+            "retry_count": retry_count,
+            "max_retries": max_retries,
+            "first_private_message": False,
+            "first_private_message_status": final_queue_status,
+        }
 
 
 if __name__ == "__main__":

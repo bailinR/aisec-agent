@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>上游系统 - 私信任务提交</title>
+  <style>
+    :root { --bg:#f6f8fc; --card:#fff; --line:#d9e3f2; --text:#152033; --muted:#5f6e86; --accent:#118ab2; --ok:#168a4a; --warn:#a96b00; --err:#b42318; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",PingFang SC,"Hiragino Sans GB","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--text); }
+    a,button,input,textarea { font:inherit; }
+    a { color:var(--accent); text-decoration:none; }
+    .shell { min-height:100vh; display:grid; grid-template-rows:auto 1fr; }
+    header { position:sticky; top:0; z-index:5; display:flex; justify-content:space-between; align-items:center; gap:16px; padding:18px 24px; border-bottom:1px solid var(--line); background:rgba(255,255,255,.92); backdrop-filter:blur(8px); }
+    header h1 { margin:0; font-size:22px; }
+    .mini { color:var(--muted); font-size:12px; }
+    .nav { display:flex; gap:10px; flex-wrap:wrap; }
+    main { display:grid; grid-template-columns:1.45fr .85fr; gap:16px; padding:16px; }
+    .panel { background:var(--card); border:1px solid var(--line); border-radius:14px; overflow:hidden; }
+    .panel-hd { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:14px 16px; border-bottom:1px solid var(--line); }
+    .panel-hd h2 { margin:0; font-size:18px; }
+    .panel-bd { padding:16px; }
+    .actions { display:flex; gap:8px; flex-wrap:wrap; }
+    .btn { border:1px solid var(--line); background:#fff; color:var(--text); border-radius:10px; padding:10px 14px; cursor:pointer; }
+    .btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+    .btn.danger { background:#fff5f5; border-color:#ffd0d0; color:var(--err); }
+    .btn:disabled { opacity:.55; cursor:not-allowed; }
+    .stack { display:grid; gap:12px; }
+    .task { border:1px solid var(--line); border-radius:12px; padding:14px; background:linear-gradient(180deg,#fff,#fbfcff); }
+    .task-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:12px; }
+    .task-title { font-weight:700; }
+    .badge { display:inline-flex; align-items:center; justify-content:center; padding:5px 10px; border-radius:999px; font-size:12px; border:1px solid var(--line); background:#f8fbff; color:var(--muted); }
+    .badge.ok { background:#edfdf3; color:var(--ok); border-color:#bde8c9; }
+    .badge.warn { background:#fff8e8; color:var(--warn); border-color:#ffe1a2; }
+    .badge.err { background:#fff0ef; color:var(--err); border-color:#ffc5c1; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .field { display:grid; gap:6px; }
+    .field label { font-size:12px; color:var(--muted); }
+    input,textarea { width:100%; border:1px solid var(--line); border-radius:10px; background:#fff; padding:10px 12px; }
+    textarea { min-height:86px; resize:vertical; }
+    .status { margin-top:12px; padding-left:10px; border-left:3px solid var(--line); display:grid; gap:4px; }
+    .status.ok { border-color:var(--ok); }
+    .status.warn { border-color:var(--warn); }
+    .status.err { border-color:var(--err); }
+    .task-list { display:grid; gap:10px; }
+    .summary-box { border:1px solid var(--line); border-radius:12px; padding:14px; background:#fff; }
+    .summary-box h3 { margin:0 0 10px; font-size:15px; }
+    .toast { position:fixed; right:16px; bottom:16px; z-index:20; background:#152033; color:#fff; padding:10px 14px; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.15); max-width:360px; }
+    @media (max-width:1100px) { main { grid-template-columns:1fr; } .grid { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <div id="app" class="shell">
+    <header>
+      <div>
+        <h1>上游系统</h1>
+        <div class="mini">只负责提交任务，默认就是“填写并发送”，提交后由下游自动执行。</div>
+      </div>
+      <div class="nav">
+        <a href="/dm-upstream">上游系统</a>
+        <a href="/dm-downstream">下游系统</a>
+        <a href="/admin-vue">工作台</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="panel">
+        <div class="panel-hd">
+          <div>
+            <h2>任务提交</h2>
+            <div class="mini">视频、Cookie、评论、主页、项目名称。提交后直接进入自动发送流程。</div>
+          </div>
+          <div class="actions">
+            <button class="btn" @click="loadDemo">填充示例</button>
+            <button class="btn" @click="saveDemo">保存示例</button>
+            <button class="btn" @click="addTask">新增一条</button>
+            <button class="btn danger" @click="clearTasks" :disabled="submitting">清空</button>
+            <button class="btn primary" @click="submitAll" :disabled="submitting || !tasks.length">提交全部并发送</button>
+          </div>
+        </div>
+        <div class="panel-bd">
+          <div class="stack">
+            <article class="task" v-for="(task, index) in tasks" :key="task.local_id">
+              <div class="task-head">
+                <div>
+                  <div class="task-title">任务 {{ index + 1 }} <span class="badge" :class="tone(task.status)">{{ task.statusLabel }}</span></div>
+                  <div class="mini">task_id: {{ task.task_id || '提交后自动生成' }}</div>
+                </div>
+                <div class="actions">
+                  <button class="btn" @click="submitTask(task)" :disabled="submitting">提交并发送</button>
+                  <button class="btn danger" @click="removeTask(index)" :disabled="submitting">删除</button>
+                </div>
+              </div>
+              <div class="grid">
+                <div class="field"><label>视频信息</label><textarea v-model="task.video_info" placeholder="填写视频内容、标题、卖点或上下文"></textarea></div>
+                <div class="field"><label>账号 Cookie</label><textarea v-model="task.account_cookie" placeholder="sessionid=...; sid_guard=..."></textarea></div>
+                <div class="field"><label>评论信息</label><textarea v-model="task.comment_info" placeholder="上游要发送的评论或私信内容"></textarea></div>
+                <div class="field"><label>主页</label><input v-model="task.target_profile_url" placeholder="https://www.douyin.com/user/..."></div>
+                <div class="field"><label>项目名称</label><input v-model="task.project_name" placeholder="用于任务归类"></div>
+                <div class="field"><label>默认动作</label><input value="提交后自动发送" disabled></div>
+              </div>
+              <div class="status" :class="tone(task.status)">
+                <div><strong>当前状态：</strong>{{ task.statusText || '待提交' }}</div>
+                <div class="mini">下游回执：{{ task.remote_status || '-' }}</div>
+                <div class="mini" v-if="task.reply">回复：{{ task.reply }}</div>
+                <div class="mini" v-if="task.error">错误：{{ task.error }}</div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <aside class="panel">
+        <div class="panel-hd">
+          <div>
+            <h2>提交回执</h2>
+            <div class="mini">这里展示上游已经交给下游执行的任务状态。</div>
+          </div>
+          <button class="btn" @click="refreshStatuses" :disabled="!submittedIds.length">刷新状态</button>
+        </div>
+        <div class="panel-bd">
+          <div class="task-list" v-if="submittedIds.length">
+            <div class="summary-box" v-for="id in submittedIds" :key="id">
+              <h3>{{ id }} <span class="badge" :class="tone(taskMap[id] && taskMap[id].status)">{{ (taskMap[id] && taskMap[id].statusLabel) || '未知' }}</span></h3>
+              <div class="mini">项目：{{ (taskMap[id] && taskMap[id].project_name) || '-' }}</div>
+              <div class="mini">结果：{{ (taskMap[id] && taskMap[id].remote_status) || '-' }}</div>
+              <div class="mini">回复：{{ (taskMap[id] && taskMap[id].reply) || '-' }}</div>
+            </div>
+          </div>
+          <div v-else class="mini">还没有提交过任务。先填一条，再点“提交全部并发送”。</div>
+        </div>
+      </aside>
+    </main>
+
+    <div v-if="toast" class="toast">{{ toast }}</div>
+  </div>
+
+  <script src="/static/vendor/vue.global.prod.js"></script>
+  <script>
+    const SAMPLE_TASKS = [
+      { video_info:"视频讲膝盖疼痛、关节养护和日常拉伸要点", account_cookie:"sessionid=demo_cookie_1; sid_guard=demo_guard_1", comment_info:"我妈膝盖上下楼会疼，这个适合吗", target_profile_url:"https://www.douyin.com/user/demo_profile_1", project_name:"膝盖养护测试项目" },
+      { video_info:"视频讲失眠、入睡困难和压力大怎么办", account_cookie:"sessionid=demo_cookie_2; sid_guard=demo_guard_2", comment_info:"最近压力大，晚上睡不着", target_profile_url:"https://www.douyin.com/user/demo_profile_2", project_name:"睡眠测试项目" },
+      { video_info:"视频讲私信系统、评论采集和自动回复", account_cookie:"sessionid=demo_cookie_3; sid_guard=demo_guard_3", comment_info:"这个能自动回评论吗", target_profile_url:"https://www.douyin.com/user/demo_profile_3", project_name:"私信联调测试项目" }
+    ];
+    const BLANK_TASK = () => ({ local_id:"", task_id:"", video_info:"", account_cookie:"", comment_info:"", target_profile_url:"", project_name:"", status:"", statusLabel:"待提交", statusText:"待提交", remote_status:"", reply:"", error:"" });
+
+    const app = {
+      data() {
+        return { tasks:[], submittedIds:[], taskMap:{}, submitting:false, toast:"", toastTimer:null, pollTimer:null };
+      },
+      watch: {
+        tasks: {
+          handler() {
+            this.persistDraft();
+          },
+          deep: true
+        }
+      },
+      mounted() { this.loadInitialTasks(); },
+      beforeUnmount() { if (this.pollTimer) clearInterval(this.pollTimer); if (this.toastTimer) clearTimeout(this.toastTimer); },
+      methods: {
+        uid() { return (crypto.randomUUID && crypto.randomUUID()) || Math.random().toString(36).slice(2); },
+        toastMsg(text) { this.toast = text; clearTimeout(this.toastTimer); this.toastTimer = setTimeout(() => this.toast = "", 2200); },
+        tone(status) { if (["success","done"].includes(status)) return "ok"; if (["failed","error"].includes(status)) return "err"; if (["pending","running","generated","prefilled"].includes(status)) return "warn"; return ""; },
+        readRows(key) { try { const rows = JSON.parse(localStorage.getItem(key) || "[]"); return Array.isArray(rows) ? rows : []; } catch { return []; } },
+        loadInitialTasks() {
+          const draft = this.readRows("dm_upstream_draft_tasks_v1");
+          const saved = this.readRows("dm_upstream_saved_demo_tasks_v2");
+          const legacy = this.readRows("dm_upstream_saved_demo_tasks_v1");
+          const source = draft.length ? draft : (saved.length ? saved : (legacy.length ? legacy : SAMPLE_TASKS));
+          this.tasks = source.map(item => ({ ...BLANK_TASK(), local_id:this.uid(), ...item }));
+          this.toastMsg(`已填充 ${this.tasks.length} 条示例`);
+        },
+        loadDemo() { this.loadInitialTasks(); },
+        persistDraft() {
+          const rows = this.tasks.map(task => ({
+            video_info: task.video_info || "",
+            account_cookie: task.account_cookie && task.account_cookie !== "[redacted]" ? task.account_cookie : "",
+            comment_info: task.comment_info || "",
+            target_profile_url: task.target_profile_url || "",
+            project_name: task.project_name || ""
+          }));
+          localStorage.setItem("dm_upstream_draft_tasks_v1", JSON.stringify(rows));
+        },
+        saveDemo() {
+          try {
+            const rows = this.tasks.map(task => ({
+              video_info: task.video_info || "",
+              account_cookie: task.account_cookie && task.account_cookie !== "[redacted]" ? task.account_cookie : "",
+              comment_info: task.comment_info || "",
+              target_profile_url: task.target_profile_url || "",
+              project_name: task.project_name || ""
+            }));
+            localStorage.setItem("dm_upstream_saved_demo_tasks_v2", JSON.stringify(rows));
+            localStorage.setItem("dm_upstream_draft_tasks_v1", JSON.stringify(rows));
+            this.toastMsg("示例已保存");
+          } catch (error) {
+            this.toastMsg(error.message || "保存失败");
+          }
+        },
+        addTask() { this.tasks.push({ ...BLANK_TASK(), local_id:this.uid() }); this.toastMsg("已新增一条任务"); },
+        removeTask(index) {
+          const removed = this.tasks.splice(index, 1)[0];
+          if (removed && removed.task_id) {
+            this.submittedIds = this.submittedIds.filter(id => id !== removed.task_id);
+            delete this.taskMap[removed.task_id];
+          }
+          this.persistDraft();
+          this.toastMsg("已删除任务");
+        },
+        clearTasks() { this.tasks = []; this.submittedIds = []; this.taskMap = {}; this.persistDraft(); this.toastMsg("已清空"); },
+        async fetchJson(url, options = {}) {
+          const response = await fetch(url, options);
+          const body = await response.json().catch(() => ({}));
+          if (!response.ok || body.ok === false) throw new Error(body.error || response.statusText || "请求失败");
+          return body.data || {};
+        },
+        buildPayload(task) {
+          return {
+            task_id: task.task_id || this.uid(),
+            video_info: task.video_info || "",
+            account_cookie: task.account_cookie || "",
+            comment_info: task.comment_info || "",
+            target_profile_url: task.target_profile_url || "",
+            project_name: task.project_name || ""
+          };
+        },
+        applySubmittedTask(task, payload, response) {
+          const taskId = (response.task_ids && response.task_ids[0]) || payload.task_id;
+          task.task_id = taskId;
+          task.status = "pending";
+          task.statusLabel = "已提交，自动发送中";
+          task.statusText = "已提交，自动发送中";
+          task.remote_status = "queued";
+          task.reply = "";
+          task.error = "";
+          this.taskMap[taskId] = { task_id: taskId, status:"pending", statusLabel:"已提交，自动发送中", remote_status:"queued", reply:"", error:"", ...payload };
+          if (!this.submittedIds.includes(taskId)) this.submittedIds.unshift(taskId);
+        },
+        async submitTask(task) {
+          this.submitting = true;
+          try {
+            const payload = this.buildPayload(task);
+            const data = await this.fetchJson("/api/v1/douyin/private-message/tasks", { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(payload) });
+            this.applySubmittedTask(task, payload, data);
+            this.toastMsg(`提交成功，已进入自动发送队列：${task.task_id}`);
+            this.startPolling();
+            await this.refreshStatuses(true);
+          } catch (error) {
+            task.status = "error";
+            task.statusLabel = "提交失败";
+            task.statusText = "提交失败";
+            task.error = error.message || "提交失败";
+            this.toastMsg(task.error);
+          } finally {
+            this.submitting = false;
+            this.persistDraft();
+          }
+        },
+        async submitAll() {
+          if (!this.tasks.length) { this.toastMsg("没有可提交的任务"); return; }
+          for (const task of this.tasks) await this.submitTask(task);
+          this.toastMsg(`已提交 ${this.tasks.length} 条任务，正在自动发送`);
+        },
+        renderStatus(task, result) {
+          const status = (result && result.status) || task.status || "";
+          if (status === "success") return { status, label:`发送成功${result.first_private_message_status ? " · " + result.first_private_message_status : ""}`, text:"发送成功", remote:result.first_private_message_detail || result.queue_status || "发送成功", reply:result.reply || "", error:"" };
+          if (status === "failed") return { status, label:`发送失败${result.failure_code ? " · " + result.failure_code : ""}`, text:"发送失败", remote:result.failure_summary || result.error || result.first_private_message_detail || "发送失败", reply:result.reply || "", error:result.failure_summary || result.error || "发送失败" };
+          if (status === "prefilled") return { status, label:"已预填，未发送", text:"已预填，未发送", remote:result.first_private_message_detail || "已预填", reply:result.reply || "", error:"" };
+          if (status === "generated") return { status, label:"已生成待发送", text:"已生成待发送", remote:result.queue_status || "已生成", reply:result.reply || "", error:"" };
+          if (status === "running") return { status, label:"执行中", text:"执行中", remote:result.queue_status || "执行中", reply:result.reply || "", error:"" };
+          return { status:status || "pending", label:task.statusLabel || "等待下游自动发送", text:task.statusText || "等待下游自动发送", remote:result.queue_status || task.remote_status || "queued", reply:result.reply || task.reply || "", error:result.error || task.error || "" };
+        },
+        async refreshStatuses(silent = false) {
+          if (!this.submittedIds.length) return;
+          try {
+            const rows = await Promise.all(this.submittedIds.map(async id => {
+              const data = await this.fetchJson("/api/v1/douyin/private-message/tasks/" + encodeURIComponent(id));
+              return { id, task: data.task || {}, result: data.result || {} };
+            }));
+            let changed = 0;
+            for (const row of rows) {
+              const currentTask = this.tasks.find(item => item.task_id === row.id);
+              const prev = this.taskMap[row.id] || {};
+              const next = this.renderStatus(currentTask || row.task, row.result);
+              if (prev.status && next.status && prev.status !== next.status) {
+                changed += 1;
+                if (next.status === "success") this.toastMsg(`任务发送成功：${row.id}`);
+                else if (next.status === "failed") this.toastMsg(`任务发送失败：${row.id}`);
+              }
+              const remote = { ...row.task, ...row.result };
+              delete remote.account_cookie;
+              this.taskMap[row.id] = {
+                ...(this.taskMap[row.id] || {}),
+                ...remote,
+                task_id: row.id,
+                status: next.status,
+                statusLabel: next.label,
+                statusText: next.text,
+                remote_status: next.remote,
+                reply: next.reply,
+                error: next.error,
+                account_cookie: currentTask ? currentTask.account_cookie : (this.taskMap[row.id] && this.taskMap[row.id].account_cookie) || ""
+              };
+              if (currentTask) {
+                Object.assign(currentTask, {
+                  task_id: row.id,
+                  status: next.status,
+                  statusLabel: next.label,
+                  statusText: next.text,
+                  remote_status: next.remote,
+                  reply: next.reply,
+                  error: next.error
+                });
+              }
+            }
+            if (!silent) this.toastMsg(`已刷新 ${rows.length} 条任务${changed ? `，其中 ${changed} 条有状态变化` : ""}`);
+          } catch (error) {
+            this.toastMsg(error.message || "刷新失败");
+          }
+        },
+        startPolling() { if (!this.pollTimer) this.pollTimer = setInterval(() => this.refreshStatuses(true), 2500); }
+      }
+    };
+    Vue.createApp(app).mount("#app");
+  </script>
+</body>
+</html>

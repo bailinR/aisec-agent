@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>下游系统 - 私信执行监控</title>
+  <style>
+    :root {
+      --bg: #f6f8fc;
+      --card: #ffffff;
+      --line: #d9e3f2;
+      --text: #152033;
+      --muted: #5f6e86;
+      --accent: #118ab2;
+      --ok: #168a4a;
+      --warn: #a96b00;
+      --err: #b42318;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", PingFang SC, "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    a, button { font: inherit; }
+    a { color: var(--accent); text-decoration: none; }
+    .shell { min-height: 100vh; display: grid; grid-template-rows: auto 1fr; }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, .92);
+      backdrop-filter: blur(8px);
+    }
+    header h1 { margin: 0; font-size: 22px; }
+    .mini { color: var(--muted); font-size: 12px; }
+    .nav { display: flex; gap: 10px; flex-wrap: wrap; }
+    main {
+      display: grid;
+      grid-template-columns: 1.1fr .9fr;
+      gap: 16px;
+      padding: 16px;
+    }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .panel-hd {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .panel-hd h2 { margin: 0; font-size: 18px; }
+    .panel-bd { padding: 16px; }
+    .btn {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px 14px;
+      cursor: pointer;
+    }
+    .btn:disabled { opacity: .55; cursor: not-allowed; }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+    }
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+      background: #fff;
+    }
+    .metric .label { color: var(--muted); font-size: 12px; }
+    .metric .value { font-size: 26px; font-weight: 800; margin-top: 6px; }
+    .box-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .queue-box {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+      background: #fff;
+    }
+    .queue-box h3 { margin: 0 0 10px; font-size: 15px; }
+    .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #f8fbff;
+      font-size: 12px;
+      word-break: break-all;
+    }
+    .task-list { display: grid; gap: 10px; }
+    .task {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+      background: linear-gradient(180deg, #fff, #fbfcff);
+    }
+    .task-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .title { font-weight: 700; word-break: break-all; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 5px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid var(--line);
+      background: #f8fbff;
+      color: var(--muted);
+    }
+    .badge.ok { background: #edfdf3; color: var(--ok); border-color: #bde8c9; }
+    .badge.warn { background: #fff8e8; color: var(--warn); border-color: #ffe1a2; }
+    .badge.err { background: #fff0ef; color: var(--err); border-color: #ffc5c1; }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .task-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .field {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: #fff;
+    }
+    .field .k { color: var(--muted); font-size: 12px; }
+    .field .v { margin-top: 4px; word-break: break-word; }
+    .toast {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      z-index: 20;
+      background: #152033;
+      color: #fff;
+      padding: 10px 14px;
+      border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .15);
+      max-width: 360px;
+    }
+    @media (max-width: 1100px) {
+      main { grid-template-columns: 1fr; }
+      .metrics, .grid, .box-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 720px) {
+      .metrics, .grid, .box-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app" class="shell">
+    <header>
+      <div>
+        <h1>下游系统</h1>
+        <div class="mini">自动读取 Redis 任务并执行，页面只做监控，不需要人工点“执行”。</div>
+      </div>
+      <div class="nav">
+        <a href="/dm-upstream">上游系统</a>
+        <a href="/dm-downstream">下游系统</a>
+        <a href="/admin-vue">工作台</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="panel">
+        <div class="panel-hd">
+          <div>
+            <h2>Redis 队列</h2>
+            <div class="mini">自动队列是 `dm:queue:auto_pending`，内置 worker 会持续消费。</div>
+            <div class="mini">worker：{{ worker.enabled ? (worker.alive ? '运行中' : '已停止') : '未开启' }} · 当前队列：{{ worker.queue || 'dm:queue:auto_pending' }}</div>
+            <div class="mini" v-if="worker.last_error">后台错误：{{ worker.last_error }}</div>
+          </div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button class="btn danger" @click="clearAll" :disabled="busy">清空队列</button>
+            <button class="btn" @click="refresh" :disabled="busy">刷新</button>
+          </div>
+        </div>
+        <div class="panel-bd">
+          <div class="metrics">
+            <div class="metric"><div class="label">待处理</div><div class="value">{{ counts.pending }}</div></div>
+            <div class="metric"><div class="label">自动队列</div><div class="value">{{ counts.auto_pending }}</div></div>
+            <div class="metric"><div class="label">处理中</div><div class="value">{{ counts.processing }}</div></div>
+            <div class="metric"><div class="label">完成</div><div class="value">{{ counts.done }}</div></div>
+            <div class="metric"><div class="label">失败</div><div class="value">{{ counts.failed }}</div></div>
+          </div>
+          <div class="box-grid">
+            <div class="queue-box">
+              <h3>自动待执行</h3>
+              <div class="chip-row" v-if="queue.auto_pending && queue.auto_pending.length">
+                <span class="chip" v-for="id in queue.auto_pending" :key="id">{{ id }}</span>
+              </div>
+              <div class="mini" v-else>暂无自动任务</div>
+            </div>
+            <div class="queue-box">
+              <h3>处理中</h3>
+              <div class="chip-row" v-if="queue.processing && queue.processing.length">
+                <span class="chip" v-for="id in queue.processing" :key="id">{{ id }}</span>
+              </div>
+              <div class="mini" v-else>暂无</div>
+            </div>
+            <div class="queue-box">
+              <h3>账号队列</h3>
+              <div class="mini" v-if="!accountKeys.length">暂无账号队列</div>
+              <div class="stack" v-else>
+                <div v-for="key in accountKeys" :key="key" style="margin-bottom:10px;">
+                  <div class="mini" style="margin-bottom:6px;">{{ key }}</div>
+                  <div class="chip-row" v-if="queue.accounts && queue.accounts[key] && queue.accounts[key].length">
+                    <span class="chip" v-for="id in queue.accounts[key]" :key="id">{{ id }}</span>
+                  </div>
+                  <div class="mini" v-else>暂无</div>
+                </div>
+              </div>
+            </div>
+            <div class="queue-box">
+              <h3>历史结果</h3>
+              <div class="chip-row">
+                <span class="chip">done: {{ counts.done }}</span>
+                <span class="chip">failed: {{ counts.failed }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="panel">
+        <div class="panel-hd">
+          <div>
+            <h2>执行结果</h2>
+            <div class="mini">这里看任务从 pending 变成 running / success / failed。</div>
+          </div>
+          <span class="badge" :class="busy ? 'warn' : 'ok'">{{ busy ? '刷新中' : '空闲' }}</span>
+        </div>
+        <div class="panel-bd">
+          <div class="task-list" v-if="recent.length">
+            <article class="task" v-for="item in recent" :key="item.task_id">
+              <div class="task-head">
+                <div>
+                  <div class="title">{{ item.task_id }}</div>
+                  <div class="mini">{{ item.project_name || '-' }} · {{ item.status || '-' }}</div>
+                  <div class="mini">{{ taskMessage(item) }}</div>
+                </div>
+                <span class="badge" :class="tone(item.status)">{{ item.statusLabel || item.status || '未知' }}</span>
+              </div>
+              <div class="grid">
+                <div class="field"><div class="k">评论</div><div class="v">{{ item.comment_info || '-' }}</div></div>
+                <div class="field"><div class="k">主页</div><div class="v">{{ item.target_profile_url || '-' }}</div></div>
+                <div class="field"><div class="k">回复</div><div class="v">{{ item.reply || '-' }}</div></div>
+                <div class="field"><div class="k">失败码</div><div class="v">{{ item.failure_code || '-' }}</div></div>
+                <div class="field"><div class="k">失败阶段</div><div class="v">{{ item.failure_stage || '-' }}</div></div>
+                <div class="field"><div class="k">失败摘要</div><div class="v">{{ item.failure_summary || item.error || '-' }}</div></div>
+                <div class="field"><div class="k">步骤详情</div><div class="v">{{ item.failure_step_detail || '-' }}</div></div>
+                <div class="field"><div class="k">截图路径</div><div class="v">{{ item.failure_screenshot_path || item.failure_screenshot_url || '-' }}</div></div>
+              </div>
+              <div class="task-actions" v-if="item.manual_takeover && item.manual_takeover.available">
+                <div class="mini">{{ item.manual_takeover.hint || '在人工机上打开有头浏览器继续处理' }}</div>
+                <button class="btn" @click="openManualTakeover(item)">人工接管</button>
+              </div>
+            </article>
+          </div>
+          <div class="mini" v-else>暂无执行记录。</div>
+        </div>
+      </aside>
+    </main>
+
+    <div v-if="toast" class="toast">{{ toast }}</div>
+  </div>
+
+  <script src="/static/vendor/vue.global.prod.js"></script>
+  <script>
+    const app = {
+      data() {
+        return {
+          queue: { pending: [], auto_pending: [], processing: [], done: [], failed: [], accounts: {} },
+          counts: { pending: 0, auto_pending: 0, processing: 0, done: 0, failed: 0 },
+          worker: { enabled: false, alive: false, queue: "dm:queue:auto_pending", last_error: "" },
+          recent: [],
+          accountKeys: [],
+          busy: false,
+          clearing: false,
+          toast: "",
+          toastTimer: null,
+          pollTimer: null,
+          knownStatuses: {}
+        };
+      },
+      mounted() {
+        this.refresh();
+        this.pollTimer = setInterval(() => this.refresh(true), 3000);
+      },
+      beforeUnmount() {
+        if (this.pollTimer) clearInterval(this.pollTimer);
+        if (this.toastTimer) clearTimeout(this.toastTimer);
+      },
+      methods: {
+        toastMsg(text) {
+          this.toast = text;
+          clearTimeout(this.toastTimer);
+          this.toastTimer = setTimeout(() => { this.toast = ""; }, 2200);
+        },
+        tone(status) {
+          if (["success", "done"].includes(status)) return "ok";
+          if (["failed", "error"].includes(status)) return "err";
+          if (["pending", "running", "generated", "prefilled"].includes(status)) return "warn";
+          return "";
+        },
+        taskMessage(item) {
+          if (!item) return "";
+          if (item.status === "success") {
+            return item.first_private_message_status ? `发送成功 · ${item.first_private_message_status}` : "发送成功";
+          }
+          if (item.status === "failed") return item.error || "执行失败";
+          if (item.status === "running") return "正在执行";
+          if (item.status === "pending") return "等待自动发送";
+          if (item.status === "generated") return "已生成，等待发送";
+          if (item.status === "prefilled") return "已预填，未发送";
+          return item.queue_status || item.status || "";
+        },
+        async fetchJson(url, options = {}) {
+          const response = await fetch(url, options);
+          const body = await response.json().catch(() => ({}));
+          if (!response.ok || body.ok === false) {
+            throw new Error(body.error || response.statusText || "请求失败");
+          }
+          return body.data || {};
+        },
+        normalizeRecent(items) {
+          return (items || []).filter(Boolean).reduce((acc, item) => {
+            if (!item.task_id) return acc;
+            if (!acc.some((seen) => seen.task_id === item.task_id)) acc.push(item);
+            return acc;
+          }, []);
+        },
+        async refresh(silent = false) {
+          this.busy = true;
+          try {
+            const data = await this.fetchJson("/api/v1/douyin/private-message/tasks?limit=20");
+            this.queue = data.queue || this.queue;
+            this.counts = data.counts || this.counts;
+            this.worker = data.worker || this.worker;
+            this.accountKeys = Object.keys((this.queue && this.queue.accounts) || {}).sort();
+            const recent = this.normalizeRecent([
+              ...((data.tasks && data.tasks.processing) || []),
+              ...((data.tasks && data.tasks.pending) || []),
+              ...(((data.tasks && data.tasks.done) || []).slice(-5)),
+              ...(((data.tasks && data.tasks.failed) || []).slice(-5))
+            ]).slice(0, 10);
+            this.recent = recent;
+            this.notifyStatusChanges(recent);
+            if (!silent) this.toastMsg(`已刷新 ${recent.length} 个任务`);
+          } catch (error) {
+            this.toastMsg(error.message || "刷新失败");
+          } finally {
+            this.busy = false;
+          }
+        },
+        async openManualTakeover(item) {
+          const takeover = (item && item.manual_takeover) || {};
+          const url = String(takeover.url || item.target_profile_url || "").trim();
+          if (!url) {
+            this.toastMsg("没有可接管的目标链接");
+            return;
+          }
+          this.busy = true;
+          try {
+            const data = await this.fetchJson("/api/open-url", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                url,
+                browser: takeover.browser || item.browser || "default",
+                new_window: true,
+              })
+            });
+            this.toastMsg(data.opened ? `已打开接管浏览器：${data.resolved_browser || data.browser || "default"}` : "打开浏览器失败");
+          } catch (error) {
+            this.toastMsg(error.message || "打开浏览器失败");
+          } finally {
+            this.busy = false;
+          }
+        },
+        async clearAll() {
+          if (!confirm("确定清空所有私信联调数据吗？")) return;
+          this.clearing = true;
+          this.busy = true;
+          try {
+            const data = await this.fetchJson("/api/v1/douyin/private-message/tasks/clear", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: "{}"
+            });
+            this.queue = { pending: [], auto_pending: [], processing: [], done: [], failed: [], accounts: {} };
+            this.counts = { pending: 0, auto_pending: 0, processing: 0, done: 0, failed: 0 };
+            this.recent = [];
+            this.accountKeys = [];
+            this.knownStatuses = {};
+            this.toastMsg(`${data.cleared ? '已清空' : '清空失败'} ${data.task_count || 0} 个任务，${data.deleted_keys || 0} 个 key`);
+            await this.refresh(true);
+          } catch (error) {
+            this.toastMsg(error.message || "清空失败");
+          } finally {
+            this.clearing = false;
+            this.busy = false;
+          }
+        },
+        notifyStatusChanges(recent) {
+          for (const item of recent || []) {
+            if (!item || !item.task_id) continue;
+            const prev = this.knownStatuses[item.task_id];
+            const next = item.status || "";
+            if (prev && prev !== next) {
+              if (next === "success") {
+                this.toastMsg(`任务发送成功：${item.task_id}`);
+              } else if (next === "failed") {
+                this.toastMsg(`任务发送失败：${item.task_id}`);
+              } else if (next === "running") {
+                this.toastMsg(`任务开始执行：${item.task_id}`);
+              }
+            }
+            this.knownStatuses[item.task_id] = next;
+          }
+        }
+      }
+    };
+    Vue.createApp(app).mount("#app");
+  </script>
+</body>
+</html>

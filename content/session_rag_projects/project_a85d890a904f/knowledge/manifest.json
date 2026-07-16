@@ -22,8 +22,7 @@
         "服务对象",
         "解决方案"
       ],
-      "source_file_name": "",
-      "content_chars": 136
+      "kb_id": "kb_717126999f"
     },
     {
       "doc_id": "healthcare_medical",
@@ -56,8 +55,7 @@
         "养老",
         "社区健康"
       ],
-      "source_file_name": "",
-      "content_chars": 165
+      "kb_id": "kb_717126999f"
     },
     {
       "doc_id": "ai_technology_hardware",
@@ -91,8 +89,7 @@
         "Agent",
         "自动化调度"
       ],
-      "source_file_name": "",
-      "content_chars": 170
+      "kb_id": "kb_717126999f"
     },
     {
       "doc_id": "cross_border_services",
@@ -117,12 +114,31 @@
         "企业服务",
         "资源对接"
       ],
-      "source_file_name": "",
-      "content_chars": 70
+      "kb_id": "kb_717126999f"
+    },
+    {
+      "doc_id": "doc_5999d7c6b6d8",
+      "title": "AI技术与智能硬件板块",
+      "kb_id": "kb_717126999f",
+      "knowledge_base": "公司私信知识库",
+      "domain": "三大核心业务板块",
+      "section": "默认板块",
+      "category": "三大核心业务板块",
+      "sender_identity": "运营顾问",
+      "relative_path": "knowledge/files/公司私信知识库/三大核心业务板块/默认板块/AI技术与智能硬件板块.md",
+      "description": "AI技术与智能硬件板块；AI内容生产：文生视频、批量剪辑、自动发布、评论采集、数据统计。；智能产品：录音背夹/智能可穿戴设备录音转纪要建议协助办公等，远程小主机（边缘计算），本地+云端协同。；核心系统：数据收集-自动私信引私域系统、舆论管控系统等。；技术能力：分布式爬虫、千万级数据优化、AI Agent自动化调度。",
+      "keywords": [
+        "公司私信知识库",
+        "三大核心业务板块"
+      ],
+      "source_file_name": "AI技术与智能硬件板块.md",
+      "imported_at": "2026-07-10T16:11:17",
+      "content_chars": 168
     },
     {
       "doc_id": "doc_8469181788ef",
       "title": "AI技术与智能硬件板块",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "三大核心业务板块",
       "section": "三大核心业务板块",
@@ -137,11 +153,12 @@
       ],
       "source_file_name": "AI技术与智能硬件板块.md",
       "imported_at": "2026-07-10T16:11:17",
-      "content_chars": 170
+      "content_chars": 168
     },
     {
       "doc_id": "doc_8fea38244ceb",
       "title": "大健康医疗板块",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "三大核心业务板块",
       "section": "三大核心业务板块",
@@ -156,11 +173,12 @@
       ],
       "source_file_name": "大健康医疗板块.md",
       "imported_at": "2026-07-10T16:11:17",
-      "content_chars": 165
+      "content_chars": 163
     },
     {
       "doc_id": "doc_e191c73c5965",
       "title": "跨境与综合业务板块",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "三大核心业务板块",
       "section": "三大核心业务板块",
@@ -175,17 +193,18 @@
       ],
       "source_file_name": "跨境与综合业务板块.md",
       "imported_at": "2026-07-10T16:11:17",
-      "content_chars": 70
+      "content_chars": 68
     },
     {
       "doc_id": "company_private_kb_readme",
       "title": "公司私信知识库 README",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "评论转私信",
       "section": "README与路由",
       "category": "评论转私信",
       "sender_identity": "账号助理",
-      "relative_path": "knowledge/files/公司私信知识库/README.md",
+      "relative_path": "knowledge/files/公司私信知识库/评论转私信/README.md",
       "description": "说明公司私信知识库的用途、业务目录、Prompt组装方式和维护规则。",
       "keywords": [
         "公司私信知识库",
@@ -196,11 +215,12 @@
       ],
       "source_file_name": "README.md",
       "imported_at": "2026-07-10T01:11:27",
-      "content_chars": 1341
+      "content_chars": 2516
     },
     {
       "doc_id": "comment_to_private_readme",
       "title": "评论转私信业务 README",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "评论转私信",
       "section": "README与路由",
@@ -217,11 +237,12 @@
       ],
       "source_file_name": "README.md",
       "imported_at": "2026-07-10T01:11:27",
-      "content_chars": 2639
+      "content_chars": 2516
     },
     {
       "doc_id": "comment_private_prompt_global",
       "title": "评论转私信全局提示词",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "评论转私信",
       "section": "业务提示词",
@@ -238,11 +259,12 @@
       ],
       "source_file_name": "全局提示词.md",
       "imported_at": "2026-07-10T01:11:27",
-      "content_chars": 777
+      "content_chars": 766
     },
     {
       "doc_id": "comment_private_prompt_routing",
       "title": "场景与文档读取规则",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "评论转私信",
       "section": "业务提示词",
@@ -260,11 +282,12 @@
       ],
       "source_file_name": "场景与文档读取规则.md",
       "imported_at": "2026-07-10T01:11:27",
-      "content_chars": 1007
+      "content_chars": 982
     },
     {
       "doc_id": "comment_private_prompt_stage",
       "title": "首次私信与维护规则",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "评论转私信",
       "section": "业务提示词",
@@ -282,11 +305,12 @@
       ],
       "source_file_name": "首次私信与维护规则.md",
       "imported_at": "2026-07-10T01:11:27",
-      "content_chars": 708
+      "content_chars": 694
     },
     {
       "doc_id": "comment_private_prompt_activity_compliance",
       "title": "活动与合规规则",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "评论转私信",
       "section": "业务提示词",
@@ -304,11 +328,12 @@
       ],
       "source_file_name": "活动与合规规则.md",
       "imported_at": "2026-07-10T01:11:27",
-      "content_chars": 627
+      "content_chars": 612
     },
     {
       "doc_id": "comment_private_company_overview",
       "title": "公司定位与业务总览",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "评论转私信",
       "section": "相关文档",
@@ -326,11 +351,12 @@
       ],
       "source_file_name": "公司定位与业务总览.md",
       "imported_at": "2026-07-10T01:11:27",
-      "content_chars": 672
+      "content_chars": 611
     },
     {
       "doc_id": "comment_private_sleep_assessment",
       "title": "大健康睡眠初评私信资料",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "评论转私信",
       "section": "相关文档",
@@ -350,11 +376,12 @@
       ],
       "source_file_name": "大健康睡眠初评私信资料.md",
       "imported_at": "2026-07-10T01:11:27",
-      "content_chars": 671
+      "content_chars": 640
     },
     {
       "doc_id": "comment_private_knee_stemcell",
       "title": "大健康膝骨关节干细胞私信资料",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "评论转私信",
       "section": "相关文档",
@@ -374,11 +401,12 @@
       ],
       "source_file_name": "大健康膝骨关节干细胞私信资料.md",
       "imported_at": "2026-07-10T01:11:27",
-      "content_chars": 874
+      "content_chars": 841
     },
     {
       "doc_id": "comment_private_ai_dm_system",
       "title": "AI私信系统私信资料",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "评论转私信",
       "section": "相关文档",
@@ -397,11 +425,12 @@
       ],
       "source_file_name": "AI私信系统私信资料.md",
       "imported_at": "2026-07-10T01:11:27",
-      "content_chars": 615
+      "content_chars": 589
     },
     {
       "doc_id": "comment_private_cross_border",
       "title": "跨境电商托管私信资料",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "评论转私信",
       "section": "相关文档",
@@ -420,11 +449,12 @@
       ],
       "source_file_name": "跨境电商托管私信资料.md",
       "imported_at": "2026-07-10T01:11:27",
-      "content_chars": 452
+      "content_chars": 424
     },
     {
       "doc_id": "comment_private_activity_hook",
       "title": "运营活动与承接方式",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "评论转私信",
       "section": "相关文档",
@@ -444,11 +474,12 @@
       ],
       "source_file_name": "运营活动与承接方式.md",
       "imported_at": "2026-07-10T01:11:27",
-      "content_chars": 669
+      "content_chars": 650
     },
     {
       "doc_id": "comment_private_compliance_boundary",
       "title": "私信合规边界",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "评论转私信",
       "section": "相关文档",
@@ -466,11 +497,12 @@
       ],
       "source_file_name": "私信合规边界.md",
       "imported_at": "2026-07-10T01:11:27",
-      "content_chars": 522
+      "content_chars": 479
     },
     {
       "doc_id": "comment_private_samples",
       "title": "评论样本与回复方向",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "评论转私信",
       "section": "相关文档",
@@ -489,11 +521,12 @@
       ],
       "source_file_name": "评论样本与回复方向.md",
       "imported_at": "2026-07-10T01:11:27",
-      "content_chars": 649
+      "content_chars": 627
     },
     {
       "doc_id": "doc_e67418663fa1",
       "title": "公司定位",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "默认领域",
       "section": "默认板块",
@@ -507,11 +540,12 @@
       ],
       "source_file_name": "公司定位.md",
       "imported_at": "2026-07-10T16:11:17",
-      "content_chars": 136
+      "content_chars": 134
     },
     {
       "doc_id": "doc_08e6932f65b0",
       "title": "自动私信引流系统说明",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "模拟业务资料",
       "section": "AI私信系统",
@@ -526,11 +560,12 @@
       ],
       "source_file_name": "自动私信引流系统说明.md",
       "imported_at": "2026-07-10T16:11:17",
-      "content_chars": 615
+      "content_chars": 589
     },
     {
       "doc_id": "doc_af53a0c0aa5e",
       "title": "大健康与私信合规边界",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "模拟业务资料",
       "section": "合规边界",
@@ -545,11 +580,12 @@
       ],
       "source_file_name": "大健康与私信合规边界.md",
       "imported_at": "2026-07-10T16:11:17",
-      "content_chars": 526
+      "content_chars": 483
     },
     {
       "doc_id": "doc_06e735ef7e5e",
       "title": "睡眠初评服务说明",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "模拟业务资料",
       "section": "大健康睡眠项目",
@@ -564,11 +600,12 @@
       ],
       "source_file_name": "睡眠初评服务说明.md",
       "imported_at": "2026-07-10T16:11:17",
-      "content_chars": 668
+      "content_chars": 637
     },
     {
       "doc_id": "doc_8402bfb807b4",
       "title": "膝骨关节干细胞项目说明",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "模拟业务资料",
       "section": "大健康膝骨关节干细胞",
@@ -583,11 +620,12 @@
       ],
       "source_file_name": "膝骨关节干细胞项目说明.md",
       "imported_at": "2026-07-10T16:11:17",
-      "content_chars": 867
+      "content_chars": 836
     },
     {
       "doc_id": "doc_b93c6d24fa92",
       "title": "视频方向总结示例",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "模拟业务资料",
       "section": "样本库",
@@ -602,11 +640,12 @@
       ],
       "source_file_name": "视频方向总结示例.md",
       "imported_at": "2026-07-10T16:11:17",
-      "content_chars": 612
+      "content_chars": 594
     },
     {
       "doc_id": "doc_49a4bf8197b1",
       "title": "评论意向样本与回复方向",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "模拟业务资料",
       "section": "样本库",
@@ -621,11 +660,12 @@
       ],
       "source_file_name": "评论意向样本与回复方向.md",
       "imported_at": "2026-07-10T16:11:17",
-      "content_chars": 651
+      "content_chars": 629
     },
     {
       "doc_id": "doc_2523e878bd13",
       "title": "资料说明",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "模拟业务资料",
       "section": "模拟业务资料",
@@ -640,11 +680,12 @@
       ],
       "source_file_name": "资料说明.md",
       "imported_at": "2026-07-10T16:11:17",
-      "content_chars": 541
+      "content_chars": 531
     },
     {
       "doc_id": "doc_65f2c200a692",
       "title": "跨境电商托管服务说明",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "模拟业务资料",
       "section": "跨境电商托管",
@@ -659,11 +700,12 @@
       ],
       "source_file_name": "跨境电商托管服务说明.md",
       "imported_at": "2026-07-10T16:11:17",
-      "content_chars": 452
+      "content_chars": 424
     },
     {
       "doc_id": "doc_1766bfdd816c",
       "title": "活动钩子与承接方式",
+      "kb_id": "kb_717126999f",
       "knowledge_base": "公司私信知识库",
       "domain": "模拟业务资料",
       "section": "运营转化",
@@ -678,11 +720,32 @@
       ],
       "source_file_name": "活动钩子与承接方式.md",
       "imported_at": "2026-07-10T16:11:17",
-      "content_chars": 656
+      "content_chars": 637
+    },
+    {
+      "doc_id": "doc_228399404786",
+      "title": "README与路由 README",
+      "kb_id": "kb_717126999f",
+      "knowledge_base": "公司私信知识库",
+      "domain": "README与路由",
+      "section": "README与路由",
+      "category": "README与路由",
+      "sender_identity": "运营顾问",
+      "relative_path": "knowledge/files/公司私信知识库/README.md",
+      "description": "公司私信知识库；知识库用途；本知识库用于短视频评论承接、首次私信、私信维护、评论区维护、活动承接和客户意向识别。；API 调用时通常会传入：；调用方：例如抖音、视频号、小红书、OpenClaw 或内部测试页面。；业务场景：例如评论转私信、首次私信、私信维护、评论区维护。；用户评论：本轮需要回复或承接的评论内容。；视频概述：评论所在视频大概讲了什么方向。；用户身份或目标：例如当前账号身份、希望引导到微信号、企业微信、预约入口或资料页。；session_id：用于读取同一用户的历史上下文。；系统会根据这些信息选择对应业。",
+      "keywords": [
+        "公司私信知识库",
+        "README与路由",
+        "README与路由"
+      ],
+      "source_file_name": "README.md",
+      "imported_at": "2026-07-10T16:11:17",
+      "content_chars": 1325
     },
     {
       "doc_id": "doc_6224702a99f0",
       "title": "boss沟通 README",
+      "kb_id": "kb_828963cc66",
       "knowledge_base": "招聘知识库",
       "domain": "boss沟通",
       "section": "boss沟通",
@@ -697,11 +760,12 @@
       ],
       "source_file_name": "README.md",
       "imported_at": "2026-07-10T16:11:17",
-      "content_chars": 525
+      "content_chars": 515
     },
     {
       "doc_id": "doc_07ab43d00b86",
       "title": "README与路由 README",
+      "kb_id": "kb_828963cc66",
       "knowledge_base": "招聘知识库",
       "domain": "README与路由",
       "section": "README与路由",
@@ -716,11 +780,12 @@
       ],
       "source_file_name": "README.md",
       "imported_at": "2026-07-10T16:11:17",
-      "content_chars": 1203
+      "content_chars": 1187
     },
     {
       "doc_id": "doc_2e14cf428238",
       "title": "全局提示词",
+      "kb_id": "kb_828963cc66",
       "knowledge_base": "招聘知识库",
       "domain": "机器人面试",
       "section": "prompts",
@@ -735,11 +800,12 @@
       ],
       "source_file_name": "全局提示词.md",
       "imported_at": "2026-07-10T16:11:17",
-      "content_chars": 495
+      "content_chars": 487
     },
     {
       "doc_id": "doc_54cb61227038",
       "title": "开场与岗位读取规则",
+      "kb_id": "kb_828963cc66",
       "knowledge_base": "招聘知识库",
       "domain": "机器人面试",
       "section": "prompts",
@@ -754,11 +820,12 @@
       ],
       "source_file_name": "开场与岗位读取规则.md",
       "imported_at": "2026-07-10T16:11:17",
-      "content_chars": 370
+      "content_chars": 361
     },
     {
       "doc_id": "doc_4bbfa94aa2e6",
       "title": "问题控制规则",
+      "kb_id": "kb_828963cc66",
       "knowledge_base": "招聘知识库",
       "domain": "机器人面试",
       "section": "prompts",
@@ -773,11 +840,12 @@
       ],
       "source_file_name": "问题控制规则.md",
       "imported_at": "2026-07-10T16:11:17",
-      "content_chars": 764
+      "content_chars": 755
     },
     {
       "doc_id": "doc_dacca5fabb4d",
       "title": "机器人面试 README",
+      "kb_id": "kb_828963cc66",
       "knowledge_base": "招聘知识库",
       "domain": "机器人面试",
       "section": "机器人面试",
@@ -792,11 +860,12 @@
       ],
       "source_file_name": "README.md",
       "imported_at": "2026-07-10T16:11:17",
-      "content_chars": 1526
+      "content_chars": 1504
     },
     {
       "doc_id": "doc_7de897aeff07",
       "title": "销售招聘流程",
+      "kb_id": "kb_828963cc66",
       "knowledge_base": "招聘知识库",
       "domain": "机器人面试",
       "section": "相关文档",
@@ -811,7 +880,7 @@
       ],
       "source_file_name": "销售招聘流程.md",
       "imported_at": "2026-07-10T16:11:17",
-      "content_chars": 1910
+      "content_chars": 1890
     }
   ]
 }

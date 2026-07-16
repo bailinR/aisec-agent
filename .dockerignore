@@ -1,0 +1,16 @@
+.git
+.venv
+.pytest_cache
+.deploy_build
+__pycache__
+*.py[cod]
+*.log
+.tmp-*
+.env
+content/export
+content/playwright_profiles
+content/session_rag_model_configs.json
+content/config.json
+*.zip
+Thumbs.db
+.DS_Store

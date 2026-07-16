@@ -7,17 +7,20 @@
   <style>
     :root {
       color-scheme: light;
-      --bg: #f4f6f5;
+      --bg: #f3f6ff;
       --panel: #ffffff;
-      --panel-soft: #eef4f1;
-      --text: #17211d;
-      --muted: #64716d;
-      --line: #d9e2de;
-      --accent: #087f6f;
-      --accent-dark: #066b5d;
+      --panel-soft: #f8fbff;
+      --text: #101827;
+      --muted: #66738a;
+      --line: #dfe8f5;
+      --line-strong: #cbd8ea;
+      --accent: #0d8798;
+      --accent-dark: #076b7a;
+      --accent-soft: #e6f7fb;
       --danger: #b13f3f;
-      --ok: #2a7d46;
-      --shadow: 0 16px 36px rgba(23, 33, 29, 0.08);
+      --ok: #187348;
+      --shadow: 0 22px 54px rgba(63, 86, 132, 0.12);
+      --shadow-soft: 0 10px 28px rgba(63, 86, 132, 0.08);
     }
 
     * {
@@ -32,9 +35,9 @@
     body {
       margin: 0;
       overflow: hidden;
-      background: var(--bg);
+      background: linear-gradient(135deg, #f9fbff 0%, var(--bg) 48%, #eef4ff 100%);
       color: var(--text);
-      font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+      font-family: "Inter", "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
       font-size: 14px;
       letter-spacing: 0;
     }
@@ -47,32 +50,46 @@
 
     button {
       border: 0;
-      border-radius: 6px;
+      border-radius: 10px;
       min-height: 38px;
       padding: 0 14px;
       background: var(--accent);
       color: #fff;
       cursor: pointer;
       white-space: nowrap;
+      box-shadow: 0 8px 16px rgba(13, 135, 152, 0.16);
+      transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
     }
 
     button:hover {
       background: var(--accent-dark);
+      box-shadow: 0 12px 22px rgba(13, 135, 152, 0.2);
+      transform: translateY(-1px);
+    }
+
+    button:active {
+      box-shadow: 0 6px 12px rgba(13, 135, 152, 0.14);
+      transform: translateY(0);
     }
 
     button.secondary {
       border: 1px solid var(--line);
       background: #fff;
       color: var(--text);
+      box-shadow: none;
     }
 
     button.secondary:hover {
-      background: var(--panel-soft);
+      border-color: var(--line-strong);
+      background: #f9fbff;
+      box-shadow: var(--shadow-soft);
     }
 
     button:disabled {
       cursor: not-allowed;
-      opacity: 0.65;
+      opacity: 0.58;
+      transform: none;
+      box-shadow: none;
     }
 
     a {
@@ -90,20 +107,21 @@
       display: grid;
       grid-template-rows: auto minmax(0, 1fr);
       gap: 14px;
-      padding: 16px;
+      padding: 18px;
       overflow: hidden;
     }
 
     .topbar {
-      min-height: 58px;
+      min-height: 78px;
       border: 1px solid var(--line);
       background: var(--panel);
       box-shadow: var(--shadow);
+      border-radius: 26px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 14px;
-      padding: 12px 16px;
+      padding: 16px 24px;
     }
 
     .title-block {
@@ -112,8 +130,9 @@
 
     h1 {
       margin: 0;
-      font-size: 18px;
+      font-size: 20px;
       line-height: 1.35;
+      font-weight: 900;
     }
 
     .subtitle {
@@ -138,7 +157,7 @@
       align-items: center;
       justify-content: center;
       border: 1px solid var(--line);
-      border-radius: 6px;
+      border-radius: 10px;
       background: #fff;
       color: var(--text);
       padding: 0 10px;
@@ -146,16 +165,16 @@
     }
 
     .entry-nav a:hover {
-      border-color: rgba(8, 127, 111, 0.35);
-      background: #f5faf8;
+      border-color: var(--line-strong);
+      background: #f9fbff;
       text-decoration: none;
     }
 
     .entry-nav a.active {
-      border-color: rgba(8, 127, 111, 0.48);
+      border-color: var(--accent);
       background: var(--accent);
       color: #fff;
-      font-weight: 700;
+      font-weight: 800;
     }
 
     .workspace {
@@ -172,6 +191,7 @@
       border: 1px solid var(--line);
       background: var(--panel);
       box-shadow: var(--shadow);
+      border-radius: 26px;
     }
 
     .side {
@@ -190,23 +210,24 @@
     }
 
     .upload-box {
-      border: 1px dashed #aebdb7;
-      background: #f9fbfa;
+      border: 1px dashed #b8c8da;
+      background: #fbfdff;
       padding: 14px;
       display: grid;
       gap: 12px;
+      border-radius: 16px;
     }
 
     .upload-box.dragging {
       border-color: var(--accent);
-      background: #edf7f4;
+      background: var(--accent-soft);
     }
 
     .file-input {
       width: 100%;
       min-height: 40px;
       border: 1px solid var(--line);
-      border-radius: 6px;
+      border-radius: 11px;
       background: #fff;
       padding: 8px;
       color: var(--text);
@@ -270,7 +291,7 @@
 
     .format-tag {
       border: 1px solid var(--line);
-      border-radius: 6px;
+      border-radius: 8px;
       background: #fff;
       color: var(--muted);
       padding: 4px 7px;
@@ -295,7 +316,7 @@
     }
 
     .viewer-title {
-      font-weight: 700;
+      font-weight: 900;
     }
 
     .viewer-subtitle {
@@ -321,6 +342,74 @@
       font-size: 13px;
     }
 
+    .panel,
+    .topbar {
+      overflow: hidden;
+    }
+
+    .side {
+      background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+    }
+
+    .section {
+      background: transparent;
+    }
+
+    .meta-row {
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fbfdff;
+    }
+
+    .format-tag {
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .format-tag:hover {
+      border-color: var(--line-strong);
+      color: var(--text);
+    }
+
+    .viewer-head {
+      min-height: 62px;
+      padding: 14px 16px;
+    }
+
+    .text-view {
+      background: #fff;
+    }
+
+    .text-view:focus,
+    .file-input:focus {
+      border-color: rgba(13, 135, 152, 0.62);
+      box-shadow: 0 0 0 3px rgba(13, 135, 152, 0.12);
+    }
+
+    .text-view::placeholder {
+      color: #66738a;
+    }
+
+    a:focus-visible,
+    button:focus-visible,
+    .file-input:focus-visible,
+    .text-view:focus-visible {
+      outline: 3px solid rgba(13, 135, 152, 0.18);
+      outline-offset: 2px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+      }
+    }
+
     @media (max-width: 900px) {
       body {
         overflow: auto;
@@ -330,6 +419,7 @@
         height: auto;
         min-height: 100vh;
         overflow: visible;
+        padding: 12px;
       }
 
       .workspace {
@@ -346,6 +436,16 @@
         align-items: flex-start;
         flex-direction: column;
       }
+
+      .topbar,
+      .panel {
+        border-radius: 18px;
+      }
+
+      .entry-nav,
+      .actions {
+        justify-content: flex-start;
+      }
     }
   </style>
 </head>
@@ -358,7 +458,7 @@
       </div>
       <nav class="entry-nav">
         <a href="/session-rag-chat">生成私信</a>
-        <a href="/admin-vue">后台管理</a>
+        <a href="/admin-vue">后台工作台</a>
         <a class="active" href="/file-parser">文件解析</a>
       </nav>
     </header>

@@ -4,9 +4,13 @@
 # @Author  : GuJR
 # @Site    : 
 # @File    : __init__.py
-from .worker import (
-    FileProcessWorker, VibeVoiceProcessWorker
-)
+try:
+    from .worker import (
+        FileProcessWorker, VibeVoiceProcessWorker
+    )
+except ModuleNotFoundError:
+    FileProcessWorker = None
+    VibeVoiceProcessWorker = None
 
 __all__ = [
     'FileProcessWorker',

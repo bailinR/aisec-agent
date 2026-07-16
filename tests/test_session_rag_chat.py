@@ -158,6 +158,7 @@ class SessionRAGChatLogicTest(unittest.TestCase):
         self.assertIn("钩子", prompt)
         self.assertIn("不要只打招呼或只提问", prompt)
         self.assertIn("准确承接用户评论", prompt)
+        self.assertIn("不要在私信正文里明说“视频里讲的是/视频介绍的是/看到这个视频”", prompt)
         self.assertNotIn("You are a Douyin", prompt)
         self.assertNotIn("公司", prompt)
 

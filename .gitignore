@@ -1,14 +1,17 @@
 .env
 .env.*
 !.env.example
+.venv/
 content/session_rag_model_configs.json
 content/config.json
 content/export/
+content/playwright_profiles/
 
 __pycache__/
 *.py[cod]
 *.pyo
 *.log
+.tmp-*
 
 .idea/
 .vscode/

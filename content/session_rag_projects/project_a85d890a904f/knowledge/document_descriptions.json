@@ -1,7 +1,7 @@
 {
   "version": 1,
   "project_id": "project_a85d890a904f",
-  "updated_at": "2026-07-13T13:41:23",
+  "updated_at": "2026-07-16T09:21:44",
   "knowledge_bases": [
     {
       "kb_id": "kb_717126999f",
@@ -35,7 +35,7 @@
                     "解决方案"
                   ],
                   "sender_identity": "品牌客服",
-                  "content_chars": 136,
+                  "content_chars": 134,
                   "updated_at": ""
                 }
               ]
@@ -79,14 +79,14 @@
                     "社区健康"
                   ],
                   "sender_identity": "健康顾问助理",
-                  "content_chars": 165,
+                  "content_chars": 163,
                   "updated_at": ""
                 },
                 {
                   "doc_id": "ai_technology_hardware",
                   "title": "AI技术与智能硬件板块",
                   "source_file_name": "",
-                  "relative_path": "knowledge/files/公司私信知识库/三大核心业务板块/默认板块/AI技术与智能硬件板块.md",
+                  "relative_path": "knowledge/files/公司私信知识库/三大核心业务板块/AI技术与智能硬件板块.md",
                   "description": "AI内容生产、智能硬件、私信引流、舆论管控、数据采集和AI Agent自动化调度能力。",
                   "summary": "AI技术与智能硬件板块；AI内容生产：文生视频、批量剪辑、自动发布、评论采集、数据统计。；智能产品：录音背夹/智能可穿戴设备录音转纪要建议协助办公等，远程小主机（边缘计算），本地+云端协同。；核心系统：数据收集-自动私信引私域系统、舆论管控系统等。；技术能力：分布式爬虫、千万级数据优化、AI Agent自动化调度。",
                   "tags": [
@@ -112,7 +112,7 @@
                     "自动化调度"
                   ],
                   "sender_identity": "运营顾问",
-                  "content_chars": 170,
+                  "content_chars": 168,
                   "updated_at": ""
                 },
                 {
@@ -136,8 +136,23 @@
                     "资源对接"
                   ],
                   "sender_identity": "跨境运营顾问",
-                  "content_chars": 70,
+                  "content_chars": 68,
                   "updated_at": ""
+                },
+                {
+                  "doc_id": "doc_5999d7c6b6d8",
+                  "title": "AI技术与智能硬件板块",
+                  "source_file_name": "AI技术与智能硬件板块.md",
+                  "relative_path": "knowledge/files/公司私信知识库/三大核心业务板块/默认板块/AI技术与智能硬件板块.md",
+                  "description": "AI技术与智能硬件板块；AI内容生产：文生视频、批量剪辑、自动发布、评论采集、数据统计。；智能产品：录音背夹/智能可穿戴设备录音转纪要建议协助办公等，远程小主机（边缘计算），本地+云端协同。；核心系统：数据收集-自动私信引私域系统、舆论管控系统等。；技术能力：分布式爬虫、千万级数据优化、AI Agent自动化调度。",
+                  "summary": "AI技术与智能硬件板块；AI内容生产：文生视频、批量剪辑、自动发布、评论采集、数据统计。；智能产品：录音背夹/智能可穿戴设备录音转纪要建议协助办公等，远程小主机（边缘计算），本地+云端协同。；核心系统：数据收集-自动私信引私域系统、舆论管控系统等。；技术能力：分布式爬虫、千万级数据优化、AI Agent自动化调度。",
+                  "tags": [
+                    "公司私信知识库",
+                    "三大核心业务板块"
+                  ],
+                  "sender_identity": "运营顾问",
+                  "content_chars": 168,
+                  "updated_at": "2026-07-10T16:11:17"
                 }
               ]
             },
@@ -158,7 +173,7 @@
                     "三大核心业务板块"
                   ],
                   "sender_identity": "运营顾问",
-                  "content_chars": 170,
+                  "content_chars": 168,
                   "updated_at": "2026-07-10T16:11:17"
                 },
                 {
@@ -174,7 +189,7 @@
                     "三大核心业务板块"
                   ],
                   "sender_identity": "健康顾问助理",
-                  "content_chars": 165,
+                  "content_chars": 163,
                   "updated_at": "2026-07-10T16:11:17"
                 },
                 {
@@ -190,7 +205,7 @@
                     "三大核心业务板块"
                   ],
                   "sender_identity": "运营顾问",
-                  "content_chars": 70,
+                  "content_chars": 68,
                   "updated_at": "2026-07-10T16:11:17"
                 }
               ]
@@ -209,7 +224,7 @@
                   "doc_id": "company_private_kb_readme",
                   "title": "公司私信知识库 README",
                   "source_file_name": "README.md",
-                  "relative_path": "knowledge/files/公司私信知识库/README.md",
+                  "relative_path": "knowledge/files/公司私信知识库/评论转私信/README.md",
                   "description": "说明公司私信知识库的用途、业务目录、Prompt组装方式和维护规则。",
                   "summary": "公司私信知识库；知识库用途；本知识库用于短视频评论承接、首次私信、私信维护、评论区维护、活动承接和客户意向识别。；API 调用时通常会传入：；调用方：例如抖音、视频号、小红书、OpenClaw 或内部测试页面。；业务场景：例如评论转私信、首次私信、私信维护、评论区维护。；用户评论：本轮需要回复或承接的评论内容。；视频概述：评论所在视频大概讲了什么方向。；用户身份或目标：例如当前账号身份、希望引导到微信号、企业微信、预约入口或资料页。；session_id：用于读取同一用户的历史上下文。；系统会根据这些信息选择对应业。",
                   "tags": [
@@ -220,7 +235,7 @@
                     "维护规则"
                   ],
                   "sender_identity": "账号助理",
-                  "content_chars": 1341,
+                  "content_chars": 2516,
                   "updated_at": "2026-07-10T01:11:27"
                 },
                 {
@@ -238,7 +253,7 @@
                     "业务目录"
                   ],
                   "sender_identity": "账号助理",
-                  "content_chars": 2639,
+                  "content_chars": 2516,
                   "updated_at": "2026-07-10T01:11:27"
                 }
               ]
@@ -262,7 +277,7 @@
                     "内容边界"
                   ],
                   "sender_identity": "账号助理",
-                  "content_chars": 777,
+                  "content_chars": 766,
                   "updated_at": "2026-07-10T01:11:27"
                 },
                 {
@@ -281,7 +296,7 @@
                     "路由"
                   ],
                   "sender_identity": "账号助理",
-                  "content_chars": 1007,
+                  "content_chars": 982,
                   "updated_at": "2026-07-10T01:11:27"
                 },
                 {
@@ -300,7 +315,7 @@
                     "触达"
                   ],
                   "sender_identity": "账号助理",
-                  "content_chars": 708,
+                  "content_chars": 694,
                   "updated_at": "2026-07-10T01:11:27"
                 },
                 {
@@ -319,7 +334,7 @@
                     "体验入口"
                   ],
                   "sender_identity": "账号助理",
-                  "content_chars": 627,
+                  "content_chars": 612,
                   "updated_at": "2026-07-10T01:11:27"
                 }
               ]
@@ -344,7 +359,7 @@
                     "人员身份"
                   ],
                   "sender_identity": "品牌客服",
-                  "content_chars": 672,
+                  "content_chars": 611,
                   "updated_at": "2026-07-10T01:11:27"
                 },
                 {
@@ -365,7 +380,7 @@
                     "初步评估"
                   ],
                   "sender_identity": "健康顾问助理",
-                  "content_chars": 671,
+                  "content_chars": 640,
                   "updated_at": "2026-07-10T01:11:27"
                 },
                 {
@@ -386,7 +401,7 @@
                     "初步评估"
                   ],
                   "sender_identity": "健康顾问助理",
-                  "content_chars": 874,
+                  "content_chars": 841,
                   "updated_at": "2026-07-10T01:11:27"
                 },
                 {
@@ -406,7 +421,7 @@
                     "模型切换"
                   ],
                   "sender_identity": "运营顾问",
-                  "content_chars": 615,
+                  "content_chars": 589,
                   "updated_at": "2026-07-10T01:11:27"
                 },
                 {
@@ -426,7 +441,7 @@
                     "运营"
                   ],
                   "sender_identity": "跨境运营顾问",
-                  "content_chars": 452,
+                  "content_chars": 424,
                   "updated_at": "2026-07-10T01:11:27"
                 },
                 {
@@ -447,7 +462,7 @@
                     "预约入口"
                   ],
                   "sender_identity": "账号助理",
-                  "content_chars": 669,
+                  "content_chars": 650,
                   "updated_at": "2026-07-10T01:11:27"
                 },
                 {
@@ -466,7 +481,7 @@
                     "禁止承诺"
                   ],
                   "sender_identity": "账号助理",
-                  "content_chars": 522,
+                  "content_chars": 479,
                   "updated_at": "2026-07-10T01:11:27"
                 },
                 {
@@ -486,7 +501,7 @@
                     "跨境"
                   ],
                   "sender_identity": "账号助理",
-                  "content_chars": 649,
+                  "content_chars": 627,
                   "updated_at": "2026-07-10T01:11:27"
                 }
               ]
@@ -513,7 +528,7 @@
                     "默认领域"
                   ],
                   "sender_identity": "健康顾问助理",
-                  "content_chars": 136,
+                  "content_chars": 134,
                   "updated_at": "2026-07-10T16:11:17"
                 }
               ]
@@ -541,7 +556,7 @@
                     "AI私信系统"
                   ],
                   "sender_identity": "运营顾问",
-                  "content_chars": 615,
+                  "content_chars": 589,
                   "updated_at": "2026-07-10T16:11:17"
                 }
               ]
@@ -563,7 +578,7 @@
                     "合规边界"
                   ],
                   "sender_identity": "健康顾问助理",
-                  "content_chars": 526,
+                  "content_chars": 483,
                   "updated_at": "2026-07-10T16:11:17"
                 }
               ]
@@ -585,7 +600,7 @@
                     "大健康睡眠项目"
                   ],
                   "sender_identity": "健康顾问助理",
-                  "content_chars": 668,
+                  "content_chars": 637,
                   "updated_at": "2026-07-10T16:11:17"
                 }
               ]
@@ -607,7 +622,7 @@
                     "大健康膝骨关节干细胞"
                   ],
                   "sender_identity": "健康顾问助理",
-                  "content_chars": 867,
+                  "content_chars": 836,
                   "updated_at": "2026-07-10T16:11:17"
                 }
               ]
@@ -629,7 +644,7 @@
                     "样本库"
                   ],
                   "sender_identity": "健康顾问助理",
-                  "content_chars": 612,
+                  "content_chars": 594,
                   "updated_at": "2026-07-10T16:11:17"
                 },
                 {
@@ -645,7 +660,7 @@
                     "样本库"
                   ],
                   "sender_identity": "健康顾问助理",
-                  "content_chars": 651,
+                  "content_chars": 629,
                   "updated_at": "2026-07-10T16:11:17"
                 }
               ]
@@ -667,7 +682,7 @@
                     "模拟业务资料"
                   ],
                   "sender_identity": "健康顾问助理",
-                  "content_chars": 541,
+                  "content_chars": 531,
                   "updated_at": "2026-07-10T16:11:17"
                 }
               ]
@@ -689,7 +704,7 @@
                     "跨境电商托管"
                   ],
                   "sender_identity": "运营顾问",
-                  "content_chars": 452,
+                  "content_chars": 424,
                   "updated_at": "2026-07-10T16:11:17"
                 }
               ]
@@ -711,7 +726,35 @@
                     "运营转化"
                   ],
                   "sender_identity": "健康顾问助理",
-                  "content_chars": 656,
+                  "content_chars": 637,
+                  "updated_at": "2026-07-10T16:11:17"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "domain_id": "domain_7f5b4a399a",
+          "name": "README与路由",
+          "sections": [
+            {
+              "section_id": "section_bb1aacfa84",
+              "name": "README与路由",
+              "documents": [
+                {
+                  "doc_id": "doc_228399404786",
+                  "title": "README与路由 README",
+                  "source_file_name": "README.md",
+                  "relative_path": "knowledge/files/公司私信知识库/README.md",
+                  "description": "公司私信知识库；知识库用途；本知识库用于短视频评论承接、首次私信、私信维护、评论区维护、活动承接和客户意向识别。；API 调用时通常会传入：；调用方：例如抖音、视频号、小红书、OpenClaw 或内部测试页面。；业务场景：例如评论转私信、首次私信、私信维护、评论区维护。；用户评论：本轮需要回复或承接的评论内容。；视频概述：评论所在视频大概讲了什么方向。；用户身份或目标：例如当前账号身份、希望引导到微信号、企业微信、预约入口或资料页。；session_id：用于读取同一用户的历史上下文。；系统会根据这些信息选择对应业。",
+                  "summary": "公司私信知识库；知识库用途；本知识库用于短视频评论承接、首次私信、私信维护、评论区维护、活动承接和客户意向识别。；API 调用时通常会传入：；调用方：例如抖音、视频号、小红书、OpenClaw 或内部测试页面。；业务场景：例如评论转私信、首次私信、私信维护、评论区维护。；用户评论：本轮需要回复或承接的评论内容。；视频概述：评论所在视频大概讲了什么方向。；用户身份或目标：例如当前账号身份、希望引导到微信号、企业微信、预约入口或资料页。；session_id：用于读取同一用户的历史上下文。；系统会根据这些信息选择对应业。",
+                  "tags": [
+                    "公司私信知识库",
+                    "README与路由",
+                    "README与路由"
+                  ],
+                  "sender_identity": "运营顾问",
+                  "content_chars": 1325,
                   "updated_at": "2026-07-10T16:11:17"
                 }
               ]
@@ -746,7 +789,7 @@
                     "boss沟通"
                   ],
                   "sender_identity": "招聘助理",
-                  "content_chars": 525,
+                  "content_chars": 515,
                   "updated_at": "2026-07-10T16:11:17"
                 }
               ]
@@ -774,7 +817,7 @@
                     "README与路由"
                   ],
                   "sender_identity": "招聘助理",
-                  "content_chars": 1203,
+                  "content_chars": 1187,
                   "updated_at": "2026-07-10T16:11:17"
                 }
               ]
@@ -802,7 +845,7 @@
                     "prompts"
                   ],
                   "sender_identity": "招聘助理",
-                  "content_chars": 495,
+                  "content_chars": 487,
                   "updated_at": "2026-07-10T16:11:17"
                 },
                 {
@@ -818,7 +861,7 @@
                     "prompts"
                   ],
                   "sender_identity": "招聘助理",
-                  "content_chars": 370,
+                  "content_chars": 361,
                   "updated_at": "2026-07-10T16:11:17"
                 },
                 {
@@ -834,7 +877,7 @@
                     "prompts"
                   ],
                   "sender_identity": "招聘助理",
-                  "content_chars": 764,
+                  "content_chars": 755,
                   "updated_at": "2026-07-10T16:11:17"
                 }
               ]
@@ -856,7 +899,7 @@
                     "机器人面试"
                   ],
                   "sender_identity": "招聘助理",
-                  "content_chars": 1526,
+                  "content_chars": 1504,
                   "updated_at": "2026-07-10T16:11:17"
                 }
               ]
@@ -878,7 +921,7 @@
                     "相关文档"
                   ],
                   "sender_identity": "招聘助理",
-                  "content_chars": 1910,
+                  "content_chars": 1890,
                   "updated_at": "2026-07-10T16:11:17"
                 }
               ]
@@ -916,7 +959,7 @@
                 "解决方案"
               ],
               "sender_identity": "品牌客服",
-              "content_chars": 136,
+              "content_chars": 134,
               "updated_at": ""
             }
           ]
@@ -960,14 +1003,14 @@
                 "社区健康"
               ],
               "sender_identity": "健康顾问助理",
-              "content_chars": 165,
+              "content_chars": 163,
               "updated_at": ""
             },
             {
               "doc_id": "ai_technology_hardware",
               "title": "AI技术与智能硬件板块",
               "source_file_name": "",
-              "relative_path": "knowledge/files/公司私信知识库/三大核心业务板块/默认板块/AI技术与智能硬件板块.md",
+              "relative_path": "knowledge/files/公司私信知识库/三大核心业务板块/AI技术与智能硬件板块.md",
               "description": "AI内容生产、智能硬件、私信引流、舆论管控、数据采集和AI Agent自动化调度能力。",
               "summary": "AI技术与智能硬件板块；AI内容生产：文生视频、批量剪辑、自动发布、评论采集、数据统计。；智能产品：录音背夹/智能可穿戴设备录音转纪要建议协助办公等，远程小主机（边缘计算），本地+云端协同。；核心系统：数据收集-自动私信引私域系统、舆论管控系统等。；技术能力：分布式爬虫、千万级数据优化、AI Agent自动化调度。",
               "tags": [
@@ -993,7 +1036,7 @@
                 "自动化调度"
               ],
               "sender_identity": "运营顾问",
-              "content_chars": 170,
+              "content_chars": 168,
               "updated_at": ""
             },
             {
@@ -1017,8 +1060,23 @@
                 "资源对接"
               ],
               "sender_identity": "跨境运营顾问",
-              "content_chars": 70,
+              "content_chars": 68,
               "updated_at": ""
+            },
+            {
+              "doc_id": "doc_5999d7c6b6d8",
+              "title": "AI技术与智能硬件板块",
+              "source_file_name": "AI技术与智能硬件板块.md",
+              "relative_path": "knowledge/files/公司私信知识库/三大核心业务板块/默认板块/AI技术与智能硬件板块.md",
+              "description": "AI技术与智能硬件板块；AI内容生产：文生视频、批量剪辑、自动发布、评论采集、数据统计。；智能产品：录音背夹/智能可穿戴设备录音转纪要建议协助办公等，远程小主机（边缘计算），本地+云端协同。；核心系统：数据收集-自动私信引私域系统、舆论管控系统等。；技术能力：分布式爬虫、千万级数据优化、AI Agent自动化调度。",
+              "summary": "AI技术与智能硬件板块；AI内容生产：文生视频、批量剪辑、自动发布、评论采集、数据统计。；智能产品：录音背夹/智能可穿戴设备录音转纪要建议协助办公等，远程小主机（边缘计算），本地+云端协同。；核心系统：数据收集-自动私信引私域系统、舆论管控系统等。；技术能力：分布式爬虫、千万级数据优化、AI Agent自动化调度。",
+              "tags": [
+                "公司私信知识库",
+                "三大核心业务板块"
+              ],
+              "sender_identity": "运营顾问",
+              "content_chars": 168,
+              "updated_at": "2026-07-10T16:11:17"
             }
           ]
         },
@@ -1039,7 +1097,7 @@
                 "三大核心业务板块"
               ],
               "sender_identity": "运营顾问",
-              "content_chars": 170,
+              "content_chars": 168,
               "updated_at": "2026-07-10T16:11:17"
             },
             {
@@ -1055,7 +1113,7 @@
                 "三大核心业务板块"
               ],
               "sender_identity": "健康顾问助理",
-              "content_chars": 165,
+              "content_chars": 163,
               "updated_at": "2026-07-10T16:11:17"
             },
             {
@@ -1071,7 +1129,7 @@
                 "三大核心业务板块"
               ],
               "sender_identity": "运营顾问",
-              "content_chars": 70,
+              "content_chars": 68,
               "updated_at": "2026-07-10T16:11:17"
             }
           ]
@@ -1090,7 +1148,7 @@
               "doc_id": "company_private_kb_readme",
               "title": "公司私信知识库 README",
               "source_file_name": "README.md",
-              "relative_path": "knowledge/files/公司私信知识库/README.md",
+              "relative_path": "knowledge/files/公司私信知识库/评论转私信/README.md",
               "description": "说明公司私信知识库的用途、业务目录、Prompt组装方式和维护规则。",
               "summary": "公司私信知识库；知识库用途；本知识库用于短视频评论承接、首次私信、私信维护、评论区维护、活动承接和客户意向识别。；API 调用时通常会传入：；调用方：例如抖音、视频号、小红书、OpenClaw 或内部测试页面。；业务场景：例如评论转私信、首次私信、私信维护、评论区维护。；用户评论：本轮需要回复或承接的评论内容。；视频概述：评论所在视频大概讲了什么方向。；用户身份或目标：例如当前账号身份、希望引导到微信号、企业微信、预约入口或资料页。；session_id：用于读取同一用户的历史上下文。；系统会根据这些信息选择对应业。",
               "tags": [
@@ -1101,7 +1159,7 @@
                 "维护规则"
               ],
               "sender_identity": "账号助理",
-              "content_chars": 1341,
+              "content_chars": 2516,
               "updated_at": "2026-07-10T01:11:27"
             },
             {
@@ -1119,7 +1177,7 @@
                 "业务目录"
               ],
               "sender_identity": "账号助理",
-              "content_chars": 2639,
+              "content_chars": 2516,
               "updated_at": "2026-07-10T01:11:27"
             }
           ]
@@ -1143,7 +1201,7 @@
                 "内容边界"
               ],
               "sender_identity": "账号助理",
-              "content_chars": 777,
+              "content_chars": 766,
               "updated_at": "2026-07-10T01:11:27"
             },
             {
@@ -1162,7 +1220,7 @@
                 "路由"
               ],
               "sender_identity": "账号助理",
-              "content_chars": 1007,
+              "content_chars": 982,
               "updated_at": "2026-07-10T01:11:27"
             },
             {
@@ -1181,7 +1239,7 @@
                 "触达"
               ],
               "sender_identity": "账号助理",
-              "content_chars": 708,
+              "content_chars": 694,
               "updated_at": "2026-07-10T01:11:27"
             },
             {
@@ -1200,7 +1258,7 @@
                 "体验入口"
               ],
               "sender_identity": "账号助理",
-              "content_chars": 627,
+              "content_chars": 612,
               "updated_at": "2026-07-10T01:11:27"
             }
           ]
@@ -1225,7 +1283,7 @@
                 "人员身份"
               ],
               "sender_identity": "品牌客服",
-              "content_chars": 672,
+              "content_chars": 611,
               "updated_at": "2026-07-10T01:11:27"
             },
             {
@@ -1246,7 +1304,7 @@
                 "初步评估"
               ],
               "sender_identity": "健康顾问助理",
-              "content_chars": 671,
+              "content_chars": 640,
               "updated_at": "2026-07-10T01:11:27"
             },
             {
@@ -1267,7 +1325,7 @@
                 "初步评估"
               ],
               "sender_identity": "健康顾问助理",
-              "content_chars": 874,
+              "content_chars": 841,
               "updated_at": "2026-07-10T01:11:27"
             },
             {
@@ -1287,7 +1345,7 @@
                 "模型切换"
               ],
               "sender_identity": "运营顾问",
-              "content_chars": 615,
+              "content_chars": 589,
               "updated_at": "2026-07-10T01:11:27"
             },
             {
@@ -1307,7 +1365,7 @@
                 "运营"
               ],
               "sender_identity": "跨境运营顾问",
-              "content_chars": 452,
+              "content_chars": 424,
               "updated_at": "2026-07-10T01:11:27"
             },
             {
@@ -1328,7 +1386,7 @@
                 "预约入口"
               ],
               "sender_identity": "账号助理",
-              "content_chars": 669,
+              "content_chars": 650,
               "updated_at": "2026-07-10T01:11:27"
             },
             {
@@ -1347,7 +1405,7 @@
                 "禁止承诺"
               ],
               "sender_identity": "账号助理",
-              "content_chars": 522,
+              "content_chars": 479,
               "updated_at": "2026-07-10T01:11:27"
             },
             {
@@ -1367,7 +1425,7 @@
                 "跨境"
               ],
               "sender_identity": "账号助理",
-              "content_chars": 649,
+              "content_chars": 627,
               "updated_at": "2026-07-10T01:11:27"
             }
           ]
@@ -1394,7 +1452,7 @@
                 "默认领域"
               ],
               "sender_identity": "健康顾问助理",
-              "content_chars": 136,
+              "content_chars": 134,
               "updated_at": "2026-07-10T16:11:17"
             }
           ]
@@ -1422,7 +1480,7 @@
                 "AI私信系统"
               ],
               "sender_identity": "运营顾问",
-              "content_chars": 615,
+              "content_chars": 589,
               "updated_at": "2026-07-10T16:11:17"
             }
           ]
@@ -1444,7 +1502,7 @@
                 "合规边界"
               ],
               "sender_identity": "健康顾问助理",
-              "content_chars": 526,
+              "content_chars": 483,
               "updated_at": "2026-07-10T16:11:17"
             }
           ]
@@ -1466,7 +1524,7 @@
                 "大健康睡眠项目"
               ],
               "sender_identity": "健康顾问助理",
-              "content_chars": 668,
+              "content_chars": 637,
               "updated_at": "2026-07-10T16:11:17"
             }
           ]
@@ -1488,7 +1546,7 @@
                 "大健康膝骨关节干细胞"
               ],
               "sender_identity": "健康顾问助理",
-              "content_chars": 867,
+              "content_chars": 836,
               "updated_at": "2026-07-10T16:11:17"
             }
           ]
@@ -1510,7 +1568,7 @@
                 "样本库"
               ],
               "sender_identity": "健康顾问助理",
-              "content_chars": 612,
+              "content_chars": 594,
               "updated_at": "2026-07-10T16:11:17"
             },
             {
@@ -1526,7 +1584,7 @@
                 "样本库"
               ],
               "sender_identity": "健康顾问助理",
-              "content_chars": 651,
+              "content_chars": 629,
               "updated_at": "2026-07-10T16:11:17"
             }
           ]
@@ -1548,7 +1606,7 @@
                 "模拟业务资料"
               ],
               "sender_identity": "健康顾问助理",
-              "content_chars": 541,
+              "content_chars": 531,
               "updated_at": "2026-07-10T16:11:17"
             }
           ]
@@ -1570,7 +1628,7 @@
                 "跨境电商托管"
               ],
               "sender_identity": "运营顾问",
-              "content_chars": 452,
+              "content_chars": 424,
               "updated_at": "2026-07-10T16:11:17"
             }
           ]
@@ -1592,7 +1650,35 @@
                 "运营转化"
               ],
               "sender_identity": "健康顾问助理",
-              "content_chars": 656,
+              "content_chars": 637,
+              "updated_at": "2026-07-10T16:11:17"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "domain_id": "domain_7f5b4a399a",
+      "name": "README与路由",
+      "sections": [
+        {
+          "section_id": "section_bb1aacfa84",
+          "name": "README与路由",
+          "documents": [
+            {
+              "doc_id": "doc_228399404786",
+              "title": "README与路由 README",
+              "source_file_name": "README.md",
+              "relative_path": "knowledge/files/公司私信知识库/README.md",
+              "description": "公司私信知识库；知识库用途；本知识库用于短视频评论承接、首次私信、私信维护、评论区维护、活动承接和客户意向识别。；API 调用时通常会传入：；调用方：例如抖音、视频号、小红书、OpenClaw 或内部测试页面。；业务场景：例如评论转私信、首次私信、私信维护、评论区维护。；用户评论：本轮需要回复或承接的评论内容。；视频概述：评论所在视频大概讲了什么方向。；用户身份或目标：例如当前账号身份、希望引导到微信号、企业微信、预约入口或资料页。；session_id：用于读取同一用户的历史上下文。；系统会根据这些信息选择对应业。",
+              "summary": "公司私信知识库；知识库用途；本知识库用于短视频评论承接、首次私信、私信维护、评论区维护、活动承接和客户意向识别。；API 调用时通常会传入：；调用方：例如抖音、视频号、小红书、OpenClaw 或内部测试页面。；业务场景：例如评论转私信、首次私信、私信维护、评论区维护。；用户评论：本轮需要回复或承接的评论内容。；视频概述：评论所在视频大概讲了什么方向。；用户身份或目标：例如当前账号身份、希望引导到微信号、企业微信、预约入口或资料页。；session_id：用于读取同一用户的历史上下文。；系统会根据这些信息选择对应业。",
+              "tags": [
+                "公司私信知识库",
+                "README与路由",
+                "README与路由"
+              ],
+              "sender_identity": "运营顾问",
+              "content_chars": 1325,
               "updated_at": "2026-07-10T16:11:17"
             }
           ]

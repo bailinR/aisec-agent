@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "project_id": "project_a85d890a904f",
+  "updated_at": "2026-07-16T10:35:48",
+  "companies": [
+    {
+      "company_id": "company_cf97f621f6",
+      "name": "默认公司",
+      "short_name": "默认公司",
+      "status": "active",
+      "description": "默认公司，当前已有知识库默认归属此公司；后续可修改公司信息和知识库分配。",
+      "tags": [],
+      "created_at": "2026-07-16T10:31:14",
+      "updated_at": "2026-07-16T10:35:48"
+    }
+  ],
+  "company_knowledge_bases": [
+    {
+      "company_id": "company_cf97f621f6",
+      "kb_id": "kb_717126999f",
+      "role": "owner",
+      "enabled": true,
+      "created_at": "2026-07-16T10:31:14",
+      "updated_at": "2026-07-16T10:31:14"
+    },
+    {
+      "company_id": "company_cf97f621f6",
+      "kb_id": "kb_828963cc66",
+      "role": "owner",
+      "enabled": true,
+      "created_at": "2026-07-16T10:31:14",
+      "updated_at": "2026-07-16T10:31:14"
+    }
+  ],
+  "knowledge_bases": [
+    {
+      "kb_id": "kb_717126999f",
+      "name": "公司私信知识库",
+      "description": "用于公司业务、视频评论、私信承接、活动钩子和客户沟通的资料。",
+      "document_count": 33
+    },
+    {
+      "kb_id": "kb_828963cc66",
+      "name": "招聘知识库",
+      "description": "用于招聘评论、候选人私信、岗位咨询、面试邀约和招聘合规沟通的资料。",
+      "document_count": 7
+    }
+  ]
+}
