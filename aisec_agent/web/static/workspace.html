@@ -1,0 +1,1346 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>企业工作台</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root {
+      color-scheme: light;
+      --app-min-width: 980px;
+      --sidebar-width: 240px;
+      --sidebar-compact-width: 68px;
+      --tree-width: 360px;
+      --bg: #f6f7f4;
+      --surface: #ffffff;
+      --surface-2: #f8faf7;
+      --ink: #17201b;
+      --muted: #617066;
+      --line: #dfe6dd;
+      --line-strong: #c7d3c8;
+      --brand: #15736b;
+      --brand-strong: #0d5e57;
+      --brand-soft: #e7f4ef;
+      --accent: #765a1d;
+      --danger: #b42318;
+      --ok: #187348;
+      --warn: #9a5b13;
+      --shadow: 0 18px 42px rgba(37, 58, 45, .10);
+      --radius: 8px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; overflow-x: auto; overflow-y: hidden; }
+    body {
+      margin: 0;
+      min-width: var(--app-min-width);
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Inter", "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+      font-size: 14px;
+      letter-spacing: 0;
+    }
+    button, input, select, textarea { font: inherit; }
+    button {
+      min-height: 36px;
+      border: 1px solid var(--brand);
+      border-radius: var(--radius);
+      background: var(--brand);
+      color: #fff;
+      padding: 0 13px;
+      cursor: pointer;
+      transition: background .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+    }
+    button:hover { background: var(--brand-strong); border-color: var(--brand-strong); box-shadow: 0 8px 18px rgba(21, 115, 107, .18); transform: translateY(-1px); }
+    button:active { transform: translateY(0); box-shadow: none; }
+    button.secondary {
+      background: #fff;
+      color: var(--ink);
+      border-color: var(--line);
+    }
+    button.secondary:hover { background: var(--surface-2); border-color: var(--line-strong); box-shadow: none; }
+    button.ghost {
+      background: transparent;
+      color: var(--muted);
+      border-color: transparent;
+      padding-inline: 8px;
+    }
+    button.ghost:hover { background: var(--surface-2); color: var(--ink); box-shadow: none; }
+    button.danger { background: #fff; border-color: #f0c9c5; color: var(--danger); }
+    button:disabled { opacity: .55; cursor: not-allowed; transform: none; box-shadow: none; }
+    input, select, textarea {
+      width: 100%;
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      color: var(--ink);
+      padding: 8px 10px;
+      outline: none;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: rgba(21, 115, 107, .7);
+      box-shadow: 0 0 0 3px rgba(21, 115, 107, .12);
+    }
+    textarea { resize: vertical; min-height: 72px; line-height: 1.55; }
+    label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 12px; }
+    a { color: var(--brand); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .app {
+      height: 100vh;
+      min-width: var(--app-min-width);
+      display: grid;
+      grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+      transition: grid-template-columns .2s ease;
+    }
+    .sidebar {
+      border-right: 1px solid var(--line);
+      background: #fbfcfa;
+      padding: 18px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      transition: padding .2s ease;
+      position: sticky;
+      top: 0;
+      align-self: start;
+      height: 100vh;
+    }
+    .sidebar-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+    .brand h1 { margin: 0; font-size: 18px; line-height: 1.25; }
+    .brand p { margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .sidebar-toggle {
+      flex: 0 0 auto;
+      width: 32px;
+      min-height: 32px;
+      padding: 0;
+      display: inline-grid;
+      place-items: center;
+      border-color: transparent;
+      background: transparent;
+      color: var(--muted);
+      box-shadow: none;
+    }
+    .sidebar-toggle:hover { background: var(--surface-2); border-color: var(--line); color: var(--ink); box-shadow: none; }
+    .sidebar-toggle svg { width: 18px; height: 18px; transition: transform .2s ease; }
+    .nav { display: grid; gap: 6px; }
+    .nav button {
+      width: 100%;
+      min-height: 42px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--ink);
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 10px;
+      padding: 0 10px;
+      box-shadow: none;
+      text-align: left;
+    }
+    .nav-icon { width: 18px; height: 18px; flex: 0 0 18px; display: inline-grid; place-items: center; }
+    .nav-icon svg { width: 18px; height: 18px; stroke-width: 1.9; }
+    .nav-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .nav button.active {
+      background: var(--brand-soft);
+      border-color: rgba(21, 115, 107, .22);
+      color: var(--brand-strong);
+      font-weight: 800;
+    }
+    .side-meta {
+      margin-top: auto;
+      border-top: 1px solid var(--line);
+      padding-top: 14px;
+    }
+    .side-meta .value { font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .app.sidebar-collapsed { grid-template-columns: var(--sidebar-compact-width) minmax(0, 1fr); }
+    .app.sidebar-collapsed .sidebar { padding: 18px 10px; align-items: center; }
+    .app.sidebar-collapsed .sidebar-head { width: 100%; justify-content: center; }
+    .app.sidebar-collapsed .brand,
+    .app.sidebar-collapsed .nav-label,
+    .app.sidebar-collapsed .side-meta { display: none; }
+    .app.sidebar-collapsed .nav { width: 100%; }
+    .app.sidebar-collapsed .nav button { justify-content: center; padding: 0; }
+    .app.sidebar-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
+    .shell {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto auto;
+      align-content: start;
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-width: none;
+    }
+    .shell::-webkit-scrollbar {
+      width: 0;
+      height: 0;
+    }
+    .topbar {
+      min-height: 76px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, .88);
+      backdrop-filter: blur(10px);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .title { font-size: 20px; font-weight: 900; line-height: 1.2; }
+    .subtitle { margin-top: 4px; color: var(--muted); font-size: 12px; }
+    .top-actions { display: flex; align-items: center; gap: 8px; }
+    .status { color: var(--muted); font-size: 12px; min-height: 18px; }
+    .status:empty { display: none; }
+    .status:not(:empty) { margin-top: 12px; }
+    .status.ok { color: var(--ok); }
+    .status.error { color: var(--danger); }
+    .content { min-width: 0; padding: 20px 24px 28px; overflow: visible; }
+    .workspace-grid {
+      display: grid;
+      grid-template-columns: var(--tree-width) minmax(640px, 1fr);
+      gap: 14px;
+      align-items: start;
+    }
+    .panel {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      min-width: 0;
+    }
+    .panel-head {
+      min-height: 54px;
+      border-bottom: 1px solid var(--line);
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .panel-title { font-weight: 900; }
+    .panel-title-stack { min-width: 0; display: grid; gap: 6px; }
+    .panel-actions { display: inline-flex; align-items: center; gap: 8px; }
+    .icon-button {
+      width: 32px;
+      min-height: 32px;
+      padding: 0;
+      display: inline-grid;
+      place-items: center;
+      border-color: var(--line);
+      background: #fff;
+      color: var(--brand);
+      box-shadow: none;
+    }
+    .icon-button:hover { background: var(--brand-soft); border-color: rgba(21, 115, 107, .3); color: var(--brand-strong); box-shadow: none; }
+    .icon-button svg { width: 17px; height: 17px; }
+    .panel-body { padding: 14px; }
+    .knowledge-tree-panel {
+      position: sticky;
+      top: 96px;
+      max-height: calc(100vh - 116px);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .knowledge-tree-panel .panel-body {
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-width: none;
+    }
+    .knowledge-tree-panel .panel-body::-webkit-scrollbar {
+      width: 0;
+      height: 0;
+    }
+    .business-list { display: grid; gap: 4px; min-width: 0; }
+    .tree-node { margin: 2px 0; }
+    .tree-node summary { list-style: none; cursor: pointer; border-radius: var(--radius); }
+    .tree-node summary::-webkit-details-marker { display: none; }
+    .tree-row, .tree-doc {
+      width: 100%;
+      min-height: 34px;
+      border: 1px solid transparent;
+      border-radius: var(--radius);
+      background: transparent;
+      padding: 6px 8px;
+      color: var(--ink);
+      text-align: left;
+      box-shadow: none;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+    }
+    .tree-row:hover, .tree-doc:hover { background: var(--surface-2); box-shadow: none; transform: none; }
+    .tree-doc.active { border-color: rgba(21, 115, 107, .35); background: var(--brand-soft); color: var(--brand-strong); font-weight: 800; }
+    .tree-caret { width: 12px; height: 12px; flex: 0 0 12px; color: var(--muted); transition: transform .14s ease; }
+    .tree-node[open] > summary .tree-caret { transform: rotate(90deg); }
+    .tree-icon { width: 16px; height: 16px; flex: 0 0 16px; color: var(--brand); }
+    .tree-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tree-count { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .tree-children { margin-left: 16px; padding-left: 8px; border-left: 1px solid var(--line); min-width: 0; }
+    .tree-doc { cursor: pointer; }
+    .tree-doc .tree-caret { visibility: hidden; }
+    .upload-row {
+      display: grid;
+      grid-template-columns: minmax(190px, 1fr) minmax(170px, 240px) auto;
+      gap: 10px;
+      align-items: end;
+    }
+    .doc-list { display: grid; gap: 8px; }
+    .doc-title { font-weight: 850; overflow-wrap: anywhere; }
+    .doc-meta { margin-top: 5px; color: var(--muted); font-size: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+    .doc-view { display: grid; gap: 12px; }
+    .doc-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+    .doc-tags:empty { display: none; }
+    .doc-content {
+      margin: 0;
+      min-height: 320px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      padding: 18px 20px;
+      color: var(--ink);
+      overflow-wrap: anywhere;
+      line-height: 1.78;
+      font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+      font-size: 14px;
+    }
+    .doc-content > :first-child { margin-top: 0; }
+    .doc-content > :last-child { margin-bottom: 0; }
+    .doc-content h1, .doc-content h2, .doc-content h3 { line-height: 1.35; text-wrap: pretty; }
+    .doc-content h1 { margin: 0 0 18px; font-size: 20px; font-weight: 900; }
+    .doc-content h2 { margin: 24px 0 10px; font-size: 17px; font-weight: 850; }
+    .doc-content h3 { margin: 18px 0 8px; font-size: 15px; font-weight: 850; }
+    .doc-content p { margin: 0 0 14px; max-width: 78ch; }
+    .doc-content ul, .doc-content ol { margin: 0 0 16px; padding-left: 22px; }
+    .doc-content li { margin: 4px 0; }
+    .doc-content blockquote { margin: 0 0 16px; padding: 8px 12px; border-left: 3px solid var(--line-strong); background: var(--surface-2); color: var(--muted); }
+    .doc-content code { padding: 1px 5px; border-radius: 5px; background: var(--surface-2); font-family: Consolas, "SFMono-Regular", monospace; font-size: 13px; }
+    .doc-content pre { overflow: auto; margin: 0 0 16px; padding: 12px; border-radius: var(--radius); background: #f3f6f2; }
+    .doc-content pre code { padding: 0; background: transparent; }
+    .doc-content.plain { white-space: pre-wrap; }
+    .upload-dialog {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      display: grid;
+      place-items: start center;
+      padding: 112px 24px 24px;
+      background: rgba(23, 32, 27, .22);
+    }
+    .upload-card {
+      width: min(720px, 100%);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      box-shadow: 0 24px 72px rgba(23, 32, 27, .2);
+    }
+    .upload-card .panel-head { border-bottom-color: var(--line); }
+    .upload-card .panel-body { padding: 16px; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 0 8px;
+      color: var(--muted);
+      background: #fff;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .badge.ok { color: var(--ok); border-color: #b9dac9; background: #f1fbf5; }
+    .badge.warn { color: var(--warn); border-color: #ead0a8; background: #fff8e8; }
+    .targets-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 380px;
+      gap: 14px;
+      align-items: start;
+    }
+    .target-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+    .target-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+      cursor: pointer;
+    }
+    .target-card.active { border-color: rgba(21, 115, 107, .42); background: var(--brand-soft); }
+    .goal-list { display: grid; gap: 10px; }
+    .goal-editor {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 10px;
+      display: grid;
+      gap: 10px;
+      background: #fff;
+    }
+    .goal-grid { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 8px; }
+    .empty {
+      border: 1px dashed var(--line-strong);
+      border-radius: var(--radius);
+      padding: 22px;
+      text-align: center;
+      color: var(--muted);
+      background: var(--surface-2);
+    }
+    .hidden { display: none !important; }
+
+    @media (max-width: 1420px) {
+      .app, .app.sidebar-collapsed { grid-template-columns: var(--sidebar-compact-width) minmax(0, 1fr); }
+      .sidebar,
+      .app.sidebar-collapsed .sidebar { padding: 18px 10px; align-items: center; }
+      .sidebar-head,
+      .app.sidebar-collapsed .sidebar-head { width: 100%; justify-content: center; }
+      .brand,
+      .nav-label,
+      .side-meta,
+      .app.sidebar-collapsed .brand,
+      .app.sidebar-collapsed .nav-label,
+      .app.sidebar-collapsed .side-meta { display: none; }
+      .nav,
+      .app.sidebar-collapsed .nav { width: 100%; }
+      .nav button,
+      .app.sidebar-collapsed .nav button { justify-content: center; padding: 0; }
+      .sidebar-toggle { display: none; }
+    }
+    @media (max-width: 1180px) {
+      .workspace-grid, .targets-layout { grid-template-columns: 1fr; }
+      .knowledge-tree-panel {
+        position: static;
+        max-height: 420px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="appShell" class="app">
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <div class="brand">
+          <h1>企业工作台</h1>
+          <p id="companyName">加载中</p>
+        </div>
+        <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-label="收起侧边栏" aria-expanded="true" title="收起侧边栏">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="m15 18-6-6 6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <nav class="nav">
+        <button id="tabKnowledge" class="active" type="button" title="知识库" aria-label="知识库">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2.5h6.5A2.5 2.5 0 0 1 21 10v7.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-10Z" stroke-linejoin="round"/><path d="M3 10h18" stroke-linecap="round"/></svg></span>
+          <span class="nav-label">知识库</span>
+        </button>
+        <button id="tabTargets" type="button" title="业务承接" aria-label="业务承接">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3"/><path d="M12 3v2M21 12h-2M12 21v-2M3 12h2" stroke-linecap="round"/></svg></span>
+          <span class="nav-label">业务承接</span>
+        </button>
+        <button id="tabAccounts" type="button" title="账号" aria-label="账号">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="8" r="3.25"/><path d="M5 20a7 7 0 0 1 14 0" stroke-linecap="round"/></svg></span>
+          <span class="nav-label">账号</span>
+        </button>
+        <button id="tabTemplates" type="button" title="话术模板" aria-label="话术模板">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 4.5h12A2.5 2.5 0 0 1 20.5 7v7A2.5 2.5 0 0 1 18 16.5H12l-4.5 3v-3H6A2.5 2.5 0 0 1 3.5 14V7A2.5 2.5 0 0 1 6 4.5Z" stroke-linejoin="round"/><path d="M8 10h8M8 13h5" stroke-linecap="round"/></svg></span>
+          <span class="nav-label">话术模板</span>
+        </button>
+        <button id="tabSettings" type="button" title="设置" aria-label="设置">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="m19.4 15 .1 1.7-2.1 2.1-1.7-.1-1.2 1.1-1.4-.7-.5-1.6h-1.7l-.5 1.6-1.4.7-1.2-1.1-1.7.1-2.1-2.1.1-1.7-1.1-1.2.7-1.4 1.6-.5v-1.7l-1.6-.5-.7-1.4L4.5 5l1.7.1 1.2-1.1 1.4.7.5 1.6h1.7l.5-1.6 1.4-.7 1.2 1.1 1.7-.1 2.1 2.1-.1 1.7 1.1 1.2-.7 1.4-1.6.5v1.7l1.6.5.7 1.4Z" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span class="nav-label">设置</span>
+        </button>
+      </nav>
+      <div class="side-meta">
+        <div>
+          <label>当前企业</label>
+          <div class="value" id="sideCompanyName">默认公司</div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <div class="title" id="pageTitle">知识库</div>
+          <div class="subtitle" id="pageSubtitle">按业务板块和业务模块管理资料，上传后可自动归类或手动调整。</div>
+        </div>
+        <div class="top-actions">
+          <a href="/session-rag-chat">私信生成</a>
+          <a href="/admin-vue">内部管理</a>
+          <button id="refreshBtn" class="secondary" type="button">刷新</button>
+        </div>
+      </header>
+
+      <section class="content">
+        <div id="knowledgeView" class="workspace-grid">
+          <section class="panel knowledge-tree-panel">
+            <div class="panel-head">
+              <div class="panel-title">知识库文件树</div>
+              <div class="panel-actions">
+                <button id="uploadOpenBtn" class="icon-button" type="button" aria-label="上传知识库文件" title="上传知识库文件">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M12 16V4" stroke-linecap="round"/><path d="m7 9 5-5 5 5" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 16.5V18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-1.5" stroke-linecap="round"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="panel-body">
+              <input id="businessSearch" placeholder="搜索业务板块、业务模块或资料">
+              <div style="height:10px"></div>
+              <div id="businessList" class="business-list"></div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div class="panel-title-stack">
+                <div class="panel-title" id="selectedBusinessTitle">选择具体资料</div>
+                <div class="doc-tags" id="selectedDocTags"></div>
+                <div class="subtitle" id="selectedBusinessMeta"></div>
+              </div>
+              <span class="badge ok" id="selectedDocCount">资料详情</span>
+            </div>
+            <div class="panel-body">
+              <div id="docList" class="doc-list"></div>
+            </div>
+          </section>
+        </div>
+
+        <div id="uploadDialog" class="upload-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="uploadDialogTitle">
+          <section class="upload-card">
+            <div class="panel-head">
+              <div>
+                <div class="panel-title" id="uploadDialogTitle">上传知识库文件</div>
+                <div class="subtitle">上传后可自动识别业务模块，也可以放入当前选中的业务模块。</div>
+              </div>
+              <button id="uploadCloseBtn" class="icon-button" type="button" aria-label="关闭上传窗口" title="关闭">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke-linecap="round"/></svg>
+              </button>
+            </div>
+            <div class="panel-body">
+              <div class="upload-row">
+                <div>
+                  <label>上传资料</label>
+                  <input id="uploadFile" type="file">
+                </div>
+                <div>
+                  <label>归类方式</label>
+                  <select id="uploadMode">
+                    <option value="auto">自动识别业务模块</option>
+                    <option value="manual">放入当前业务模块</option>
+                  </select>
+                </div>
+                <button id="uploadBtn" type="button">上传</button>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div id="targetsView" class="targets-layout hidden">
+          <section class="panel">
+            <div class="panel-head">
+              <div class="panel-title">业务模块</div>
+              <span class="badge" id="targetBusinessCount">0</span>
+            </div>
+            <div class="panel-body">
+              <div id="targetCards" class="target-cards"></div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="panel-title" id="targetEditorTitle">选择业务模块</div>
+                <div class="subtitle" id="targetEditorMeta"></div>
+              </div>
+              <button id="saveTargetsBtn" type="button">保存</button>
+            </div>
+            <div class="panel-body">
+              <div id="goalList" class="goal-list"></div>
+              <div style="height:12px"></div>
+              <button id="addGoalBtn" class="secondary" type="button">添加目标</button>
+            </div>
+          </section>
+        </div>
+
+        <div id="accountsView" class="targets-layout hidden">
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="panel-title">发送账号</div>
+                <div class="subtitle">账号只决定谁来发、在哪个平台发、能使用哪些业务模块。</div>
+              </div>
+              <span class="badge ok">默认账号</span>
+            </div>
+            <div class="panel-body">
+              <div id="accountCards" class="target-cards"></div>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="panel-title">账号规则</div>
+                <div class="subtitle">目标仍由业务承接决定，账号不直接绑定目标。</div>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="goal-list">
+                <div class="goal-editor">
+                  <div class="doc-title">默认发送身份</div>
+                  <div class="doc-meta">账号助理 / 品牌客服 / 业务顾问，后续可按账号调整。</div>
+                </div>
+                <div class="goal-editor">
+                  <div class="doc-title">可用模块范围</div>
+                  <div class="doc-meta">默认账号可使用当前企业启用的全部业务模块。</div>
+                </div>
+                <div class="goal-editor">
+                  <div class="doc-title">发送限制</div>
+                  <div class="doc-meta">登录态、限流、重复发送和平台风控仍由 worker 执行时校验。</div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div id="templatesView" class="targets-layout hidden">
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="panel-title">话术模板</div>
+                <div class="subtitle">模板决定私信结构，业务模块的话术偏好仍放在业务承接里。</div>
+              </div>
+              <span class="badge">内置模板</span>
+            </div>
+            <div class="panel-body">
+              <div id="templateCards" class="target-cards"></div>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="panel-title">模板选择规则</div>
+                <div class="subtitle">生成时按平台、会话阶段、目标类型和意向强弱自动匹配。</div>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="goal-list">
+                <div class="goal-editor">
+                  <div class="doc-title">匹配顺序</div>
+                  <div class="doc-meta">平台 -> 会话阶段 -> 目标类型 -> 意向强弱 -> 业务模块指定模板。</div>
+                </div>
+                <div class="goal-editor">
+                  <div class="doc-title">模块可覆盖</div>
+                  <div class="doc-meta">后续在业务承接里允许业务模块指定模板；未指定时使用自动选择。</div>
+                </div>
+                <div class="goal-editor">
+                  <div class="doc-title">模板不是知识库</div>
+                  <div class="doc-meta">模板只管怎么说，知识库仍负责说什么事实。</div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div id="settingsView" class="targets-layout hidden">
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="panel-title">公司设置</div>
+                <div class="subtitle">这些是公司默认信息，业务模块目标优先级更高。</div>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div id="companySettingsPanel" class="goal-list"></div>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="panel-title">系统状态</div>
+                <div class="subtitle">当前工作台使用内置项目资料和本地服务。</div>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div id="systemSettingsPanel" class="goal-list"></div>
+            </div>
+          </section>
+        </div>
+
+        <div id="status" class="status"></div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const state = {
+      data: null,
+      tab: "knowledge",
+      selectedBusinessKey: "",
+      selectedDocKey: "",
+      targetBusinessKey: "",
+      docQuery: "",
+      businessQuery: "",
+      materialFiles: {},
+    };
+
+    const els = {};
+    [
+      "companyName", "sideCompanyName", "tabKnowledge", "tabTargets", "tabAccounts", "tabTemplates", "tabSettings",
+      "appShell", "sidebarToggle", "pageTitle", "pageSubtitle", "refreshBtn", "businessSearch", "businessList",
+      "selectedBusinessTitle", "selectedBusinessMeta", "selectedDocTags", "selectedDocCount", "uploadOpenBtn", "uploadDialog", "uploadCloseBtn", "uploadFile", "uploadMode",
+      "uploadBtn", "docList", "knowledgeView",
+      "targetsView", "targetBusinessCount", "targetCards", "targetEditorTitle", "targetEditorMeta",
+      "goalList", "addGoalBtn", "saveTargetsBtn", "accountsView", "accountCards", "templatesView",
+      "templateCards", "settingsView", "companySettingsPanel", "systemSettingsPanel", "status"
+    ].forEach(id => els[id] = document.getElementById(id));
+
+    const goalTypeLabels = {
+      wechat: "加微信",
+      phone: "留电话",
+      link: "打开链接",
+      booking: "预约",
+      material: "领取资料",
+      ask_reply: "引导回复",
+      other: "其他目标",
+    };
+
+    const tabMeta = {
+      knowledge: ["知识库", "按业务板块和业务模块查看资料，上传后可自动归类或手动调整。"],
+      targets: ["业务承接", "按业务模块配置目标、备用目标和后续话术偏好。"],
+      accounts: ["账号", "账号决定发送身份、平台和可用业务模块范围。"],
+      templates: ["话术模板", "模板决定私信结构，默认由系统自动选择。"],
+      settings: ["设置", "管理企业默认信息和当前工作台状态。"],
+    };
+
+    const builtinTemplates = [
+      {
+        name: "抖音首次私信 · 加微信",
+        match: "抖音 / 首次私信 / 加微信 / 中高意向",
+        steps: "承接评论 -> 给低门槛价值 -> 自然引导加微信",
+      },
+      {
+        name: "抖音首次私信 · 引导回复",
+        match: "抖音 / 首次私信 / 弱意向 / 信息不足",
+        steps: "轻承接 -> 问一个低压力问题 -> 给回复理由",
+      },
+      {
+        name: "内容平台首次私信 · 领资料",
+        match: "抖音、小红书、视频号 / 首次私信 / 领取资料",
+        steps: "点明关注点 -> 说明资料价值 -> 引导领取",
+      },
+      {
+        name: "后续跟进 · 预约",
+        match: "私信后续 / 预约、评估、演示",
+        steps: "承接上一轮信息 -> 给下一步建议 -> 推进预约",
+      },
+    ];
+
+    function setStatus(text, type = "") {
+      els.status.textContent = text || "";
+      els.status.className = "status" + (type ? " " + type : "");
+    }
+
+    async function fetchJson(url, options = {}) {
+      const res = await fetch(url, options);
+      const data = await res.json();
+      if (!res.ok || Number(data.code || 0) !== 0) {
+        throw new Error(data.msg || data.error || "请求失败");
+      }
+      return data.data || {};
+    }
+
+    function businesses() {
+      return (state.data && state.data.businesses || []).slice();
+    }
+
+    function selectedBusiness() {
+      return businesses().find(item => item.business_key === state.selectedBusinessKey) || null;
+    }
+
+    function targetBusiness() {
+      return businesses().find(item => item.business_key === state.targetBusinessKey) || businesses()[0] || null;
+    }
+
+    function allDocs() {
+      return businesses().flatMap(business => (business.documents || []).map(doc => ({...doc, business_key: business.business_key})));
+    }
+
+    function docKey(doc) {
+      return String((doc && (doc.doc_id || doc.relative_path)) || "");
+    }
+
+    function selectedDoc() {
+      const key = state.selectedDocKey;
+      return allDocs().find(doc => docKey(doc) === key) || null;
+    }
+
+    function getDocContent(doc) {
+      if (!doc) return "";
+      const key = docKey(doc);
+      const file = state.materialFiles[key] || state.materialFiles[doc.relative_path];
+      return (file && file.content != null) ? String(file.content) : String(doc.summary || "");
+    }
+
+    function renderInlineMarkdown(value) {
+      return escapeHtml(value)
+        .replace(/`([^`]+)`/g, "<code>$1</code>")
+        .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    }
+
+    function renderMarkdown(markdown) {
+      const lines = String(markdown || "").replace(/\r\n/g, "\n").split("\n");
+      const html = [];
+      let paragraph = [];
+      let listType = "";
+      let inCode = false;
+      let codeLines = [];
+
+      const flushParagraph = () => {
+        if (!paragraph.length) return;
+        html.push(`<p>${renderInlineMarkdown(paragraph.join(" "))}</p>`);
+        paragraph = [];
+      };
+      const flushList = () => {
+        if (!listType) return;
+        html.push(`</${listType}>`);
+        listType = "";
+      };
+      const openList = (type) => {
+        if (listType === type) return;
+        flushParagraph();
+        flushList();
+        html.push(`<${type}>`);
+        listType = type;
+      };
+
+      lines.forEach(line => {
+        if (inCode) {
+          if (/^```/.test(line.trim())) {
+            html.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+            codeLines = [];
+            inCode = false;
+          } else {
+            codeLines.push(line);
+          }
+          return;
+        }
+
+        const trimmed = line.trim();
+        if (/^```/.test(trimmed)) {
+          flushParagraph();
+          flushList();
+          inCode = true;
+          return;
+        }
+        if (!trimmed) {
+          flushParagraph();
+          flushList();
+          return;
+        }
+
+        const heading = /^(#{1,3})\s+(.+)$/.exec(trimmed);
+        if (heading) {
+          flushParagraph();
+          flushList();
+          const level = heading[1].length;
+          html.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
+          return;
+        }
+
+        const unordered = /^[-*]\s+(.+)$/.exec(trimmed);
+        if (unordered) {
+          openList("ul");
+          html.push(`<li>${renderInlineMarkdown(unordered[1])}</li>`);
+          return;
+        }
+        const ordered = /^\d+\.\s+(.+)$/.exec(trimmed);
+        if (ordered) {
+          openList("ol");
+          html.push(`<li>${renderInlineMarkdown(ordered[1])}</li>`);
+          return;
+        }
+        const quote = /^>\s?(.+)$/.exec(trimmed);
+        if (quote) {
+          flushParagraph();
+          flushList();
+          html.push(`<blockquote>${renderInlineMarkdown(quote[1])}</blockquote>`);
+          return;
+        }
+
+        flushList();
+        paragraph.push(trimmed);
+      });
+
+      if (inCode) html.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+      flushParagraph();
+      flushList();
+      return html.join("") || `<p>${escapeHtml(markdown || "")}</p>`;
+    }
+
+    function businessBoards() {
+      if (state.data && Array.isArray(state.data.business_boards)) return state.data.business_boards.slice();
+      const map = new Map();
+      businesses().forEach(item => {
+        const id = item.business_board_id || item.kb_id || item.business_board_name || item.knowledge_base;
+        if (!id) return;
+        map.set(id, item.business_board_name || item.knowledge_base || "业务板块");
+      });
+      return Array.from(map.entries()).map(([id, name]) => ({business_board_id: id, name}));
+    }
+
+    function profileForBusiness(business) {
+      if (!business) return null;
+      const targets = state.data.business_targets || {profiles: []};
+      let profile = (targets.profiles || []).find(item => item.business_key === business.business_key);
+      if (!profile) {
+        profile = {
+          profile_id: "bt_" + Math.random().toString(16).slice(2, 12),
+          business_key: business.business_key,
+          kb_id: business.kb_id,
+          knowledge_base: business.knowledge_base,
+          business_board_id: business.business_board_id || business.kb_id,
+          business_board_name: business.business_board_name || business.knowledge_base,
+          domain_id: business.domain_id,
+          domain: business.name,
+          business_module_id: business.business_module_id || business.domain_id,
+          business_module_name: business.business_module_name || business.name,
+          enabled: true,
+          goals: [],
+          notes: "",
+        };
+        targets.profiles = [...(targets.profiles || []), profile];
+        state.data.business_targets = targets;
+      }
+      return profile;
+    }
+
+    async function load() {
+      setStatus("正在加载...");
+      state.data = await fetchJson("/api/workspace/state");
+      await loadMaterialFiles();
+      if (!state.selectedBusinessKey && businesses()[0]) state.selectedBusinessKey = businesses()[0].business_key;
+      if (!selectedDoc() && allDocs()[0]) state.selectedDocKey = docKey(allDocs()[0]);
+      if (!state.targetBusinessKey && businesses()[0]) state.targetBusinessKey = businesses()[0].business_key;
+      render();
+      setStatus("");
+    }
+
+    async function loadMaterialFiles() {
+      try {
+        const data = await fetchJson("/api/project-materials");
+        const files = {};
+        (data.files || []).filter(file => file.type === "knowledge_document").forEach(file => {
+          if (file.relative_path) files[file.relative_path] = file;
+        });
+        allDocs().forEach(doc => {
+          const file = files[doc.relative_path];
+          if (file) files[docKey(doc)] = file;
+        });
+        state.materialFiles = files;
+      } catch (_) {
+        state.materialFiles = {};
+      }
+    }
+
+    function render() {
+      renderChrome();
+      renderCounts();
+      renderBusinessList();
+      renderDocs();
+      renderTargets();
+      renderAccounts();
+      renderTemplates();
+      renderSettings();
+      els.knowledgeView.classList.toggle("hidden", state.tab !== "knowledge");
+      els.targetsView.classList.toggle("hidden", state.tab !== "targets");
+      els.accountsView.classList.toggle("hidden", state.tab !== "accounts");
+      els.templatesView.classList.toggle("hidden", state.tab !== "templates");
+      els.settingsView.classList.toggle("hidden", state.tab !== "settings");
+      els.tabKnowledge.classList.toggle("active", state.tab === "knowledge");
+      els.tabTargets.classList.toggle("active", state.tab === "targets");
+      els.tabAccounts.classList.toggle("active", state.tab === "accounts");
+      els.tabTemplates.classList.toggle("active", state.tab === "templates");
+      els.tabSettings.classList.toggle("active", state.tab === "settings");
+      const meta = tabMeta[state.tab] || tabMeta.knowledge;
+      els.pageTitle.textContent = meta[0];
+      els.pageSubtitle.textContent = meta[1];
+    }
+
+    function renderChrome() {
+      const company = state.data.company || ((state.data.company_settings || {}).companies || [])[0] || {};
+      els.companyName.textContent = company.name || "默认公司";
+      els.sideCompanyName.textContent = company.name || "默认公司";
+    }
+
+    function renderCounts() {
+      els.targetBusinessCount.textContent = businesses().length;
+    }
+
+    const sidebarStorageKey = "aisec.workspace.sidebarCollapsed";
+    function setSidebarCollapsed(collapsed) {
+      els.appShell.classList.toggle("sidebar-collapsed", collapsed);
+      els.sidebarToggle.setAttribute("aria-expanded", String(!collapsed));
+      els.sidebarToggle.setAttribute("aria-label", collapsed ? "展开侧边栏" : "收起侧边栏");
+      els.sidebarToggle.setAttribute("title", collapsed ? "展开侧边栏" : "收起侧边栏");
+      try { localStorage.setItem(sidebarStorageKey, collapsed ? "1" : "0"); } catch (_) {}
+    }
+
+    function restoreSidebarState() {
+      try { setSidebarCollapsed(localStorage.getItem(sidebarStorageKey) === "1"); } catch (_) { setSidebarCollapsed(false); }
+    }
+
+    function renderBusinessList() {
+      const query = state.businessQuery.trim().toLowerCase();
+      const docQuery = state.docQuery.trim().toLowerCase();
+      const textMatches = (parts) => {
+        const text = parts.filter(Boolean).join(" ").toLowerCase();
+        return (!query || text.includes(query)) && (!docQuery || text.includes(docQuery));
+      };
+      const company = state.data.company || ((state.data.company_settings || {}).companies || [])[0] || {};
+      const grouped = new Map();
+      businesses().forEach(item => {
+        const docs = (item.documents || []).filter(doc => textMatches([
+          item.name, item.business_module_name, item.business_board_name, item.knowledge_base, item.description,
+          doc.title, doc.description, doc.summary, doc.section, (doc.tags || doc.keywords || []).join(" ")
+        ]));
+        if ((query || docQuery) && !docs.length && !textMatches([item.name, item.business_module_name, item.business_board_name, item.knowledge_base, item.description])) return;
+        const boardId = item.business_board_id || item.kb_id || item.business_board_name || item.knowledge_base || "board";
+        const boardName = item.business_board_name || item.knowledge_base || "业务板块";
+        if (!grouped.has(boardId)) grouped.set(boardId, {id: boardId, name: boardName, modules: []});
+        grouped.get(boardId).modules.push({...item, documents: docs.length || query || docQuery ? docs : (item.documents || [])});
+      });
+      const folderIcon = `<svg class="tree-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2.5h6.5A2.5 2.5 0 0 1 21 10v7.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-10Z" stroke-linejoin="round"/><path d="M3 10h18" stroke-linecap="round"/></svg>`;
+      const fileIcon = `<svg class="tree-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M7 3.5h6l4 4V20a1.5 1.5 0 0 1-1.5 1.5h-8A1.5 1.5 0 0 1 6 20V5A1.5 1.5 0 0 1 7.5 3.5Z" stroke-linejoin="round"/><path d="M13 3.5V8h4M9 12h6M9 15h6M9 18h4" stroke-linecap="round"/></svg>`;
+      const caret = `<svg class="tree-caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" aria-hidden="true"><path d="m6 4 4 4-4 4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      const boardsHtml = Array.from(grouped.values()).map(board => {
+        const moduleHtml = board.modules.map(item => {
+          const docsHtml = (item.documents || []).map(doc => {
+            const key = docKey(doc);
+            const active = key === state.selectedDocKey ? " active" : "";
+            return `<button class="tree-doc${active}" type="button" data-doc-key="${escapeAttr(key)}" data-business="${escapeAttr(item.business_key)}" title="${escapeAttr(doc.title || doc.relative_path || "未命名资料")}">
+              ${caret}${fileIcon}<span class="tree-label">${escapeHtml(doc.title || "未命名资料")}</span>
+            </button>`;
+          }).join("") || `<div class="empty">暂无具体资料</div>`;
+          return `<details class="tree-node" open>
+            <summary><div class="tree-row">${caret}${folderIcon}<span class="tree-label">${escapeHtml(item.name)}</span><span class="tree-count">${(item.documents || []).length} 份</span></div></summary>
+            <div class="tree-children">${docsHtml}</div>
+          </details>`;
+        }).join("");
+        return `<details class="tree-node tree-board" data-board-id="${escapeAttr(board.id)}">
+          <summary><div class="tree-row">${caret}${folderIcon}<span class="tree-label">${escapeHtml(board.name)}</span><span class="tree-count">${board.modules.length} 模块</span></div></summary>
+          <div class="tree-children">${moduleHtml}</div>
+        </details>`;
+      }).join("");
+      els.businessList.innerHTML = `<details class="tree-node" open>
+        <summary><div class="tree-row">${caret}${folderIcon}<span class="tree-label">${escapeHtml(company.name || "默认公司")}</span><span class="tree-count">公司</span></div></summary>
+        <div class="tree-children">${boardsHtml || `<div class="empty">暂无匹配资料</div>`}</div>
+      </details>`;
+      els.businessList.querySelectorAll("[data-doc-key]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          state.selectedDocKey = btn.dataset.docKey;
+          state.selectedBusinessKey = btn.dataset.business || state.selectedBusinessKey;
+          render();
+        });
+      });
+
+    }
+
+    function renderDocs() {
+      const doc = selectedDoc();
+      const business = doc ? businesses().find(item => item.business_key === doc.business_key) : selectedBusiness();
+      if (!doc) {
+        els.selectedBusinessTitle.textContent = "选择具体资料";
+        els.selectedBusinessMeta.textContent = "从左侧文件树选择一份资料后，这里会显示正文内容。";
+        els.selectedDocTags.innerHTML = "";
+        els.selectedDocCount.textContent = "资料详情";
+        els.docList.innerHTML = `<div class="empty">请先在左侧选择具体资料</div>`;
+        return;
+      }
+      els.selectedBusinessTitle.textContent = doc.title || "未命名资料";
+      els.selectedBusinessMeta.textContent = `${doc.business_board_name || doc.knowledge_base || "业务板块"} / ${doc.business_module_name || doc.domain || "业务模块"} / ${doc.section || "具体资料"}`;
+      els.selectedDocCount.textContent = "当前资料";
+      const tags = (doc.tags || doc.keywords || []).map(tag => `<span class="badge">${escapeHtml(tag)}</span>`).join("");
+      els.selectedDocTags.innerHTML = tags;
+      const content = getDocContent(doc) || "暂未读取到正文内容。";
+      const isMarkdown = /\.md(?:own)?$/i.test(doc.relative_path || doc.title || "");
+      els.docList.innerHTML = `<div class="doc-view">
+        <article class="doc-content${isMarkdown ? "" : " plain"}">${isMarkdown ? renderMarkdown(content) : escapeHtml(content)}</article>
+      </div>`;
+    }
+
+    function renderTargets() {
+      els.targetCards.innerHTML = businesses().map(item => {
+        const active = item.business_key === state.targetBusinessKey ? " active" : "";
+        const goals = item.goals || [];
+        const main = goals.find(goal => goal.enabled !== false) || null;
+        return `<div class="target-card${active}" data-target-business="${escapeHtml(item.business_key)}">
+          <div>
+            <div class="doc-title">${escapeHtml(item.name)}</div>
+            <div class="doc-meta"><span>${escapeHtml(item.business_board_name || item.knowledge_base)}</span><span>${item.document_count || 0} 份资料</span></div>
+          </div>
+          <div>${main ? `<span class="badge ok">${escapeHtml(main.label || goalTypeLabels[main.goal_type] || "目标")}</span>` : `<span class="badge">未配置目标</span>`}</div>
+        </div>`;
+      }).join("") || `<div class="empty">暂无业务模块</div>`;
+      els.targetCards.querySelectorAll("[data-target-business]").forEach(card => {
+        card.addEventListener("click", () => {
+          state.targetBusinessKey = card.dataset.targetBusiness;
+          renderTargets();
+        });
+      });
+
+      const business = targetBusiness();
+      if (!business) {
+        els.targetEditorTitle.textContent = "选择业务模块";
+        els.targetEditorMeta.textContent = "";
+        els.goalList.innerHTML = `<div class="empty">暂无业务模块</div>`;
+        return;
+      }
+      const profile = profileForBusiness(business);
+      els.targetEditorTitle.textContent = business.name;
+      els.targetEditorMeta.textContent = `${business.business_board_name || business.knowledge_base} / ${business.name} / ${business.document_count || 0} 份资料`;
+      els.goalList.innerHTML = (profile.goals || []).map((goal, index) => goalEditor(goal, index)).join("") || `<div class="empty">未配置目标</div>`;
+      els.goalList.querySelectorAll("[data-goal-index]").forEach(box => bindGoalEditor(box, profile));
+    }
+
+    function renderAccounts() {
+      const company = ((state.data.company_settings || {}).companies || [])[0] || {};
+      const activeBusinesses = businesses().length;
+      els.accountCards.innerHTML = `<div class="target-card active">
+        <div>
+          <div class="doc-title">默认发送账号</div>
+          <div class="doc-meta"><span>抖音</span><span>${escapeHtml(company.name || "默认公司")}</span></div>
+        </div>
+        <div class="goal-list">
+          <span class="badge ok">启用</span>
+          <span class="badge">${activeBusinesses} 个可用业务模块</span>
+          <span class="badge">账号助理</span>
+        </div>
+      </div>`;
+    }
+
+    function renderTemplates() {
+      els.templateCards.innerHTML = builtinTemplates.map(template => `<div class="target-card">
+        <div>
+          <div class="doc-title">${escapeHtml(template.name)}</div>
+          <div class="doc-meta"><span>${escapeHtml(template.match)}</span></div>
+        </div>
+        <div class="doc-meta">${escapeHtml(template.steps)}</div>
+        <div><span class="badge ok">自动选择</span></div>
+      </div>`).join("");
+    }
+
+    function renderSettings() {
+      const company = state.data.company || ((state.data.company_settings || {}).companies || [])[0] || {};
+      els.companySettingsPanel.innerHTML = `
+        <div class="goal-editor">
+          <label>公司名称</label>
+          <input value="${escapeAttr(company.name || "默认公司")}" disabled>
+        </div>
+        <div class="goal-editor">
+          <label>公司说明</label>
+          <textarea disabled>${escapeHtml(company.description || "当前企业资料来自内置项目配置。")}</textarea>
+        </div>
+        <div class="goal-editor">
+          <div class="doc-title">默认规则</div>
+          <div class="doc-meta">业务承接里的目标优先于公司默认联系方式；未命中业务模块时可走兜底追问。</div>
+        </div>`;
+      els.systemSettingsPanel.innerHTML = `
+        <div class="goal-editor">
+          <div class="doc-title">当前企业</div>
+          <div class="doc-meta">${escapeHtml(company.name || "默认公司")}</div>
+        </div>
+        <div class="goal-editor">
+          <div class="doc-title">数据来源</div>
+          <div class="doc-meta">公司、业务板块、业务模块、具体资料和承接目标来自本地内置存储。</div>
+        </div>`;
+    }
+
+    function goalEditor(goal, index) {
+      return `<div class="goal-editor" data-goal-index="${index}">
+        <div class="goal-grid">
+          <div>
+            <label>类型</label>
+            <select data-goal-field="goal_type">
+              ${Object.entries(goalTypeLabels).map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}
+            </select>
+          </div>
+          <div>
+            <label>${index === 0 ? "主目标" : "备用目标"}</label>
+            <input data-goal-field="goal_value" value="${escapeAttr(goal.goal_value || "")}" placeholder="微信号、手机号、链接或说明">
+          </div>
+        </div>
+        <div>
+          <label>显示名称</label>
+          <input data-goal-field="label" value="${escapeAttr(goal.label || "")}">
+        </div>
+        <div>
+          <label>补充说明</label>
+          <textarea data-goal-field="note">${escapeHtml(goal.note || "")}</textarea>
+        </div>
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+          <span class="badge">${index === 0 ? "优先使用" : "备用"}</span>
+          <button class="danger" type="button" data-remove-goal="${index}">删除</button>
+        </div>
+      </div>`;
+    }
+
+    function bindGoalEditor(box, profile) {
+      const index = Number(box.dataset.goalIndex || 0);
+      const goal = profile.goals[index];
+      box.querySelectorAll("[data-goal-field]").forEach(field => {
+        field.value = goal[field.dataset.goalField] || "";
+        field.addEventListener("input", () => {
+          goal[field.dataset.goalField] = field.value;
+          if (field.dataset.goalField === "goal_type" && !goal.label) {
+            goal.label = goalTypeLabels[field.value] || "目标";
+          }
+        });
+      });
+      const remove = box.querySelector("[data-remove-goal]");
+      if (remove) remove.addEventListener("click", () => {
+        profile.goals.splice(index, 1);
+        profile.goals.forEach((item, idx) => item.priority = idx + 1);
+        renderTargets();
+      });
+    }
+
+    async function saveDocRoute(doc, businessKey) {
+      const business = businesses().find(item => item.business_key === businessKey);
+      if (!business) return;
+      setStatus("正在保存归类...");
+      const data = await fetchJson("/api/admin/knowledge/route/update", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          doc_id: doc.doc_id,
+          relative_path: doc.relative_path,
+          knowledge_base: business.business_board_name || business.knowledge_base,
+          domain: business.business_module_name || business.name,
+          section: doc.section || "具体资料",
+          route_mode: "manual",
+        })
+      });
+      state.data.document_descriptions = data.document_descriptions || state.data.document_descriptions;
+      state.selectedBusinessKey = business.business_key;
+      state.selectedDocKey = docKey(data.document || doc);
+      await load();
+      setStatus("归类已保存", "ok");
+    }
+
+    async function uploadFile() {
+      const file = els.uploadFile.files && els.uploadFile.files[0];
+      if (!file) {
+        setStatus("请选择文件", "error");
+        return;
+      }
+      const form = new FormData();
+      form.append("file", file);
+      const company = state.data.company || ((state.data.company_settings || {}).companies || [])[0] || {};
+      form.append("company_id", company.company_id || "");
+      if (els.uploadMode.value === "manual") {
+        const business = selectedBusiness() || businesses().find(item => item.business_key === (selectedDoc() || {}).business_key);
+        if (business) {
+          form.append("knowledge_base", business.knowledge_base);
+          form.append("domain", business.name);
+          form.append("section", "具体资料");
+        }
+      }
+      setStatus("正在上传...");
+      await fetchJson("/api/admin/knowledge/upload", {method: "POST", body: form});
+      els.uploadFile.value = "";
+      closeUploadDialog();
+      await load();
+      setStatus("上传完成", "ok");
+    }
+
+    function openUploadDialog() {
+      els.uploadDialog.classList.remove("hidden");
+      els.uploadFile.focus();
+    }
+
+    function closeUploadDialog() {
+      els.uploadDialog.classList.add("hidden");
+    }
+
+    async function saveTargets() {
+      const business = targetBusiness();
+      if (!business) return;
+      const profile = profileForBusiness(business);
+      profile.goals = (profile.goals || []).filter(goal => (goal.goal_value || goal.label || goal.note || "").trim());
+      profile.goals.forEach((goal, index) => {
+        goal.priority = index + 1;
+        goal.enabled = true;
+        goal.label = goal.label || goalTypeLabels[goal.goal_type] || "目标";
+      });
+      setStatus("正在保存目标...");
+      const data = await fetchJson("/api/workspace/business-targets/save", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          business_targets: state.data.business_targets,
+        })
+      });
+      state.data.business_targets = data.business_targets || state.data.business_targets;
+      state.data.businesses = data.businesses || state.data.businesses;
+      render();
+      setStatus("目标已保存", "ok");
+    }
+
+    function addGoal() {
+      const business = targetBusiness();
+      if (!business) return;
+      const profile = profileForBusiness(business);
+      profile.goals = profile.goals || [];
+      profile.goals.push({
+        goal_id: "goal_" + Math.random().toString(16).slice(2, 12),
+        goal_type: "wechat",
+        label: profile.goals.length ? "备用目标" : "主目标",
+        goal_value: "",
+        note: "",
+        priority: profile.goals.length + 1,
+        enabled: true,
+      });
+      renderTargets();
+    }
+
+    function escapeHtml(value) {
+      return String(value == null ? "" : value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+    function escapeAttr(value) { return escapeHtml(value).replace(/'/g, "&#39;"); }
+    function cssEscape(value) {
+      if (window.CSS && CSS.escape) return CSS.escape(String(value));
+      return String(value).replace(/["\\]/g, "\\$&");
+    }
+
+    els.tabKnowledge.addEventListener("click", () => { state.tab = "knowledge"; render(); });
+    els.tabTargets.addEventListener("click", () => { state.tab = "targets"; render(); });
+    els.tabAccounts.addEventListener("click", () => { state.tab = "accounts"; render(); });
+    els.tabTemplates.addEventListener("click", () => { state.tab = "templates"; render(); });
+    els.tabSettings.addEventListener("click", () => { state.tab = "settings"; render(); });
+    els.sidebarToggle.addEventListener("click", () => {
+      setSidebarCollapsed(!els.appShell.classList.contains("sidebar-collapsed"));
+    });
+    els.refreshBtn.addEventListener("click", () => load());
+    els.businessSearch.addEventListener("input", () => { state.businessQuery = els.businessSearch.value; renderBusinessList(); });
+    els.uploadOpenBtn.addEventListener("click", openUploadDialog);
+    els.uploadCloseBtn.addEventListener("click", closeUploadDialog);
+    els.uploadDialog.addEventListener("click", (event) => { if (event.target === els.uploadDialog) closeUploadDialog(); });
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeUploadDialog(); });
+    els.uploadBtn.addEventListener("click", () => uploadFile().catch(err => setStatus(err.message, "error")));
+    els.addGoalBtn.addEventListener("click", addGoal);
+    els.saveTargetsBtn.addEventListener("click", () => saveTargets().catch(err => setStatus(err.message, "error")));
+
+    restoreSidebarState();
+    load().catch(err => setStatus(err.message, "error"));
+  </script>
+</body>
+</html>

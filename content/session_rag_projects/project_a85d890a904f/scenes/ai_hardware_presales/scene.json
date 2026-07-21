@@ -1,4 +1,6 @@
 {
   "scene_id": "ai_hardware_presales",
-  "name": "AI技术与智能硬件售前"
+  "name": "AI技术与智能硬件售前",
+  "prompt": "识别自动私信、评论采集、AI内容生产和智能硬件咨询，优先引导演示或试跑。",
+  "materials": "可提供试跑、流程演示、需求梳理和后台配置说明。"
 }

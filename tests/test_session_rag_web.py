@@ -13,6 +13,8 @@ from aisec_agent.web.session_rag_chat import (
     build_admin_activity_delete_response,
     build_admin_activity_save_response,
     build_admin_knowledge_delete_response,
+    build_admin_knowledge_route_rejudge_response,
+    build_admin_knowledge_route_update_response,
     build_admin_knowledge_save_response,
     build_admin_knowledge_upload_response,
     build_admin_prompt_restore_response,
@@ -20,6 +22,8 @@ from aisec_agent.web.session_rag_chat import (
     build_admin_scene_template_generate_response,
     build_admin_scene_template_save_response,
     build_admin_state_response,
+    build_workspace_business_targets_save_response,
+    build_workspace_state_response,
     build_business_reply_response,
     build_chat_response,
     build_config_test_response,
@@ -35,6 +39,8 @@ from aisec_agent.web.session_rag_chat import (
     build_douyin_dm_task_list_response,
     build_douyin_dm_task_submit_response,
     build_douyin_dm_task_clear_response,
+    DouyinAccountBrowserPool,
+    DouyinAccountCookieMismatch,
     DM_DEBUG_ARTIFACT_DIR,
     _dm_click_editor_send_button,
     DM_REDIS_PENDING_QUEUE,
@@ -519,6 +525,15 @@ class FakeBusinessLogic(SessionRAGChatLogic):
 
 
 class SessionRAGWebTest(unittest.TestCase):
+    def assert_no_project_id_key(self, value):
+        if isinstance(value, dict):
+            self.assertNotIn("project_id", value)
+            for item in value.values():
+                self.assert_no_project_id_key(item)
+        elif isinstance(value, list):
+            for item in value:
+                self.assert_no_project_id_key(item)
+
     def test_douyin_dm_redis_task_submit_status_and_dry_run_process(self):
         redis = FakeRedis()
 
@@ -637,6 +652,153 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(redis.lrange(_dm_pending_queue_for_account(old_account_key), 0, -1), [])
         self.assertEqual(redis.lrange(_dm_pending_queue_for_account(new_account_key), 0, -1), [task_id])
 
+    def test_douyin_dm_submit_accepts_cookie_json_object_alias(self):
+        redis = FakeRedis()
+        cookie_json = {
+            "cookies": [
+                {"name": "sessionid", "value": "SECRET_COOKIE", "domain": ".douyin.com", "path": "/"},
+                {"name": "sid_guard", "value": "SECRET_GUARD", "domain": ".douyin.com", "path": "/"},
+            ]
+        }
+
+        submit = build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_cookie_object_001",
+                "video_info": "video about knee pain",
+                "account_cookies": cookie_json,
+                "comment_info": "my mom has knee pain",
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+
+        self.assertEqual(submit["accepted"], 1)
+        stored = redis.hgetall("dm:task:dm_cookie_object_001")
+        self.assertIn('"cookies"', stored["account_cookie"])
+        self.assertIn("SECRET_COOKIE", stored["account_cookie"])
+        self.assertEqual(submit["tasks"][0]["account_cookie"], "[redacted]")
+
+    def test_douyin_dm_auto_account_id_stays_stable_when_session_cookie_refreshes(self):
+        redis = FakeRedis()
+        first = build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_auto_account_001",
+                "video_info": "video",
+                "account_cookies": {
+                    "cookies": [
+                        {"name": "uid_tt", "value": "STABLE_UID", "domain": ".douyin.com", "path": "/"},
+                        {"name": "sessionid", "value": "SESSION_OLD", "domain": ".douyin.com", "path": "/"},
+                    ]
+                },
+                "comment_info": "comment",
+                "target_profile_url": "https://www.douyin.com/user/auto-account",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+        second = build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_auto_account_002",
+                "video_info": "video",
+                "account_cookies": {
+                    "cookies": [
+                        {"name": "uid_tt", "value": "STABLE_UID", "domain": ".douyin.com", "path": "/"},
+                        {"name": "sessionid", "value": "SESSION_NEW", "domain": ".douyin.com", "path": "/"},
+                    ]
+                },
+                "comment_info": "comment",
+                "target_profile_url": "https://www.douyin.com/user/auto-account",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+
+        first_task = redis.hgetall("dm:task:dm_auto_account_001")
+        second_task = redis.hgetall("dm:task:dm_auto_account_002")
+        self.assertEqual(first["account_queues"], second["account_queues"])
+        self.assertEqual(first_task["account_id"], second_task["account_id"])
+        self.assertTrue(first_task["account_id"].startswith("douyin_auto_"))
+
+    def test_douyin_account_browser_pool_refreshes_existing_account_cookies(self):
+        class FakeContext:
+            def __init__(self):
+                self.added = []
+                self.cleared = 0
+
+            def add_cookies(self, cookies):
+                self.added.extend(cookies)
+
+            def clear_cookies(self):
+                self.cleared += 1
+
+            @property
+            def pages(self):
+                return []
+
+        pool = DouyinAccountBrowserPool(max_accounts=1, browser_name="edge", headless=False)
+        context = FakeContext()
+        pool._sessions["account_a"] = {
+            "account_key": "account_a",
+            "identity_seed": "douyin_uid:STABLE_UID",
+            "context": context,
+            "playwright": None,
+            "cookie_count": 1,
+            "created_at": 1.0,
+            "last_used_at": 1.0,
+        }
+
+        session = pool.get_or_open(
+            "account_a",
+            {
+                "cookies": [
+                    {"name": "uid_tt", "value": "STABLE_UID", "domain": ".douyin.com", "path": "/"},
+                    {"name": "sessionid", "value": "SESSION_NEW", "domain": ".douyin.com", "path": "/"},
+                ]
+            },
+            {},
+        )
+
+        self.assertFalse(session["opened_new"])
+        self.assertTrue(session["cookies_refreshed"])
+        self.assertEqual(context.cleared, 1)
+        self.assertGreaterEqual(len(context.added), 2)
+
+    def test_douyin_account_browser_pool_rejects_mismatched_cookie_identity(self):
+        class FakeContext:
+            def add_cookies(self, cookies):
+                pass
+
+            def clear_cookies(self):
+                pass
+
+            @property
+            def pages(self):
+                return []
+
+        pool = DouyinAccountBrowserPool(max_accounts=1, browser_name="edge", headless=False)
+        pool._sessions["account_a"] = {
+            "account_key": "account_a",
+            "identity_seed": "douyin_uid:STABLE_UID",
+            "context": FakeContext(),
+            "playwright": None,
+            "cookie_count": 1,
+            "created_at": 1.0,
+            "last_used_at": 1.0,
+        }
+
+        with self.assertRaises(DouyinAccountCookieMismatch):
+            pool.get_or_open(
+                "account_a",
+                {
+                    "cookies": [
+                        {"name": "uid_tt", "value": "OTHER_UID", "domain": ".douyin.com", "path": "/"},
+                        {"name": "sessionid", "value": "SESSION_NEW", "domain": ".douyin.com", "path": "/"},
+                    ]
+                },
+                {},
+            )
+
     def test_douyin_dm_redis_task_requires_five_fields(self):
         with self.assertRaises(WebInputError):
             build_douyin_dm_task_submit_response(
@@ -673,6 +835,117 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(submit["tasks"][0]["auto_send"], "true")
         self.assertEqual(submit["tasks"][0]["auto_process"], "true")
         self.assertEqual(redis.lrange(DM_REDIS_AUTO_PENDING_QUEUE, 0, -1), ["dm_send_001"])
+
+    def test_douyin_dm_worker_passes_task_cookie_json_object_to_send_demo(self):
+        redis = FakeRedis()
+        cookie_json = {
+            "cookies": [
+                {"name": "sessionid", "value": "SECRET_COOKIE", "domain": ".douyin.com", "path": "/"},
+                {"name": "sid_guard", "value": "SECRET_GUARD", "domain": ".douyin.com", "path": "/"},
+            ]
+        }
+        build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_cookie_send_001",
+                "video_info": "video",
+                "account_cookies": cookie_json,
+                "comment_info": "comment",
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+
+        seen_payloads = []
+
+        def fake_demo(payload, executor=None):
+            seen_payloads.append(payload)
+            return {
+                "success": True,
+                "opened": True,
+                "prefilled": True,
+                "sent": True,
+                "account_cookie_loaded": True,
+                "account_cookie_count": 2,
+                "steps": [{"name": "apply_account_cookies", "ok": True, "detail": "2 cookies"}],
+            }
+
+        with patch(
+            "aisec_agent.web.session_rag_chat.build_public_private_message_response",
+            return_value={"reply": "hello"},
+        ), patch(
+            "aisec_agent.web.session_rag_chat.build_douyin_private_message_demo_response",
+            side_effect=fake_demo,
+        ):
+            processed = process_douyin_dm_task_once(
+                redis_client=redis,
+                mode="send",
+                queue_name=DM_REDIS_AUTO_PENDING_QUEUE,
+                block_timeout=1,
+            )
+
+        self.assertEqual(processed["status"], "success")
+        self.assertEqual(len(seen_payloads), 1)
+        self.assertIn('"cookies"', seen_payloads[0]["account_cookies"])
+        self.assertIn("SECRET_COOKIE", seen_payloads[0]["account_cookies"])
+
+    def test_douyin_dm_worker_with_account_pool_skips_accounts_without_browser_slot(self):
+        redis = FakeRedis()
+        blocked = build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_pool_blocked_001",
+                "video_info": "video",
+                "account_cookie": "sessionid=BLOCKED_COOKIE",
+                "comment_info": "comment",
+                "target_profile_url": "https://www.douyin.com/user/blocked",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+        runnable = build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_pool_runnable_001",
+                "video_info": "video",
+                "account_cookie": "sessionid=RUNNABLE_COOKIE",
+                "comment_info": "comment",
+                "target_profile_url": "https://www.douyin.com/user/runnable",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+        runnable_account_key = runnable["account_queues"][0]
+
+        class FakeAccountBrowserPool:
+            headless = False
+
+            def can_accept(self, account_key):
+                return account_key == runnable_account_key
+
+        seen_payloads = []
+
+        def fake_demo(payload, executor=None):
+            seen_payloads.append(payload)
+            return {"success": True, "opened": True, "prefilled": True, "sent": True, "steps": []}
+
+        with patch(
+            "aisec_agent.web.session_rag_chat.build_public_private_message_response",
+            return_value={"reply": "hello"},
+        ), patch(
+            "aisec_agent.web.session_rag_chat.build_douyin_private_message_demo_response",
+            side_effect=fake_demo,
+        ):
+            processed = process_douyin_dm_task_once(
+                redis_client=redis,
+                mode="send",
+                queue_name=DM_REDIS_AUTO_PENDING_QUEUE,
+                block_timeout=0,
+                account_browser_pool=FakeAccountBrowserPool(),
+            )
+
+        self.assertEqual(processed["task_id"], "dm_pool_runnable_001")
+        self.assertEqual(seen_payloads[0]["account_key"], runnable_account_key)
+        self.assertEqual(redis.lrange(DM_REDIS_AUTO_PENDING_QUEUE, 0, -1), ["dm_pool_blocked_001"])
+        self.assertEqual(redis.lrange(_dm_pending_queue_for_account(blocked["account_queues"][0]), 0, -1), ["dm_pool_blocked_001"])
 
     def test_douyin_private_message_demo_passes_visible_persistent_browser_options(self):
         response = build_douyin_private_message_demo_response(
@@ -1173,6 +1446,41 @@ class SessionRAGWebTest(unittest.TestCase):
             "click_send",
             "send_message",
         ])
+
+    def test_douyin_dm_send_and_confirm_accepts_existing_baseline(self):
+        class DummyKeyboard:
+            def __init__(self):
+                self.pressed = []
+
+            def press(self, key):
+                self.pressed.append(key)
+
+        class DummyPage:
+            def __init__(self):
+                self.keyboard = DummyKeyboard()
+
+        page = DummyPage()
+        wait_calls = []
+
+        def fake_wait(_page, _message, timeout_ms=8000, baseline=None):
+            wait_calls.append(list(baseline or []))
+            return {"name": "send_message", "ok": True, "detail": "confirmed"}
+
+        with patch(
+            "aisec_agent.web.session_rag_chat._dm_collect_message_bubble_matches",
+            return_value=[{"signature": "should-not-recollect"}],
+        ) as collect_matches, patch(
+            "aisec_agent.web.session_rag_chat._dm_wait_message_sent",
+            side_effect=fake_wait,
+        ), patch(
+            "aisec_agent.web.session_rag_chat._dm_message_editor_text",
+            return_value="hello",
+        ):
+            steps = _dm_send_and_confirm_current_message(page, "hello", timeout_ms=500, baseline=["existing"])
+
+        collect_matches.assert_not_called()
+        self.assertEqual(wait_calls, [["existing"]])
+        self.assertEqual([step["name"] for step in steps], ["press_enter_send", "send_message"])
 
     def test_douyin_dm_failure_reason_keeps_demo_step_trace(self):
         redis = FakeRedis()
@@ -2651,6 +2959,110 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(saved["document_descriptions"]["domains"][-1]["name"], "测试领域")
         self.assertTrue(any(domain["name"] == "测试领域" for domain in refreshed["document_descriptions"]["domains"]))
 
+    def test_workspace_state_flattens_businesses_from_knowledge_domains(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectMaterialStore(Path(temp_dir))
+            state = build_workspace_state_response(project_store=store)
+
+        self.assertTrue(state["businesses"])
+        self.assertIn("company", state)
+        self.assertNotIn("tenant", state)
+        self.assertNotIn("project", state)
+        self.assertNotIn("projects", state)
+        self.assert_no_project_id_key(state)
+        first = state["businesses"][0]
+        self.assertIn("business_key", first)
+        self.assertIn("knowledge_base", first)
+        self.assertIn("documents", first)
+        self.assertGreaterEqual(state["businesses"][0]["document_count"], 0)
+
+    def test_workspace_state_hides_internal_readme_route_documents(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectMaterialStore(Path(temp_dir))
+            admin_state = build_admin_state_response(project_store=store)
+            descriptions = admin_state["document_descriptions"]
+            descriptions["knowledge_bases"][0]["domains"].append({
+                "domain_id": "domain_readme_route",
+                "name": "README与路由",
+                "sections": [
+                    {
+                        "section_id": "section_readme_route",
+                        "name": "README与路由",
+                        "documents": [
+                            {
+                                "doc_id": "readme_route_doc",
+                                "title": "README与路由 README",
+                                "relative_path": "knowledge/files/公司私信知识库/README与路由/README.md",
+                            }
+                        ],
+                    }
+                ],
+            })
+            descriptions["knowledge_bases"][0]["domains"][0]["sections"][0]["documents"].append({
+                "doc_id": "prompt_doc",
+                "title": "内部提示词",
+                "relative_path": "knowledge/files/公司私信知识库/三大核心业务板块/prompts/内部提示词.md",
+            })
+            build_admin_knowledge_save_response(
+                {
+                    "project_id": admin_state["project"]["project_id"],
+                    "document_descriptions": descriptions,
+                },
+                project_store=store,
+            )
+            state = build_workspace_state_response(
+                project_store=store,
+            )
+
+        business_names = [item["name"] for item in state["businesses"]]
+        doc_paths = [
+            doc.get("relative_path", "")
+            for business in state["businesses"]
+            for doc in business.get("documents", [])
+        ]
+        self.assertNotIn("README与路由", business_names)
+        self.assertFalse(any(path.endswith("README.md") for path in doc_paths))
+        self.assertFalse(any("/prompts/" in path for path in doc_paths))
+
+    def test_workspace_business_targets_can_be_saved_by_business(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectMaterialStore(Path(temp_dir))
+            state = build_workspace_state_response(project_store=store)
+            business = state["businesses"][0]
+            saved = build_workspace_business_targets_save_response(
+                {
+                    "business_targets": {
+                        "profiles": [
+                            {
+                                "business_key": business["business_key"],
+                                "knowledge_base": business["knowledge_base"],
+                                "domain": business["name"],
+                                "goals": [
+                                    {
+                                        "goal_type": "wechat",
+                                        "goal_value": "health123",
+                                        "label": "加微信",
+                                        "priority": 1,
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                },
+                project_store=store,
+            )
+            refreshed = build_workspace_state_response(
+                project_store=store,
+            )
+
+        saved_profile = saved["business_targets"]["profiles"][0]
+        self.assert_no_project_id_key(saved)
+        self.assert_no_project_id_key(refreshed)
+        self.assertEqual(saved_profile["business_key"], business["business_key"])
+        self.assertEqual(saved_profile["goals"][0]["goal_value"], "health123")
+        refreshed_business = next(item for item in refreshed["businesses"] if item["business_key"] == business["business_key"])
+        self.assertEqual(refreshed_business["goals"][0]["goal_value"], "health123")
+
     def test_admin_scene_template_generate_save_and_prompt_restore(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             store = ProjectMaterialStore(Path(temp_dir))
@@ -3010,11 +3422,141 @@ class SessionRAGWebTest(unittest.TestCase):
                 project_store=store,
             )
 
-        project_context = logic.calls[0]["project_context"]
-        self.assertIn("<activity_settings>", project_context)
-        self.assertIn("AI系统试跑体验名额", project_context)
-        self.assertIn("免费试跑一个视频评论批次", project_context)
-        self.assertEqual(response["activity_settings"]["activity_id"], activity["activity_id"])
+            project_context = logic.calls[0]["project_context"]
+            self.assertIn("<activity_settings>", project_context)
+            self.assertIn("AI系统试跑体验名额", project_context)
+            self.assertIn("免费试跑一个视频评论批次", project_context)
+            self.assertEqual(response["activity_settings"]["activity_id"], activity["activity_id"])
+
+    def test_admin_route_rejudge_returns_ai_suggestion_without_persisting_move(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectMaterialStore(Path(temp_dir))
+            state = build_admin_state_response(project_store=store)
+            uploaded = build_admin_knowledge_upload_response(
+                file_name="route_rejudge.txt",
+                file_data="这是一份企业资料，应该放到公司知识库。".encode("utf-8"),
+                project_id=state["project"]["project_id"],
+                knowledge_base="招聘知识库",
+                domain="岗位资料",
+                section="AI项目经理",
+                project_store=store,
+            )
+            doc = uploaded["document"]
+            original_path = Path(uploaded["absolute_path"])
+
+            with patch.object(
+                ProjectMaterialStore,
+                "_suggest_imported_document_meta",
+                return_value={
+                    "title": "企业资料",
+                    "knowledge_base": "公司私信知识库",
+                    "domain": "公司定位",
+                    "section": "默认板块",
+                    "category": "公司定位",
+                    "description": "企业路由重判",
+                    "keywords": ["公司", "企业"],
+                    "sender_identity": "品牌客服",
+                    "route_source": "llm",
+                    "route_reason": "模型识别为 公司私信知识库/公司定位/默认板块",
+                    "route_confidence": 0.96,
+                },
+            ):
+                rejudged = build_admin_knowledge_route_rejudge_response(
+                    {
+                        "project_id": state["project"]["project_id"],
+                        "doc_id": doc["doc_id"],
+                        "relative_path": doc["relative_path"],
+                        "provider": "minimax",
+                        "url": "https://example.com",
+                        "func_name": "route",
+                        "model_name": "demo",
+                        "max_len_input": 16000,
+                    },
+                    project_store=store,
+                    llm_tools=object(),
+                    model_conf={
+                        "provider": "minimax",
+                        "url": "https://example.com",
+                        "func_name": "route",
+                        "model_name": "demo",
+                        "max_len_input": 16000,
+                    },
+                )
+                refreshed = build_admin_state_response(
+                    project_store=store,
+                    project_id=state["project"]["project_id"],
+                )
+
+                self.assertEqual(rejudged["route"]["knowledge_base"], "公司私信知识库")
+                self.assertEqual(rejudged["proposed"]["knowledge_base"], "公司私信知识库")
+                self.assertTrue(original_path.exists())
+                refreshed_doc = next(
+                    item
+                    for base in refreshed["document_descriptions"]["knowledge_bases"]
+                    for domain in base["domains"]
+                    for section in domain["sections"]
+                    for item in section["documents"]
+                    if item.get("doc_id") == doc["doc_id"]
+                )
+                self.assertEqual(refreshed_doc["knowledge_base"], "招聘知识库")
+                self.assertEqual(refreshed_doc["relative_path"], doc["relative_path"])
+
+    def test_admin_route_update_can_move_document_to_company_knowledge_base(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectMaterialStore(Path(temp_dir))
+            state = build_admin_state_response(project_store=store)
+            uploaded = build_admin_knowledge_upload_response(
+                file_name="route_update.txt",
+                file_data="招聘资料应该移动到企业知识库。".encode("utf-8"),
+                project_id=state["project"]["project_id"],
+                knowledge_base="招聘知识库",
+                domain="岗位资料",
+                section="AI项目经理",
+                project_store=store,
+            )
+            doc = uploaded["document"]
+            old_path = Path(uploaded["absolute_path"])
+            updated = build_admin_knowledge_route_update_response(
+                {
+                    "project_id": state["project"]["project_id"],
+                    "doc_id": doc["doc_id"],
+                    "relative_path": doc["relative_path"],
+                    "knowledge_base": "公司私信知识库",
+                    "domain": "公司定位",
+                    "section": "默认板块",
+                    "route_source": "manual",
+                    "route_reason": "人工修正到企业知识库",
+                    "route_confidence": 1,
+                },
+                project_store=store,
+            )
+            refreshed = build_admin_state_response(
+                project_store=store,
+                project_id=state["project"]["project_id"],
+            )
+            project_dir = Path(temp_dir) / state["project"]["project_id"]
+            manifest = store._read_json(project_dir / "knowledge" / "manifest.json")
+            chunks_text = (project_dir / "knowledge" / "chunks.jsonl").read_text(encoding="utf-8")
+            new_path = Path(updated["absolute_path"])
+
+            self.assertEqual(updated["route"]["knowledge_base"], "公司私信知识库")
+            self.assertFalse(old_path.exists())
+            self.assertTrue(new_path.exists())
+            self.assertTrue(updated["document"]["relative_path"].startswith("knowledge/files/"))
+            self.assertNotEqual(updated["document"]["relative_path"], doc["relative_path"])
+            refreshed_doc = next(
+                item
+                for base in refreshed["document_descriptions"]["knowledge_bases"]
+                for domain in base["domains"]
+                for section in domain["sections"]
+                for item in section["documents"]
+                if item.get("doc_id") == doc["doc_id"]
+            )
+            self.assertEqual(refreshed_doc["knowledge_base"], "公司私信知识库")
+            self.assertEqual(refreshed_doc["domain"], "公司定位")
+            self.assertEqual(refreshed_doc["section"], "")
+            self.assertEqual(next(item for item in manifest.get("documents", []) if item.get("doc_id") == doc["doc_id"])["relative_path"], updated["document"]["relative_path"])
+            self.assertIn("企业知识库", chunks_text)
 
     def test_minimax_requires_page_api_key(self):
         with self.assertRaises(WebInputError):

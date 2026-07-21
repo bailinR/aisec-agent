@@ -28,11 +28,53 @@ Base URL: `http://127.0.0.1:7860`
 }
 ```
 
+账号管理说明：`account_id` 可以由调用方自己维护，例如 `douyin_health_01`，但不是必须字段。若不传 `account_id`，服务端会优先从完整 Cookie 里的 `uid_tt` / `uid_tt_ss` 生成匿名稳定账号标识；因此同一个账号刷新 Cookie 后仍可复用原账号浏览器。若 Cookie 只有 `sessionid` / `sid_guard`，无法稳定识别账号，建议显式传 `account_id`。
+
+指定发送账号时，给每个账号准备一份从已登录浏览器导出的完整 Cookie，并在提交该账号任务时传入对应 Cookie。接口同时支持 `account_cookie` / `account_cookies` / `cookie` / `cookies` 字段，值可以是 `name=value; name2=value2` 字符串，也可以是浏览器插件导出的 `{"cookies":[...]}` JSON 对象或数组。外部系统要用 A 账号发送就传 A 账号 Cookie，要用 B 账号发送就传 B 账号 Cookie。
+
+完整 Cookie JSON 示例：
+
+```json
+{
+  "task_id": "postman_dm_account_a_001",
+  "video_info": "视频讲膝盖疼、上下楼疼、骨积液和干细胞评估方向。",
+  "account_cookies": {
+    "cookies": [
+      {"name": "sessionid", "value": "账号A的sessionid", "domain": ".douyin.com", "path": "/"},
+      {"name": "sid_guard", "value": "账号A的sid_guard", "domain": ".douyin.com", "path": "/"}
+    ]
+  },
+  "comment_info": "我二舅膝盖上下楼疼，这个适合吗",
+  "target_profile_url": "https://www.douyin.com/user/xxxx",
+  "project_name": "大健康AI跨境综合企业服务平台"
+}
+```
+
 说明：
 
 - `task_id` 可不传，系统会自动生成。
 - 正式任务默认会进入 `send` 模式，并自动进入自动队列。
 - `account_cookie` 会被存入任务，但查询接口会做脱敏返回。
+- worker 消费任务时才会把 Cookie 注入新的 Playwright 浏览器上下文；`accepted: 1` 只代表入队成功，不代表已经发送。
+
+## 1.1 按账号常驻浏览器发送
+
+如果希望避免每条任务都切换登录态和关闭浏览器，可以把 worker 启动为账号浏览器池模式：
+
+```bash
+python -m aisec_agent.worker.douyin_dm_worker --mode send --account-browser-pool --max-account-browsers 3 --account-browser edge
+```
+
+这个模式下：
+
+- 系统会根据任务里的 `account_id`，或完整 Cookie 中的 `uid_tt` / `uid_tt_ss` 计算稳定的 `account_key`。
+- 每个 `account_key` 对应一个独立持久化浏览器 profile，目录在 `content/playwright_profiles/accounts/{browser}/{account_key}`。
+- 账号浏览器已打开时，该账号后续任务复用同一个浏览器并排队执行。
+- 账号浏览器未打开且当前池未满时，worker 会为该账号打开新浏览器并注入 Cookie。
+- 默认最多同时保留 3 个账号浏览器；第 4 个账号的任务会留在自动队列里，等有可用槽位后再处理。
+- 单个 worker 仍然一次只执行一条任务，避免同一账号并发操作；需要更高吞吐时应先设计账号级锁和 worker 分片。
+
+任务接口调用方式不变。外部系统只需要按目标发送账号传对应 Cookie：A 账号任务传 A Cookie，B 账号任务传 B Cookie。
 
 返回示例：
 

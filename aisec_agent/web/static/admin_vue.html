@@ -309,19 +309,6 @@
       font-size: 12px;
       line-height: 1.5;
     }
-    .dm-demo-status {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #fbfdff;
-      padding: 10px;
-      display: grid;
-      gap: 6px;
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.5;
-    }
-    .dm-demo-step { display: flex; gap: 8px; align-items: flex-start; }
-    .dm-demo-step strong { color: var(--text); min-width: 96px; }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
     .inline-check { width: auto; min-height: 0; }
     button.mini { min-height: 30px; padding: 0 9px; font-size: 12px; }
@@ -469,6 +456,112 @@
     }
     .company-kb-name { font-weight: 900; }
     .company-kb-desc { color: var(--muted); font-size: 12px; line-height: 1.5; margin-top: 3px; }
+    .account-board {
+      display: grid;
+      gap: 14px;
+    }
+    .account-workspace {
+      display: grid;
+      grid-template-columns: 360px minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+    }
+    .account-list {
+      display: grid;
+      gap: 10px;
+      max-height: calc(100vh - 330px);
+      overflow: auto;
+      padding-right: 2px;
+    }
+    .account-card {
+      width: 100%;
+      min-height: 86px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      color: var(--text);
+      box-shadow: none;
+      text-align: left;
+      padding: 12px;
+      display: grid;
+      gap: 7px;
+    }
+    .account-card:hover { border-color: var(--line-strong); background: #f9fbff; box-shadow: none; }
+    .account-card.active { border-color: rgba(13,135,152,.36); background: var(--accent-soft); }
+    .account-card-head, .account-card-meta, .account-editor-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-width: 0;
+    }
+    .account-name { font-weight: 900; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .account-card-meta { color: var(--muted); font-size: 12px; justify-content: flex-start; flex-wrap: wrap; }
+    .account-status {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      min-height: 24px;
+      padding: 3px 8px;
+      display: inline-flex;
+      align-items: center;
+      color: var(--muted);
+      background: #fff;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .account-status.hosting { border-color: rgba(24,115,72,.28); color: var(--ok); background: #ecfdf3; }
+    .account-status.paused { border-color: rgba(161,92,7,.28); color: var(--amber); background: var(--amber-soft); }
+    .account-status.risk { border-color: rgba(180,35,24,.28); color: var(--danger); background: #fff1f0; }
+    .account-cookie-box textarea { min-height: 132px; }
+    .account-queue-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .account-queue-item {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fbfdff;
+      padding: 10px;
+      min-width: 0;
+    }
+    .account-queue-label { color: var(--muted); font-size: 12px; }
+    .account-queue-value { margin-top: 4px; font-size: 18px; font-weight: 900; line-height: 1; }
+    .account-note {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fbfdff;
+      color: var(--muted);
+      padding: 10px 12px;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+    .conversation-board { display: grid; gap: 14px; }
+    .conversation-layout {
+      display: grid;
+      grid-template-columns: 360px minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+    }
+    .conversation-log {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #0f172a;
+      color: #dbeafe;
+      min-height: 260px;
+      max-height: 420px;
+      overflow: auto;
+      padding: 12px;
+      font-family: Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+    }
+    .conversation-status-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
     .kb-command {
       display: grid;
       grid-template-columns: minmax(260px, 1fr) 180px auto auto;
@@ -489,6 +582,36 @@
       display: grid;
       gap: 12px;
       max-width: 920px;
+    }
+    .kb-upload-note {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+      max-width: 72ch;
+    }
+    .kb-upload-summary {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(13, 135, 152, .16);
+      background: #f7fcfd;
+    }
+    .kb-upload-summary-head {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .kb-upload-summary-title {
+      font-weight: 900;
+      line-height: 1.35;
+    }
+    .kb-upload-summary-path {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+      word-break: break-all;
     }
     .kb-upload-check {
       min-height: 40px;
@@ -939,6 +1062,27 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 10px;
     }
+    .kb-route-editor {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fbfdff;
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+    }
+    .kb-route-editor-note,
+    .kb-route-editor-path {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+      word-break: break-word;
+    }
+    .kb-route-editor-note {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
     .kb-upload {
       border: 1px solid var(--line);
       border-radius: 20px;
@@ -1338,32 +1482,6 @@
       gap: 14px;
       align-items: start;
     }
-    .dm-data-body {
-      display: grid;
-      gap: 12px;
-    }
-    .dm-data-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
-      gap: 12px;
-      align-items: start;
-    }
-    .dm-data-column {
-      display: grid;
-      gap: 12px;
-      align-content: start;
-    }
-    .dm-data-block {
-      display: grid;
-      gap: 8px;
-      align-content: start;
-    }
-    .dm-data-label {
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.45;
-      font-weight: 700;
-    }
     .dm-flow {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1601,8 +1719,10 @@
       .layout { grid-template-columns: 1fr; }
       .sidebar { position: static; height: auto; }
       .workspace, .split-editor { grid-template-columns: 1fr; }
-      .dm-data-grid { grid-template-columns: 1fr; }
       .dm-flow { grid-template-columns: 1fr; }
+      .account-workspace { grid-template-columns: 1fr; }
+      .account-queue-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .conversation-layout { grid-template-columns: 1fr; }
       .batch-options, .batch-result { grid-template-columns: 1fr; }
       .kb-command { grid-template-columns: minmax(0, 1fr) 170px auto auto; }
       .kb-workbench { grid-template-columns: 1fr; }
@@ -1625,8 +1745,9 @@
         gap: 8px;
         padding: 12px;
       }
-      .dm-data-grid { grid-template-columns: 1fr; }
       .dm-flow { grid-template-columns: 1fr; }
+      .account-queue-grid { grid-template-columns: 1fr; }
+      .conversation-status-grid { grid-template-columns: 1fr; }
       .batch-options, .batch-result, .batch-stats { grid-template-columns: 1fr; }
       .batch-task-head { align-items: flex-start; flex-direction: column; }
       .batch-task-actions { justify-content: flex-start; }
@@ -1765,6 +1886,249 @@
             </section>
           </section>
 
+          <section v-if="activeMenu === 'accounts'" class="account-board">
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">账号托管概览</div>
+                  <div class="panel-meta">保存账号登录信息后，可打开本地浏览器托管私信会话；后续自动监控新消息会沿用这些账号配置。</div>
+                </div>
+                <div class="panel-actions">
+                  <button class="secondary mini" @click="refreshAccountQueueStatus">刷新队列</button>
+                  <button class="secondary mini" @click="addManagedAccount">新增账号</button>
+                  <button @click="saveManagedAccounts">保存账号</button>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div class="account-queue-grid">
+                  <div class="account-queue-item">
+                    <div class="account-queue-label">托管账号</div>
+                    <div class="account-queue-value">{{ managedAccountStats.total }}</div>
+                  </div>
+                  <div class="account-queue-item">
+                    <div class="account-queue-label">已启用</div>
+                    <div class="account-queue-value">{{ managedAccountStats.enabled }}</div>
+                  </div>
+                  <div class="account-queue-item">
+                    <div class="account-queue-label">待发送队列</div>
+                    <div class="account-queue-value">{{ accountQueueCount('pending') }}</div>
+                  </div>
+                  <div class="account-queue-item">
+                    <div class="account-queue-label">需人工接管</div>
+                    <div class="account-queue-value">{{ accountQueueCount('manual_required') }}</div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <div class="account-workspace">
+              <aside class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">账号列表</div>
+                    <div class="panel-meta">每个账号对应一个浏览器会话和一套 Cookie。</div>
+                  </div>
+                </div>
+                <div class="panel-body">
+                  <div class="empty" v-if="!managedAccounts.length">还没有账号，点击“新增账号”开始托管。</div>
+                  <div class="account-list" v-else>
+                    <button
+                      class="account-card"
+                      v-for="account in managedAccounts"
+                      :key="account.id"
+                      :class="{active: selectedManagedAccountId === account.id}"
+                      @click="selectManagedAccount(account.id)"
+                    >
+                      <span class="account-card-head">
+                        <span class="account-name">{{ account.name || '未命名账号' }}</span>
+                        <span class="account-status" :class="account.status">{{ managedAccountStatusLabel(account.status) }}</span>
+                      </span>
+                      <span class="account-card-meta">
+                        <span>{{ account.platform || '抖音' }}</span>
+                        <span>{{ managedAccountBrowserLabel(account.browser_name) }}</span>
+                        <span>{{ account.cookie_text ? '已保存 Cookie' : '未保存 Cookie' }}</span>
+                      </span>
+                      <span class="company-meta">用于托管私信回复，并复用该账号登录信息。</span>
+                    </button>
+                  </div>
+                </div>
+              </aside>
+
+              <section class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">{{ selectedManagedAccount.name || '账号配置' }}</div>
+                    <div class="panel-meta">登录 Cookie 只保存在本机浏览器 localStorage，并在点击操作时传给本地接口。</div>
+                  </div>
+                  <div class="panel-actions" v-if="selectedManagedAccount.id">
+                    <button class="secondary mini" @click="applyManagedAccountCookie" :disabled="accountBrowserOpening || !selectedManagedAccount.cookie_text">应用 Cookie</button>
+                    <button class="secondary mini" @click="openManagedAccountInbox" :disabled="accountBrowserOpening">打开托管浏览器</button>
+                    <button class="danger mini" @click="deleteManagedAccount" :disabled="accountBrowserOpening">删除</button>
+                  </div>
+                </div>
+                <div class="panel-body" v-if="selectedManagedAccount.id">
+                  <div class="field-grid three">
+                    <div>
+                      <label>账号名称</label>
+                      <input v-model.trim="selectedManagedAccount.name" @input="persistManagedAccounts" placeholder="例如：健康抖音号">
+                    </div>
+                    <div>
+                      <label>平台</label>
+                      <select v-model="selectedManagedAccount.platform" @change="persistManagedAccounts">
+                        <option value="抖音">抖音</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label>状态</label>
+                      <select v-model="selectedManagedAccount.status" @change="persistManagedAccounts">
+                        <option value="hosting">托管中</option>
+                        <option value="paused">暂停</option>
+                        <option value="risk">需人工处理</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="field-grid three">
+                    <div>
+                      <label>打开浏览器</label>
+                      <select v-model="selectedManagedAccount.browser_name" @change="persistManagedAccounts">
+                        <option value="edge">Edge</option>
+                        <option value="chrome">Google Chrome</option>
+                        <option value="default">默认浏览器</option>
+                      </select>
+                    </div>
+                    <label class="actions">
+                      <input class="inline-check" type="checkbox" v-model="selectedManagedAccount.headless" @change="persistManagedAccounts">
+                      <span>无头模式</span>
+                    </label>
+                    <label class="actions">
+                      <input class="inline-check" type="checkbox" v-model="selectedManagedAccount.auto_reply" @change="persistManagedAccounts">
+                      <span>允许自动回复</span>
+                    </label>
+                  </div>
+                  <div class="account-cookie-box">
+                    <div class="dm-cookie-head">
+                      <label class="dm-cookie-title">账号 Cookie / 登录信息</label>
+                      <div class="dm-cookie-tools">
+                        <input class="dm-cookie-file" type="file" accept=".json,.txt" @change="onManagedAccountCookieFile">
+                        <button class="secondary mini" @click="clearManagedAccountCookie" :disabled="!selectedManagedAccount.cookie_text">清空</button>
+                      </div>
+                    </div>
+                    <textarea v-model="selectedManagedAccount.cookie_text" @input="persistManagedAccounts" spellcheck="false" placeholder='粘贴 {"cookies":[...]}，或 name=value; name2=value2'></textarea>
+                  </div>
+                  <div class="account-note">当前页面先完成账号配置和浏览器托管入口。真正“持续监控新私信、生成多轮回复直到达成引流目标”的 worker 能力，后续可以基于这些账号记录继续接入队列消费和会话状态机。</div>
+                </div>
+                <div class="panel-body" v-else>
+                  <div class="empty">请选择或新增一个账号。</div>
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <section v-if="activeMenu === 'conversations'" class="conversation-board">
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">私信对话监控</div>
+                  <div class="panel-meta">选择已托管账号，使用打开的账号浏览器监控新消息，并按知识库和提示词自动生成后续回复。</div>
+                </div>
+                <div class="panel-actions">
+                  <button class="secondary mini" @click="refreshConversationMonitors">刷新状态</button>
+                  <button class="secondary mini" @click="stopConversationMonitor" :disabled="!selectedManagedAccount.id">暂停监控</button>
+                  <button @click="startConversationMonitor" :disabled="!selectedManagedAccount.id || !selectedManagedAccount.cookie_text">启动自动对话</button>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div class="conversation-status-grid">
+                  <div class="account-queue-item">
+                    <div class="account-queue-label">监控账号</div>
+                    <div class="account-queue-value">{{ conversationMonitorCounts.total || 0 }}</div>
+                  </div>
+                  <div class="account-queue-item">
+                    <div class="account-queue-label">运行中</div>
+                    <div class="account-queue-value">{{ conversationMonitorCounts.running || 0 }}</div>
+                  </div>
+                  <div class="account-queue-item">
+                    <div class="account-queue-label">异常</div>
+                    <div class="account-queue-value">{{ conversationMonitorCounts.error || 0 }}</div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <div class="conversation-layout">
+              <aside class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">选择账号</div>
+                    <div class="panel-meta">账号来自“账号管理”里保存的托管账号。</div>
+                  </div>
+                </div>
+                <div class="panel-body">
+                  <div class="empty" v-if="!managedAccounts.length">请先到账号管理新增账号并保存 Cookie。</div>
+                  <div class="account-list" v-else>
+                    <button
+                      class="account-card"
+                      v-for="account in managedAccounts"
+                      :key="'conversation-' + account.id"
+                      :class="{active: selectedManagedAccountId === account.id}"
+                      @click="selectManagedAccount(account.id)"
+                    >
+                      <span class="account-card-head">
+                        <span class="account-name">{{ account.name || '未命名账号' }}</span>
+                        <span class="account-status" :class="conversationMonitorForAccount(account).status || account.status">{{ conversationMonitorStatusLabel(conversationMonitorForAccount(account).status || account.status) }}</span>
+                      </span>
+                      <span class="account-card-meta">
+                        <span>{{ managedAccountBrowserLabel(account.browser_name) }}</span>
+                        <span>{{ account.cookie_text ? '可监控' : '缺少 Cookie' }}</span>
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </aside>
+
+              <section class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">{{ selectedManagedAccount.name || '对话状态' }}</div>
+                    <div class="panel-meta">{{ activeConversationMonitor.status ? ('当前状态：' + conversationMonitorStatusLabel(activeConversationMonitor.status)) : '尚未启动监控' }}</div>
+                  </div>
+                  <div class="panel-actions">
+                    <label class="actions">
+                      <input class="inline-check" type="checkbox" v-model="conversationSettings.auto_send" @change="persistConversationSettings">
+                      <span>自动发送</span>
+                    </label>
+                    <div style="width: 110px">
+                      <select v-model="conversationSettings.poll_seconds" @change="persistConversationSettings">
+                        <option value="5">5 秒</option>
+                        <option value="8">8 秒</option>
+                        <option value="15">15 秒</option>
+                        <option value="30">30 秒</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+                <div class="panel-body">
+                  <div class="field-grid three">
+                    <div>
+                      <label>最后用户消息</label>
+                      <input :value="activeConversationMonitor.last_message || '暂无'" readonly>
+                    </div>
+                    <div>
+                      <label>最后自动回复</label>
+                      <input :value="activeConversationMonitor.last_reply || '暂无'" readonly>
+                    </div>
+                    <div>
+                      <label>回复次数</label>
+                      <input :value="activeConversationMonitor.reply_count || 0" readonly>
+                    </div>
+                  </div>
+                  <div class="conversation-log">{{ conversationMonitorLogText || '尚无监控日志。启动后会显示打开浏览器、识别新消息、生成回复和发送结果。' }}</div>
+                  <div class="account-note">如果页面出现登录、验证码、二次验证或风控提示，监控会记录异常，需要先在打开的浏览器里人工处理，再重新启动监控。</div>
+                </div>
+              </section>
+            </div>
+          </section>
+
           <section v-if="activeMenu === 'knowledge'" class="knowledge-hub">
             <div class="kb-command">
               <div class="kb-search">
@@ -1781,23 +2145,7 @@
 
             <div class="kb-upload-inline" v-if="showKnowledgeUpload">
               <div class="kb-stage-title">新建 / 上传资料</div>
-              <div class="field-grid three">
-                <div>
-                  <label>知识库</label>
-                  <input id="knowledge-upload-name" v-model="upload.knowledge_base" list="knowledge-base-options">
-                  <datalist id="knowledge-base-options">
-                    <option v-for="name in knowledgeBaseOptions" :key="name" :value="name"></option>
-                  </datalist>
-                </div>
-                <div>
-                  <label>业务</label>
-                  <input v-model="upload.domain" placeholder="例如：睡眠、招聘、跨境电商">
-                </div>
-                <div>
-                  <label>子目录</label>
-                  <input v-model="upload.section" placeholder="例如：售前资料、合规边界、产品说明">
-                </div>
-              </div>
+              <div class="kb-upload-note">只需要选择一个文件，系统会自动识别它应该进入哪个知识库、业务板块和子目录。手工目录选择已移到后台识别流程里。</div>
               <div class="field-grid">
                 <div>
                   <label>资料文件</label>
@@ -1805,12 +2153,27 @@
                 </div>
                 <label class="actions kb-upload-check">
                   <input class="inline-check" type="checkbox" v-model="upload.useAi">
-                  <span>上传时使用当前模型生成标签和描述</span>
+                  <span>上传时使用当前模型辅助识别标签和描述</span>
                 </label>
               </div>
               <div class="actions">
-                <button @click="uploadKnowledge">上传到知识库</button>
+                <button @click="uploadKnowledge">自动上传并归档</button>
                 <button class="secondary" @click="showKnowledgeUpload = false">收起</button>
+              </div>
+              <div class="kb-upload-summary" v-if="uploadResult">
+                <div class="kb-upload-summary-head">
+                  <span class="kb-route-editor-badge">已识别</span>
+                  <span class="kb-upload-summary-title">{{ uploadResult.title || uploadResult.source_file_name || (upload.file ? upload.file.name : "") }}</span>
+                </div>
+                <div class="kb-card-tags">
+                  <span class="tag accent">{{ uploadResult.knowledge_base }}</span>
+                  <span class="tag">{{ uploadResult.domain }}</span>
+                  <span class="tag">{{ uploadResult.section }}</span>
+                </div>
+                <div class="kb-upload-summary-path">路径：{{ uploadResult.relative_path }}</div>
+                <div class="kb-upload-summary-path" v-if="uploadResult.route_reason">
+                  依据：{{ uploadResult.route_reason }}<span v-if="uploadResult.route_confidence"> · 置信度 {{ Math.round(uploadResult.route_confidence * 100) }}%</span>
+                </div>
               </div>
             </div>
 
@@ -2034,6 +2397,53 @@
                         <input :value="selectedDocDraft.relative_path" readonly>
                       </div>
                     </div>
+                    <div class="kb-route-editor">
+                      <div class="field-grid three">
+                        <div>
+                          <label>目标知识库</label>
+                          <select v-model="selectedDocDraft.routeKnowledgeBase" @change="markSelectedDocRouteManual">
+                            <option v-for="baseName in routeKnowledgeBaseOptions()" :key="baseName" :value="baseName">{{ baseName }}</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label>目标业务组</label>
+                          <input
+                            v-model.trim="selectedDocDraft.routeDomain"
+                            @input="markSelectedDocRouteManual"
+                            :list="'route-domain-' + selectedDocKey"
+                            placeholder="例如：公司定位、招聘流程"
+                          >
+                          <datalist :id="'route-domain-' + selectedDocKey">
+                            <option v-for="domainName in routeDomainOptions(selectedDocDraft.routeKnowledgeBase)" :key="domainName" :value="domainName"></option>
+                          </datalist>
+                        </div>
+                        <div>
+                          <label>目标章节</label>
+                          <input
+                            v-model.trim="selectedDocDraft.routeSection"
+                            @input="markSelectedDocRouteManual"
+                            :list="'route-section-' + selectedDocKey"
+                            placeholder="例如：默认板块、业务说明"
+                          >
+                          <datalist :id="'route-section-' + selectedDocKey">
+                            <option v-for="sectionName in routeSectionOptions(selectedDocDraft.routeKnowledgeBase, selectedDocDraft.routeDomain)" :key="sectionName" :value="sectionName"></option>
+                          </datalist>
+                        </div>
+                      </div>
+                      <div class="kb-route-editor-note">
+                        <span class="tag accent" v-if="selectedDocDraft.routeSource">{{ selectedDocDraft.routeSource }}</span>
+                        <span>依据：{{ selectedDocDraft.routeReason || '尚未重新判断' }}</span>
+                        <span v-if="selectedDocDraft.routeConfidence">· 置信度 {{ Math.round((selectedDocDraft.routeConfidence || 0) * 100) }}%</span>
+                      </div>
+                      <div class="kb-route-editor-path">
+                        目标路径：{{ routeDocumentPreviewPath(selectedDocDraft) }}
+                      </div>
+                      <div class="panel-actions">
+                        <button class="secondary mini" @click="resetSelectedDocRouteDraft" :disabled="routeSaving || routeRejudging">恢复当前</button>
+                        <button class="secondary mini" @click="rejudgeSelectedDocRoute" :disabled="routeSaving || routeRejudging">AI重新判断</button>
+                        <button @click="saveSelectedDocRoute" :disabled="routeSaving || routeRejudging">保存路由</button>
+                      </div>
+                    </div>
                     <div>
                       <label>文件描述</label>
                       <textarea rows="3" v-model="selectedDocDraft.description"></textarea>
@@ -2055,7 +2465,7 @@
             <div class="prompt-board-toolbar">
               <div>
                 <div class="kb-stage-title">提示词资产</div>
-                <div class="kb-stage-sub">场景模板已单独成组；点击卡片查看或修改，最后一组说明 Prompt 的包含关系。</div>
+                <div class="kb-stage-sub">流程模板已单独成组；点击卡片查看或修改，最后一组说明 Prompt 的包含关系。</div>
               </div>
             </div>
 
@@ -2101,13 +2511,13 @@
                 <div class="prompt-compose-head">
                   <div>
                     <div class="prompt-compose-title">提示词包含关系</div>
-                    <div class="prompt-compose-meta">最终 Prompt 不是单独写死的一段文本，而是把用户输入、全局规则、发送身份、场景模板、场景材料、任务规则、活动约束和命中知识按层叠加出来。</div>
+                    <div class="prompt-compose-meta">最终 Prompt 不是单独写死的一段文本，而是把用户输入、全局规则、发送身份、业务承接规则、流程模板、场景材料、任务规则、活动约束和命中知识按层叠加出来。</div>
                   </div>
                   <span class="tag accent">{{ group.items.length }} 层</span>
                 </div>
                 <div class="prompt-compose-root">
                   <span class="prompt-compose-root-chip">最终 Prompt</span>
-                  <span class="prompt-compose-root-desc">= 用户输入 + 全局提示词 + 发送身份 + 场景模板 + 场景材料 + 任务规则提示词 + 活动提示词 + 检索知识</span>
+                  <span class="prompt-compose-root-desc">= 用户输入 + 全局提示词 + 发送身份 + 业务承接规则 + 流程模板 + 场景材料 + 任务规则提示词 + 活动提示词 + 检索知识</span>
                 </div>
                 <div class="prompt-compose-chain">
                   <span class="prompt-compose-step">用户输入</span>
@@ -2116,7 +2526,9 @@
                   <span class="prompt-compose-symbol">+</span>
                   <span class="prompt-compose-step">发送身份</span>
                   <span class="prompt-compose-symbol">+</span>
-                  <span class="prompt-compose-step">场景模板</span>
+                  <span class="prompt-compose-step">业务承接规则</span>
+                  <span class="prompt-compose-symbol">+</span>
+                  <span class="prompt-compose-step">流程模板</span>
                   <span class="prompt-compose-symbol">+</span>
                   <span class="prompt-compose-step">场景材料</span>
                   <span class="prompt-compose-symbol">+</span>
@@ -2129,8 +2541,8 @@
                   <span class="prompt-compose-step main">最终 Prompt</span>
                 </div>
                 <div class="prompt-compose-notes">
-                  <div>包含关系：身份由业务、视频概述和活动共同决定；场景模板决定回复骨架；场景材料提供当前场景的事实素材；任务规则提示词决定本轮怎么做、按什么流程做、输出什么，以及哪些内容不要说/不要编；活动提示词只有命中时才加入；知识库只取命中文件。</div>
-                  <div>其中，场景模板会优先覆盖回复结构，场景材料和知识库负责给出可核实的事实支撑，活动钩子负责补上资料、评估、名额或入口。</div>
+                  <div>包含关系：身份由业务、视频概述和活动共同决定；业务承接规则判断用户属于哪个业务、意向强弱和下一步承接动作；流程模板决定回复的话术步骤；场景材料提供当前场景的事实素材；任务规则提示词决定本轮怎么做、按什么流程做、输出什么，以及哪些内容不要说/不要编；活动提示词只有命中时才加入；知识库只取命中文件。</div>
+                  <div>其中，流程模板会优先约束回复步骤，例如首次私信六步引导；场景材料和知识库负责给出可核实的事实支撑，活动钩子负责补上资料、评估、名额或入口。</div>
                 </div>
               </div>
             </section>
@@ -2343,15 +2755,10 @@
               <div class="panel-head">
                 <div>
                   <div class="panel-title">私信生成调试</div>
-                  <div class="panel-meta">生成回复后可查看 input / reply / prompts / config</div>
+                  <div class="panel-meta">生成回复后查看私信内容</div>
                 </div>
                 <div class="panel-actions">
-                  <button class="secondary mini" @click="copyText(dmAnswer, '私信文案已复制')" :disabled="!dmAnswer || dmRunning">复制回复</button>
-                  <button class="secondary mini" @click="copyReplyAndOpenDouyin" :disabled="!dmAnswer || !dmForm.target_profile_url || dmRunning">复制并打开</button>
-                  <button class="secondary mini" @click="runDouyinDmDemo(false)" :disabled="!dmAnswer || !dmForm.target_profile_url || dmRunning">预填私信</button>
                   <button class="danger mini" @click="runDouyinDmDemo(true)" :disabled="!dmAnswer || !dmForm.target_profile_url || dmRunning">发送私信</button>
-                  <button class="secondary mini" @click="openDouyinProfile" :disabled="!dmForm.target_profile_url || dmRunning">打开主页</button>
-                  <button class="secondary mini" @click="pauseDmDebug" :disabled="!dmRunning">暂停</button>
                   <button @click="generateDm" :disabled="dmRunning">生成私信</button>
                 </div>
               </div>
@@ -2381,11 +2788,6 @@
                     <input class="inline-check" type="checkbox" v-model="dmForm.headless">
                     <span>无头模式</span>
                   </label>
-                  <button class="secondary" @click="copyText(dmForm.target_profile_url || '', '主页链接已复制')" :disabled="!dmForm.target_profile_url">复制链接</button>
-                  <button class="secondary" @click="openDouyinProfile" :disabled="!dmForm.target_profile_url">打开主页</button>
-                  <button class="secondary" @click="saveDmSettings">保存设置</button>
-                  <button class="secondary" @click="pauseDmDebug" :disabled="!dmRunning">暂停</button>
-                  <button @click="generateAndRunDouyinDemo" :disabled="!dmForm.target_profile_url || dmRunning">生成并演示</button>
                 </div>
               </div>
                 <div class="dm-cookie-panel">
@@ -2394,11 +2796,6 @@
                       <input class="inline-check" type="checkbox" v-model="dmForm.use_account_cookie">
                       <span>使用账号 Cookie 跳过登录</span>
                     </label>
-                    <div class="dm-cookie-tools">
-                      <input class="dm-cookie-file" type="file" accept=".json,.txt" @change="onDouyinCookieFile">
-                      <button class="secondary mini" @click="clearDouyinAccountCookie" :disabled="!dmForm.account_cookie_text">清空</button>
-                      <button class="secondary mini" @click="applyDouyinAccountCookie" :disabled="!dmForm.use_account_cookie || !dmForm.account_cookie_text.trim()">应用到浏览器</button>
-                    </div>
                   </div>
                   <textarea
                     v-if="dmForm.use_account_cookie"
@@ -2407,7 +2804,7 @@
                     spellcheck="false"
                     placeholder='粘贴 {"cookies":[...]}，或 name=value; name2=value2'
                   ></textarea>
-                  <div class="panel-meta">Cookie 只会传给本地调试接口，不写入代码；点击“应用到浏览器”后，会写入当前选择的 Edge/Chrome 本地调试会话。</div>
+                  <div class="panel-meta">Cookie 只会传给本地调试接口，不写入代码；发送私信时会随当前调试请求使用。</div>
                 </div>
                 <div class="field-grid">
                   <div>
@@ -2419,65 +2816,29 @@
                     <textarea rows="5" v-model="dmForm.video_overview"></textarea>
                   </div>
                 </div>
-                <div class="field-grid three">
-                  <div>
-                    <label>阶段</label>
-                    <select v-model="dmForm.conversation_stage">
-                      <option value="first_comment">用户评论 -> 首次私信</option>
-                      <option value="private_followup">用户私信 -> 私信维护</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label>当前平台</label>
-                    <input v-model="dmForm.source_platform">
-                  </div>
-                  <div>
-                    <label>引流目标</label>
-                    <input v-model="dmForm.conversion_target">
-                  </div>
-                </div>
-                <div>
-                  <label>目标补充</label>
-                  <textarea rows="3" v-model="dmForm.target_note"></textarea>
-                </div>
                 <div class="chat-box">
                   <div class="bubble user" v-if="dmForm.question">{{ dmForm.question }}</div>
                   <div class="bubble ai" v-if="dmAnswer">{{ dmAnswer }}</div>
                   <div class="empty" v-if="!dmAnswer">生成后，回复会显示在这里。</div>
                 </div>
-                <div class="dm-demo-status" v-if="douyinDemoResult.steps && douyinDemoResult.steps.length">
-                  <div class="dm-demo-step" v-for="step in douyinDemoResult.steps" :key="step.name + step.detail">
-                    <strong>{{ step.ok ? '完成' : '等待' }} · {{ step.name }}</strong>
-                    <span>{{ step.detail || '-' }}</span>
-                  </div>
-                </div>
               </div>
             </section>
-            <aside class="panel">
+            <section class="panel">
               <div class="panel-head">
-                <div>
-                  <div class="panel-title">本次调试数据</div>
-                  <div class="panel-meta">{{ dmConfigLabel }}</div>
-                </div>
-                <button class="secondary mini" @click="copyText(JSON.stringify(dmMeta, null, 2), '调试数据已复制')" :disabled="!dmMeta.reply">复制</button>
+                <div class="panel-title">提示词模块</div>
+                <span class="tag accent">{{ dmPrompts.length }} 项</span>
               </div>
               <div class="panel-body">
-                <div class="preview-box" v-if="dmMeta.input">{{ JSON.stringify(dmMeta.input, null, 2) }}</div>
-                <div class="tree-group" v-if="dmPrompts.length">
-                  <div class="tree-group-head">
-                    <span>提示词模块</span>
-                    <span class="tag accent">{{ dmPrompts.length }} 项</span>
-                  </div>
-                  <div class="file-list">
-                    <button class="file-row" v-for="mod in dmPrompts" :key="mod.key" :class="{selected: activeDmPromptKey === mod.key}" @click="activeDmPromptKey = mod.key">
-                      <span class="file-name">{{ mod.title || mod.key }}</span>
-                      <span class="file-path">{{ mod.chars || 0 }} 字符</span>
-                    </button>
-                  </div>
+                <div class="file-list" v-if="dmPrompts.length">
+                  <button class="file-row" v-for="mod in dmPrompts" :key="mod.key" :class="{selected: activeDmPromptKey === mod.key}" @click="activeDmPromptKey = mod.key">
+                    <span class="file-name">{{ mod.title || mod.key }}</span>
+                    <span class="file-path">{{ mod.chars || 0 }} 字符</span>
+                  </button>
                 </div>
+                <div class="empty" v-else>生成后显示提示词模块。</div>
                 <textarea class="small-editor" v-if="activeDmPrompt.content" :value="activeDmPrompt.content" readonly></textarea>
               </div>
-            </aside>
+            </section>
             <section class="panel">
               <div class="panel-head">
                 <div>
@@ -2539,10 +2900,19 @@
             documentDescriptions: {knowledge_bases: [], domains: []},
             companySettings: {companies: [], company_knowledge_bases: [], knowledge_bases: []},
             selectedCompanyId: "",
+            managedAccounts: [],
+            selectedManagedAccountId: "",
+            accountQueueStatus: {counts: {}, queue: {}, tasks: {}},
+            accountBrowserOpening: false,
+            conversationMonitors: [],
+            conversationMonitorCounts: {total: 0, running: 0, error: 0},
+            conversationSettings: {auto_send: true, poll_seconds: "8"},
+            conversationMonitorTimer: null,
             sceneTemplates: {templates: []},
             activitySettings: {activities: []},
             projectFiles: [],
-            upload: {knowledge_base: "公司私信知识库", domain: "", section: "", file: null, useAi: true},
+            upload: {file: null, useAi: true},
+            uploadResult: null,
             knowledgeLevel: "bases",
             knowledgeSearch: "",
             knowledgeType: "",
@@ -2551,6 +2921,8 @@
             selectedKnowledgeDomainName: "",
             selectedDocKey: "",
             selectedDocDraft: {},
+            routeSaving: false,
+            routeRejudging: false,
             expandedPromptGroups: {},
             promptGroupVisibleLimits: {},
             promptMeasureFrame: 0,
@@ -2589,7 +2961,6 @@
             },
             dmAnswer: "",
             dmMeta: {},
-            douyinDemoResult: {},
             activeDmPromptKey: "final_prompt",
             dmRunning: false,
             dmAction: "",
@@ -2600,8 +2971,10 @@
           menus() {
             return [
               {key: "company", label: "公司", icon: "CO", desc: "维护公司主体，并分配该公司可检索的知识库。"},
+              {key: "accounts", label: "账号管理", icon: "AC", desc: "保存账号登录信息，打开浏览器托管私信回复。"},
+              {key: "conversations", label: "私信对话", icon: "CH", desc: "监控托管账号的新私信，自动生成并推进多轮对话。"},
               {key: "knowledge", label: "知识库", icon: "KB", desc: "文件夹式知识库，映射真实路径，支持文件预览和修改。"},
-              {key: "prompts", label: "提示词", icon: "PT", desc: "管理全局、业务、任务规则、活动提示词，并说明最终组装关系。"},
+              {key: "prompts", label: "提示词", icon: "PT", desc: "管理全局、业务承接、任务规则、活动提示词，并说明最终组装关系。"},
               {key: "batch", label: "批量任务", icon: "BT", desc: "批量维护评论转私信任务，逐条生成并预填或发送。"},
               {key: "dm", label: "私信调试", icon: "DM", desc: "用当前配置生成私信，查看简化响应和提示词链路。"},
             ];
@@ -2619,6 +2992,29 @@
           },
           currentCompanyId() {
             return this.selectedCompany && this.selectedCompany.company_id || "";
+          },
+          selectedManagedAccount() {
+            return this.managedAccounts.find(item => item.id === this.selectedManagedAccountId)
+              || this.managedAccounts[0]
+              || {};
+          },
+          managedAccountStats() {
+            const total = this.managedAccounts.length;
+            const enabled = this.managedAccounts.filter(item => item.status !== "paused").length;
+            const withCookie = this.managedAccounts.filter(item => String(item.cookie_text || "").trim()).length;
+            return {total, enabled, withCookie};
+          },
+          activeConversationMonitor() {
+            const account = this.selectedManagedAccount || {};
+            return this.conversationMonitorForAccount(account);
+          },
+          conversationMonitorLogText() {
+            const logs = this.activeConversationMonitor.logs || [];
+            return logs.map(item => [
+              item.time || "",
+              item.level ? "[" + item.level + "]" : "",
+              item.text || "",
+            ].filter(Boolean).join(" ")).join("\n");
           },
           allKnowledgeBases() {
             const fromSettings = this.companySettings && this.companySettings.knowledge_bases || [];
@@ -2829,7 +3225,7 @@
               if (!file || file.type !== "knowledge_document") return false;
               const relative = filePath(file);
               const text = filePromptText(file);
-              return /\/prompts?\//i.test(relative) || /提示词|场景模板|活动|钩子|规则|首次私信|私信维护/.test(text);
+              return /\/prompts?\//i.test(relative) || /提示词|流程模板|场景模板|活动|钩子|规则|首次私信|私信维护/.test(text);
             };
             const isActivityPromptFile = file => /活动|钩子|资料包|名额|入口/.test(filePromptText(file));
             const isTaskPromptFile = file => /任务|首次私信|私信维护|读取规则|合规规则|输出规则/.test(filePromptText(file));
@@ -2855,7 +3251,7 @@
               id: "template:" + tpl.template_id,
               title: tpl.title || tpl.template_id,
               kind: "template",
-              kindLabel: "场景模板",
+              kindLabel: "流程模板",
               content: JSON.stringify(tpl, null, 2),
               tags: tpl.tags || [],
               location: this.promptLocationFromTemplate(tpl),
@@ -2865,10 +3261,10 @@
               raw: tpl,
             }));
             const businessItems = [
-              ...files.filter(file => file.type === "scene_prompt").map(file => fileItem(file, "业务提示词", ["场景"])),
+              ...files.filter(file => file.type === "scene_prompt").map(file => fileItem(file, "业务承接规则", ["场景"])),
               ...knowledgePromptFiles
                 .filter(file => !isActivityPromptFile(file) && !isTaskPromptFile(file))
-                .map(file => fileItem(file, "业务提示词", ["知识库", "业务规则"])),
+                .map(file => fileItem(file, "业务承接规则", ["知识库", "承接规则"])),
             ];
             const materialItems = files
               .filter(file => file.type === "scene_materials")
@@ -2913,12 +3309,12 @@
             });
             return [
               {key: "global", title: "全局提示词", desc: "统一身份、合规和输出风格", items: globalItems},
-              {key: "scene_template", title: "场景模板", desc: "首次私信、跟进回复等可直接套用的模板", items: sceneTemplateItems},
+              {key: "scene_template", title: "流程模板", desc: "定义回复生成的话术步骤，例如首次私信六步引导、跟进回复等", items: sceneTemplateItems},
               {key: "scene_materials", title: "场景材料", desc: "场景里的事实素材、话术参考和可用信息", items: materialItems},
-              {key: "business", title: "业务提示词", desc: "场景骨架、回复策略和业务规则", items: businessItems},
+              {key: "business", title: "业务承接规则", desc: "识别业务方向、判断意向强弱、选择承接动作和规避错误承诺", items: businessItems},
               {key: "task", title: "任务规则提示词", desc: "规定怎么做、输出什么、不要做什么", items: taskItems},
               {key: "activity", title: "活动提示词", desc: "资料包、名额、入口和行动钩子", items: activityItems},
-              {key: "flow", title: "提示词组装顺序", desc: "按这条顺序把输入、模板、场景材料、任务规则、活动和知识库拼成完整 Prompt", items: flowItems},
+              {key: "flow", title: "提示词组装顺序", desc: "按这条顺序把输入、业务承接、流程模板、场景材料、任务规则、活动和知识库拼成完整 Prompt", items: flowItems},
             ].filter(group => group.items.length);
           },
           promptFlow() {
@@ -2926,7 +3322,8 @@
               {key: "user_context", title: "接收评论和视频", desc: "把用户评论、视频概述和补充上下文放在最前面，确定这次要回复的问题。"},
               {key: "global_prompt", title: "读取全局提示词", desc: "统一语气、合规边界和输出要求，让不同业务有一致的底线。"},
               {key: "sender_identity", title: "决定发送身份", desc: "根据业务、视频和活动生成自然身份，优先使用助理、运营、顾问等说法。"},
-              {key: "scene_template", title: "选择场景模板", desc: "匹配首次私信、私信维护或评论区维护模板，确定回复结构。"},
+              {key: "business_rule", title: "应用业务承接规则", desc: "判断用户属于哪个业务、意向强弱，以及优先引导到资料、咨询、预约还是继续追问。"},
+              {key: "scene_template", title: "选择流程模板", desc: "匹配首次私信六步引导、私信维护或评论区维护流程，确定回复话术步骤。"},
               {key: "scene_materials", title: "补充场景材料", desc: "加入该场景的业务事实、可用素材和参考话术，只作为事实依据。"},
               {key: "task_prompt", title: "制定任务规则", desc: "写清本轮怎么做、按什么流程做、输出格式、禁区和边界。"},
               {key: "activity_settings", title: "加入活动钩子", desc: "如果有资料包、评估、名额或入口，就选择一个最合适的低门槛动作。"},
@@ -2942,12 +3339,6 @@
           },
           activeDmPrompt() {
             return this.dmPrompts.find(item => item.key === this.activeDmPromptKey) || this.dmPrompts[0] || {};
-          },
-          dmConfigLabel() {
-            const config = this.dmMeta.config || {};
-            const provider = this.dmMeta.provider || config.provider || this.modelConfigPayload().provider || "minimax";
-            const model = config.model || config.model_name || this.modelConfigPayload().model_name || "MiniMax-M3";
-            return this.dmMeta.reply ? provider + " / " + model : "等待生成";
           },
           dmTaskFlow() {
             return [
@@ -2966,20 +3357,14 @@
               {
                 key: "compose",
                 title: "组织提示词",
-                desc: "按 全局提示词 -> 业务提示词 -> 场景材料 -> 任务规则提示词 -> 活动提示词 -> 检索知识 -> 最终 Prompt 的顺序拼装。",
-                files: ["global_prompt.md", "scenes/**/prompt.md", "scenes/**/materials.md", "activity_settings.json", "retrieved_knowledge", "final_prompt"],
+                desc: "按 全局提示词 -> 业务承接规则 -> 流程模板 -> 场景材料 -> 任务规则提示词 -> 活动提示词 -> 检索知识 -> 最终 Prompt 的顺序拼装。",
+                files: ["global_prompt.md", "scenes/**/prompt.md", "scene_templates.json", "scenes/**/materials.md", "activity_settings.json", "retrieved_knowledge", "final_prompt"],
               },
               {
                 key: "generate",
                 title: "调用模型生成",
                 desc: "把当前配置交给 minimax / MiniMax-M3，使用 modelConfigPayload 和会话信息完成一次生成。",
                 files: ["provider=minimax", "model=MiniMax-M3", "/api/chat"],
-              },
-              {
-                key: "inspect",
-                title: "检查调试结果",
-                desc: "回看 input、reply、prompts 和 config，确认每个模块是否都按预期进了最终链路。",
-                files: ["dmMeta.input", "dmMeta.reply", "dmMeta.prompts", "dmMeta.config"],
               },
             ];
           },
@@ -2995,12 +3380,6 @@
             this.scheduleDmStatePersist();
           },
           dmMeta: {
-            deep: true,
-            handler() {
-              this.scheduleDmStatePersist();
-            },
-          },
-          douyinDemoResult: {
             deep: true,
             handler() {
               this.scheduleDmStatePersist();
@@ -3030,17 +3409,21 @@
           this.dmForm.target_note = savedDmForm.target_note || saved.targetNote || "";
           this.dmAnswer = savedDm.dmAnswer || "";
           this.dmMeta = savedDm.dmMeta || {};
-          this.douyinDemoResult = savedDm.douyinDemoResult || {};
           this.activeDmPromptKey = savedDm.activeDmPromptKey || this.activeDmPromptKey;
           this.$nextTick(() => {
             this.dmStateHydrating = false;
             this.persistDmState(true);
           });
+          this.loadManagedAccounts();
+          this.loadConversationSettings();
           this.loadBatchTasks();
           this.promptResizeHandler = () => this.schedulePromptLayoutMeasure();
           window.addEventListener("resize", this.promptResizeHandler, {passive: true});
           this.loadState();
           this.schedulePromptLayoutMeasure();
+          this.conversationMonitorTimer = window.setInterval(() => {
+            if (this.activeMenu === "conversations") this.refreshConversationMonitors(true);
+          }, 3500);
         },
         updated() {
           this.schedulePromptLayoutMeasure();
@@ -3053,6 +3436,10 @@
           if (this.dmSaveTimer) {
             window.clearTimeout(this.dmSaveTimer);
             this.dmSaveTimer = null;
+          }
+          if (this.conversationMonitorTimer) {
+            window.clearInterval(this.conversationMonitorTimer);
+            this.conversationMonitorTimer = null;
           }
           this.persistDmState(true);
           if (this.promptModalVisible && typeof document !== "undefined") {
@@ -3131,13 +3518,13 @@
               const scene = (this.project.scenes || []).find(item => item.scene_id === sceneId);
               const sceneName = scene && scene.name ? scene.name : sceneId;
               const tail = parts.slice(2).map((part, index, list) => index === list.length - 1 ? this.stripFileExtension(part) : part);
-              return ["场景模板", sceneName, ...tail].filter(Boolean).join(" > ");
+              return ["流程模板", sceneName, ...tail].filter(Boolean).join(" > ");
             }
             return parts.map((part, index, list) => index === list.length - 1 ? this.stripFileExtension(part) : part).join(" > ");
           },
           promptLocationFromTemplate(template) {
-            if (!template) return "业务提示词";
-            return ["场景模板", template.title || template.template_id || "未命名模板"].filter(Boolean).join(" > ");
+            if (!template) return "流程模板";
+            return ["流程模板", template.title || template.template_id || "未命名模板"].filter(Boolean).join(" > ");
           },
           promptLocationFromActivity(activity) {
             if (!activity) return "活动提示词";
@@ -3148,12 +3535,13 @@
               user_context: "提示词组装 > 1. 接收评论和视频",
               global_prompt: "提示词组装 > 2. 读取全局提示词",
               sender_identity: "提示词组装 > 3. 决定发送身份",
-              scene_template: "提示词组装 > 4. 选择场景模板",
-              scene_materials: "提示词组装 > 5. 补充场景材料",
-              task_prompt: "提示词组装 > 6. 制定任务规则",
-              activity_settings: "提示词组装 > 7. 加入活动钩子",
-              retrieved_knowledge: "提示词组装 > 8. 读取知识库文件",
-              final_prompt: "提示词组装 > 9. 生成最终 Prompt",
+              business_rule: "提示词组装 > 4. 应用业务承接规则",
+              scene_template: "提示词组装 > 5. 选择流程模板",
+              scene_materials: "提示词组装 > 6. 补充场景材料",
+              task_prompt: "提示词组装 > 7. 制定任务规则",
+              activity_settings: "提示词组装 > 8. 加入活动钩子",
+              retrieved_knowledge: "提示词组装 > 9. 读取知识库文件",
+              final_prompt: "提示词组装 > 10. 生成最终 Prompt",
             };
             return keyMap[module && module.key] || ["提示词组装顺序", module && module.title ? module.title : module && module.key ? module.key : "模块"].join(" > ");
           },
@@ -3265,6 +3653,49 @@
           knowledgeDomainFolderPath(domain) {
             return this.knowledgeBaseFolderPath({name: this.selectedKnowledgeBaseName}) + "/" + this.safePathSegment(domain && domain.name || "", "默认领域");
           },
+          routeKnowledgeBaseOptions() {
+            return (this.knowledgeTree || []).map(base => base.name).filter(Boolean);
+          },
+          routeDomainOptions(knowledgeBaseName) {
+            const base = (this.knowledgeTree || []).find(item => item.name === knowledgeBaseName) || null;
+            return (base && base.domains || []).map(domain => domain.name).filter(Boolean);
+          },
+          routeSectionOptions(knowledgeBaseName, domainName) {
+            const base = (this.knowledgeTree || []).find(item => item.name === knowledgeBaseName) || null;
+            const domain = base && (base.domains || []).find(item => item.name === domainName) || null;
+            return (domain && domain.sections || []).map(section => section.name).filter(Boolean);
+          },
+          routeDocumentPreviewPath(doc) {
+            if (!doc) return "";
+            const relative = this.normalizedPath(doc.relative_path || "");
+            const filename = relative.split("/").pop() || (this.safePathSegment(doc.title || "文档", "文档") + ".md");
+            const knowledgeBaseName = doc.routeKnowledgeBase || doc.knowledge_base || this.selectedKnowledgeBaseName || "默认知识库";
+            const domainName = doc.routeDomain || doc.domain || "默认领域";
+            const sectionName = doc.routeSection || doc.section || "默认板块";
+            return [
+              "knowledge",
+              "files",
+              this.safePathSegment(knowledgeBaseName, "默认知识库"),
+              this.safePathSegment(domainName, "默认领域"),
+              this.safePathSegment(sectionName, "默认板块"),
+              filename,
+            ].join("/");
+          },
+          resetSelectedDocRouteDraft() {
+            if (!this.selectedDocKey) return;
+            const current = (this.flatDocuments || []).find(item => this.docKey(item) === this.selectedDocKey);
+            if (!current) return;
+            this.selectDoc(current);
+            this.setStatus("已恢复当前路由草稿", "ok");
+          },
+          markSelectedDocRouteManual() {
+            if (!this.selectedDocDraft) return;
+            this.selectedDocDraft.routeSource = "manual";
+            if (!this.selectedDocDraft.routeReason) {
+              this.selectedDocDraft.routeReason = "人工修改";
+            }
+            this.selectedDocDraft.routeConfidence = Number(this.selectedDocDraft.routeConfidence || 1);
+          },
           openKnowledgeBase(base) {
             if (!base) return;
             this.selectedKnowledgeBaseName = base.name;
@@ -3272,7 +3703,6 @@
             this.selectedDocKey = "";
             this.selectedDocDraft = {};
             this.knowledgeLevel = "domains";
-            this.upload.knowledge_base = base.name;
           },
           openKnowledgeDomain(domain) {
             if (!domain) return;
@@ -3280,7 +3710,6 @@
             this.selectedDocKey = "";
             this.selectedDocDraft = {};
             this.knowledgeLevel = "files";
-            this.upload.domain = domain.name;
           },
           async renameKnowledgeBase(base) {
             if (!base || !base.name) return;
@@ -3301,7 +3730,6 @@
               });
               this.documentDescriptions = data.document_descriptions || this.documentDescriptions;
               this.selectedKnowledgeBaseName = cleanName;
-              this.upload.knowledge_base = cleanName;
               await this.loadProjectMaterials();
               this.setStatus("知识库已修改：" + cleanName, "ok");
             } catch (error) {
@@ -3328,7 +3756,6 @@
               });
               this.documentDescriptions = data.document_descriptions || this.documentDescriptions;
               this.selectedKnowledgeDomainName = cleanName;
-              this.upload.domain = cleanName;
               await this.loadProjectMaterials();
               this.setStatus("业务文件夹已修改：" + cleanName, "ok");
             } catch (error) {
@@ -3428,8 +3855,9 @@
           },
           toggleKnowledgeUpload() {
             this.showKnowledgeUpload = !this.showKnowledgeUpload;
+            if (this.showKnowledgeUpload) this.uploadResult = null;
             this.$nextTick(() => {
-              const input = document.getElementById("knowledge-upload-name");
+              const input = document.querySelector(".kb-upload-inline input[type='file']");
               if (input) input.focus();
             });
           },
@@ -3478,7 +3906,6 @@
               },
               dmAnswer: String(this.dmAnswer || ""),
               dmMeta: this.dmMeta || {},
-              douyinDemoResult: this.douyinDemoResult || {},
               activeDmPromptKey: String(this.activeDmPromptKey || "final_prompt"),
             }));
             if (!silent) this.setStatus("私信调试内容已自动保存", "info");
@@ -3490,10 +3917,6 @@
               this.dmSaveTimer = null;
               this.persistDmState(true);
             }, 120);
-          },
-          saveDmSettings() {
-            this.persistDmState(true);
-            this.setStatus("已保存私信调试状态，下次会自动恢复", "ok");
           },
           modelConfigPayload() {
             const saved = this.savedChatConfig();
@@ -3540,13 +3963,304 @@
               this.dmAction = "";
             }
           },
-          pauseDmDebug() {
-            if (!this.dmRunning || !this.dmAbortController) {
-              this.setStatus("当前没有正在执行的私信调试任务", "info");
+          managedAccountsStorageKey() {
+            return "session-rag-admin-managed-accounts";
+          },
+          managedAccountDefault() {
+            return {
+              id: "account_" + this.uuid().slice(0, 10),
+              name: "抖音托管账号",
+              platform: "抖音",
+              status: "hosting",
+              browser_name: "edge",
+              headless: false,
+              auto_reply: true,
+              cookie_text: "",
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            };
+          },
+          normalizeManagedAccount(account) {
+            const item = account && typeof account === "object" ? account : {};
+            return {
+              ...this.managedAccountDefault(),
+              ...item,
+              id: String(item.id || item.account_id || ("account_" + this.uuid().slice(0, 10))),
+              name: String(item.name || item.account_name || "抖音托管账号"),
+              platform: String(item.platform || "抖音"),
+              status: ["hosting", "paused", "risk"].includes(item.status) ? item.status : "hosting",
+              browser_name: String(item.browser_name || item.browser || "edge"),
+              headless: item.headless === true,
+              auto_reply: item.auto_reply !== false,
+              cookie_text: String(item.cookie_text || item.account_cookie || item.account_cookies || ""),
+              updated_at: String(item.updated_at || item.created_at || new Date().toISOString()),
+            };
+          },
+          loadManagedAccounts() {
+            let saved = {};
+            try { saved = JSON.parse(localStorage.getItem(this.managedAccountsStorageKey()) || "{}"); }
+            catch (_) { saved = {}; }
+            const accounts = Array.isArray(saved.accounts) ? saved.accounts.map(this.normalizeManagedAccount) : [];
+            this.managedAccounts = accounts;
+            this.selectedManagedAccountId = saved.selectedManagedAccountId && accounts.some(item => item.id === saved.selectedManagedAccountId)
+              ? saved.selectedManagedAccountId
+              : (accounts[0] && accounts[0].id || "");
+            this.refreshAccountQueueStatus(true);
+          },
+          persistManagedAccounts(silent = true) {
+            const now = new Date().toISOString();
+            this.managedAccounts = this.managedAccounts.map(item => item.id === this.selectedManagedAccountId ? {...item, updated_at: now} : item);
+            localStorage.setItem(this.managedAccountsStorageKey(), JSON.stringify({
+              accounts: this.managedAccounts,
+              selectedManagedAccountId: this.selectedManagedAccountId,
+            }));
+            if (!silent) this.setStatus("账号配置已保存", "ok");
+          },
+          saveManagedAccounts() {
+            this.persistManagedAccounts(false);
+          },
+          addManagedAccount() {
+            const account = this.managedAccountDefault();
+            account.name = "抖音托管账号 " + (this.managedAccounts.length + 1);
+            this.managedAccounts = [...this.managedAccounts, account];
+            this.selectedManagedAccountId = account.id;
+            this.persistManagedAccounts(true);
+            this.setStatus("已新增账号，请粘贴 Cookie 或打开浏览器登录", "ok");
+          },
+          selectManagedAccount(accountId) {
+            this.selectedManagedAccountId = accountId || "";
+            this.persistManagedAccounts(true);
+          },
+          deleteManagedAccount() {
+            const account = this.selectedManagedAccount;
+            if (!account.id) return;
+            if (!window.confirm("确定删除账号“" + (account.name || "未命名账号") + "”吗？")) return;
+            this.managedAccounts = this.managedAccounts.filter(item => item.id !== account.id);
+            this.selectedManagedAccountId = this.managedAccounts[0] && this.managedAccounts[0].id || "";
+            this.persistManagedAccounts(true);
+            this.setStatus("账号已删除", "ok");
+          },
+          managedAccountStatusLabel(status) {
+            return {hosting: "托管中", paused: "暂停", risk: "需接管"}[status] || "托管中";
+          },
+          managedAccountBrowserLabel(browserName) {
+            return {edge: "Edge", chrome: "Chrome", default: "默认浏览器"}[browserName] || "Edge";
+          },
+          conversationSettingsStorageKey() {
+            return "session-rag-admin-conversation-settings";
+          },
+          loadConversationSettings() {
+            let saved = {};
+            try { saved = JSON.parse(localStorage.getItem(this.conversationSettingsStorageKey()) || "{}"); }
+            catch (_) { saved = {}; }
+            this.conversationSettings = {
+              auto_send: saved.auto_send !== false,
+              poll_seconds: String(saved.poll_seconds || "8"),
+            };
+            this.refreshConversationMonitors(true);
+          },
+          persistConversationSettings() {
+            localStorage.setItem(this.conversationSettingsStorageKey(), JSON.stringify(this.conversationSettings));
+          },
+          managedAccountKey(account) {
+            if (!account) return "";
+            const source = String(account.id || account.name || account.cookie_text || "");
+            if (!source) return "";
+            let hash = 0;
+            for (let i = 0; i < source.length; i += 1) {
+              hash = ((hash << 5) - hash + source.charCodeAt(i)) | 0;
+            }
+            return "local_" + Math.abs(hash);
+          },
+          conversationMonitorForAccount(account) {
+            if (!account || !account.id) return {};
+            return this.conversationMonitors.find(item => item.account_id === account.id || item.account_name === account.name) || {};
+          },
+          conversationMonitorStatusLabel(status) {
+            return {
+              running: "监控中",
+              starting: "启动中",
+              stopping: "停止中",
+              stopped: "已暂停",
+              error: "异常",
+              hosting: "可启动",
+              paused: "暂停",
+              risk: "需接管",
+            }[status] || "未启动";
+          },
+          async refreshConversationMonitors(silent = false) {
+            try {
+              const data = await this.fetchJson("/api/v1/douyin/private-message/conversation-monitors");
+              this.conversationMonitors = data.monitors || [];
+              this.conversationMonitorCounts = data.counts || {total: 0, running: 0, error: 0};
+              if (!silent) this.setStatus("私信对话监控状态已刷新", "ok");
+            } catch (error) {
+              if (!silent) this.setStatus(error.message || "刷新私信对话监控失败", "error");
+            }
+          },
+          async startConversationMonitor() {
+            const account = this.selectedManagedAccount;
+            if (!account || !account.id) {
+              this.setStatus("请先选择一个托管账号", "error");
               return;
             }
-            this.dmAbortController.abort();
-            this.setStatus("已暂停私信调试", "info");
+            if (!String(account.cookie_text || "").trim()) {
+              this.setStatus("请先在账号管理里保存该账号 Cookie", "error");
+              return;
+            }
+            this.persistConversationSettings();
+            this.setStatus("正在启动私信对话监控...");
+            try {
+              const data = await this.fetchJson("/api/v1/douyin/private-message/conversation-monitors/start", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                  account_id: account.id,
+                  account_name: account.name || "",
+                  browser_name: account.browser_name || "edge",
+                  headless: account.headless === true,
+                  account_cookies: account.cookie_text,
+                  project_id: this.projectId,
+                  company_id: this.currentCompanyId,
+                  source_platform: account.platform || "抖音",
+                  auto_send: this.conversationSettings.auto_send === true,
+                  poll_seconds: Number(this.conversationSettings.poll_seconds || 8),
+                }),
+              });
+              if (data.monitor) {
+                this.conversationMonitors = [
+                  ...this.conversationMonitors.filter(item => item.account_key !== data.monitor.account_key),
+                  data.monitor,
+                ];
+              }
+              await this.refreshConversationMonitors(true);
+              this.setStatus(data.started === false ? "该账号监控已在运行" : "私信对话监控已启动", "ok");
+            } catch (error) {
+              this.setStatus(error.message || "启动私信对话监控失败", "error");
+            }
+          },
+          async stopConversationMonitor() {
+            const account = this.selectedManagedAccount;
+            if (!account || !account.id) {
+              this.setStatus("请先选择一个托管账号", "error");
+              return;
+            }
+            this.setStatus("正在暂停私信对话监控...");
+            try {
+              const data = await this.fetchJson("/api/v1/douyin/private-message/conversation-monitors/stop", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                  account_id: account.id,
+                  account_name: account.name || "",
+                  account_cookies: account.cookie_text || "",
+                }),
+              });
+              if (data.monitor) {
+                this.conversationMonitors = [
+                  ...this.conversationMonitors.filter(item => item.account_key !== data.monitor.account_key),
+                  data.monitor,
+                ];
+              }
+              await this.refreshConversationMonitors(true);
+              this.setStatus(data.stopped ? "已暂停私信对话监控" : "该账号没有运行中的监控", data.stopped ? "ok" : "info");
+            } catch (error) {
+              this.setStatus(error.message || "暂停私信对话监控失败", "error");
+            }
+          },
+          accountQueueCount(key) {
+            const counts = this.accountQueueStatus && this.accountQueueStatus.counts || {};
+            const value = counts[key];
+            return Number.isFinite(Number(value)) ? Number(value) : 0;
+          },
+          async refreshAccountQueueStatus(silent = false) {
+            try {
+              const data = await this.fetchJson("/api/v1/douyin/private-message/tasks?limit=20");
+              this.accountQueueStatus = data || {counts: {}, queue: {}, tasks: {}};
+              if (!silent) this.setStatus("账号队列状态已刷新", "ok");
+            } catch (error) {
+              this.accountQueueStatus = {counts: {}, queue: {}, tasks: {}};
+              if (!silent) this.setStatus(error.message || "刷新账号队列失败，请确认 Redis 是否可用", "error");
+            }
+          },
+          async onManagedAccountCookieFile(event) {
+            const file = event && event.target && event.target.files && event.target.files[0];
+            if (!file || !this.selectedManagedAccount.id) return;
+            try {
+              const text = await file.text();
+              this.selectedManagedAccount.cookie_text = String(text || "").trim();
+              this.persistManagedAccounts(true);
+              this.setStatus("已读取账号 Cookie 文件：" + file.name, "ok");
+            } catch (error) {
+              this.setStatus(error.message || "读取账号 Cookie 文件失败", "error");
+            } finally {
+              if (event && event.target) event.target.value = "";
+            }
+          },
+          clearManagedAccountCookie() {
+            if (!this.selectedManagedAccount.id) return;
+            this.selectedManagedAccount.cookie_text = "";
+            this.persistManagedAccounts(true);
+            this.setStatus("已清空当前账号 Cookie", "ok");
+          },
+          async applyManagedAccountCookieRequest(account, openUrl = "") {
+            const accountCookies = String(account.cookie_text || "").trim();
+            if (!account.id || !accountCookies) throw new Error("请先选择账号并粘贴 Cookie");
+            const data = await this.fetchJson("/api/v1/douyin/account-cookie/apply", {
+              method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({
+                browser: account.browser_name || "edge",
+                headless: account.headless === true,
+                use_cdp: account.headless !== true,
+                keep_browser_open: !!openUrl,
+                persistent_context: true,
+                open_url: openUrl || "",
+                account_id: account.id,
+                account_cookies: accountCookies,
+              }),
+            });
+            account.status = data.success === false ? "risk" : "hosting";
+            this.persistManagedAccounts(true);
+            return data;
+          },
+          async applyManagedAccountCookie() {
+            const account = this.selectedManagedAccount;
+            this.accountBrowserOpening = true;
+            this.setStatus("正在把账号 Cookie 写入浏览器会话...");
+            try {
+              const data = await this.applyManagedAccountCookieRequest(account);
+              this.setStatus("已写入 " + (data.account_cookie_count || 0) + " 枚 Cookie", data.success === false ? "error" : "ok");
+            } catch (error) {
+              account.status = "risk";
+              this.persistManagedAccounts(true);
+              this.setStatus(error.message || "应用账号 Cookie 失败", "error");
+            } finally {
+              this.accountBrowserOpening = false;
+            }
+          },
+          async openManagedAccountInbox() {
+            const account = this.selectedManagedAccount;
+            if (!account.id) return;
+            const url = "https://www.douyin.com/";
+            if (!String(account.cookie_text || "").trim()) {
+              this.setStatus("请先为当前账号粘贴或导入 Cookie，再打开托管浏览器", "error");
+              return;
+            }
+            this.accountBrowserOpening = true;
+            this.setStatus("正在打开账号托管浏览器...");
+            try {
+              const data = await this.applyManagedAccountCookieRequest(account, url);
+              account.status = "hosting";
+              this.persistManagedAccounts(true);
+              this.setStatus("已携带账号登录信息打开托管浏览器：" + (data.resolved_browser || data.browser || this.managedAccountBrowserLabel(account.browser_name)), "ok");
+            } catch (error) {
+              account.status = "risk";
+              this.persistManagedAccounts(true);
+              this.setStatus(error.message || "打开托管浏览器失败", "error");
+            } finally {
+              this.accountBrowserOpening = false;
+            }
           },
           batchStorageKey() {
             return "session-rag-admin-batch-tasks";
@@ -4110,112 +4824,6 @@
             if (!this.dmForm.use_account_cookie || !accountCookies) return {};
             return {account_cookies: accountCookies};
           },
-          async onDouyinCookieFile(event) {
-            const file = event.target.files && event.target.files[0];
-            if (!file) return;
-            try {
-              const text = await file.text();
-              this.dmForm.account_cookie_text = String(text || "").trim();
-              this.dmForm.use_account_cookie = true;
-              this.setStatus("已读取 Cookie 文件：" + file.name, "ok");
-            } catch (error) {
-              this.setStatus(error.message || "读取 Cookie 文件失败", "error");
-            } finally {
-              event.target.value = "";
-            }
-          },
-          clearDouyinAccountCookie() {
-            this.dmForm.account_cookie_text = "";
-            this.dmForm.use_account_cookie = false;
-            this.setStatus("已清空账号 Cookie", "ok");
-          },
-          async applyDouyinAccountCookie() {
-            const accountCookies = String(this.dmForm.account_cookie_text || "").trim();
-            if (!accountCookies) {
-              this.setStatus("请先粘贴或导入账号 Cookie", "error");
-              return null;
-            }
-            this.dmForm.use_account_cookie = true;
-            this.setStatus("正在把账号 Cookie 写入本地浏览器会话...");
-            this.douyinDemoResult = {};
-            const controller = this.startDmAction("应用 Cookie");
-            if (!controller) return null;
-            try {
-              const data = await this.fetchJson("/api/v1/douyin/account-cookie/apply", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({
-                  browser: this.dmForm.browser_name || "default",
-                  headless: this.dmForm.headless === true,
-                  use_cdp: !this.dmForm.headless,
-                  account_cookies: accountCookies
-                }),
-                ...this.abortableOptions(controller),
-              });
-              this.douyinDemoResult = data;
-              if (data.success !== false && data.account_cookie_count) {
-                this.setStatus("已写入 " + data.account_cookie_count + " 枚 Cookie，可直接演示私信", "ok");
-              } else {
-                const lastStep = ((data.steps || []).slice(-1)[0] || {});
-                this.setStatus("Cookie 写入未确认成功：" + (lastStep.detail || data.error || "请查看浏览器状态"), "error");
-              }
-              return data;
-            } catch (error) {
-              if (this.isAbortError(error)) {
-                this.setStatus("已暂停应用 Cookie", "info");
-                return null;
-              }
-              this.setStatus(error.message || "应用账号 Cookie 失败", "error");
-              return null;
-            } finally {
-              this.finishDmAction(controller);
-            }
-          },
-          async openDouyinProfile() {
-            const url = String(this.dmForm.target_profile_url || "").trim();
-            if (!url) {
-              this.setStatus("请先填写主页链接", "error");
-              return;
-            }
-            this.setStatus("正在打开抖音主页...");
-            const controller = this.startDmAction("打开主页");
-            if (!controller) return;
-            try {
-              const data = await this.fetchJson("/api/open-url", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({
-                  url,
-                  browser: this.dmForm.browser_name || "default",
-                }),
-                ...this.abortableOptions(controller),
-              });
-              this.setStatus("已打开主页：" + (data.resolved_browser || data.browser || "default"), "ok");
-            } catch (error) {
-              if (this.isAbortError(error)) {
-                this.setStatus("已暂停打开主页", "info");
-                return;
-              }
-              try {
-                const opened = window.open(url, "_blank", "noopener,noreferrer");
-                if (opened) {
-                  this.setStatus("已尝试打开主页（当前浏览器）", "ok");
-                  return;
-                }
-              } catch (_) {}
-              this.setStatus(error.message || "打开主页失败", "error");
-            } finally {
-              this.finishDmAction(controller);
-            }
-          },
-          async copyReplyAndOpenDouyin() {
-            if (!this.dmAnswer) {
-              this.setStatus("请先生成私信", "error");
-              return;
-            }
-            await this.copyText(this.dmAnswer, "私信文案已复制，正在打开主页");
-            await this.openDouyinProfile();
-          },
           async runDouyinDmDemo(forceSend = false) {
             const url = String(this.dmForm.target_profile_url || "").trim();
             const reply = String(this.dmAnswer || "").trim();
@@ -4233,7 +4841,6 @@
               return null;
             }
             this.setStatus(shouldSend ? "正在打开抖音并发送私信..." : "正在打开抖音并预填私信...");
-            this.douyinDemoResult = {};
             const controller = this.startDmAction(shouldSend ? "发送私信" : "预填私信");
             if (!controller) return null;
             try {
@@ -4252,7 +4859,6 @@
                 body: JSON.stringify(payload),
                 ...this.abortableOptions(controller),
               });
-              this.douyinDemoResult = data;
               const lastStep = ((data.steps || []).slice(-1)[0] || {});
               if (shouldSend && data.sent) {
                 this.setStatus("私信已发送", "ok");
@@ -4274,17 +4880,6 @@
             } finally {
               this.finishDmAction(controller);
             }
-          },
-          async generateAndRunDouyinDemo() {
-            if (!this.dmAnswer) {
-              await this.generateDm();
-            }
-            if (!this.dmAnswer) return;
-            if (this.dmRunning) {
-              this.setStatus("已有私信调试任务正在执行", "info");
-              return;
-            }
-            await this.runDouyinDmDemo(this.dmForm.demo_mode === "send");
           },
           selectCompany(companyId) {
             this.selectedCompanyId = companyId || (this.companies[0] && this.companies[0].company_id) || "";
@@ -4400,6 +4995,7 @@
           },
           onUploadFile(event) {
             this.upload.file = event.target.files && event.target.files[0] || null;
+            this.uploadResult = null;
           },
           async uploadKnowledge() {
             if (!this.upload.file) {
@@ -4410,9 +5006,6 @@
             form.append("file", this.upload.file);
             form.append("project_id", this.projectId);
             form.append("company_id", this.currentCompanyId);
-            form.append("knowledge_base", this.upload.knowledge_base);
-            form.append("domain", this.upload.domain);
-            form.append("section", this.upload.section);
             if (this.upload.useAi) {
               const conf = this.modelConfigPayload();
               Object.entries(conf).forEach(([key, value]) => form.append(key, value == null ? "" : String(value)));
@@ -4423,6 +5016,10 @@
               this.documentDescriptions = data.document_descriptions || this.documentDescriptions;
               this.companySettings = data.company_settings || this.companySettings;
               await this.loadProjectMaterials();
+              this.uploadResult = data.document ? {
+                ...data.document,
+                route: data.route || data.document.route || null,
+              } : null;
               if (data.document) {
                 this.selectDoc(data.document);
                 this.knowledgeLevel = "editor";
@@ -4448,7 +5045,74 @@
               relative_path: path,
               content: file.content || "",
               tagsText: (doc.tags || []).join(", "),
+              routeKnowledgeBase: (doc.route && doc.route.knowledge_base) || doc.routeKnowledgeBase || doc.knowledge_base || this.selectedKnowledgeBaseName || "",
+              routeDomain: (doc.route && doc.route.domain) || doc.routeDomain || doc.domain || this.selectedKnowledgeDomainName || "",
+              routeSection: (doc.route && doc.route.section) || doc.routeSection || doc.section || "",
+              routeSource: (doc.route && doc.route.source) || doc.routeSource || doc.route_source || "manual",
+              routeReason: (doc.route && doc.route.reason) || doc.routeReason || doc.route_reason || "",
+              routeConfidence: Number((doc.route && doc.route.confidence) || doc.routeConfidence || doc.route_confidence || 0),
             };
+          },
+          routeDocumentPayload() {
+            const doc = this.selectedDocDraft || {};
+            return {
+              project_id: this.projectId,
+              doc_id: doc.doc_id || "",
+              relative_path: doc.relative_path || "",
+              title: doc.title || "",
+              knowledge_base: doc.routeKnowledgeBase || doc.knowledge_base || "",
+              domain: doc.routeDomain || doc.domain || "",
+              section: doc.routeSection || doc.section || "",
+              route_source: doc.routeSource || "manual",
+              route_reason: doc.routeReason || "",
+              route_confidence: doc.routeConfidence || 0,
+              ...this.modelConfigPayload(),
+            };
+          },
+          async rejudgeSelectedDocRoute() {
+            if (!this.selectedDocDraft || !this.selectedDocDraft.relative_path) return;
+            this.routeRejudging = true;
+            this.setStatus("正在重新判断路由...");
+            try {
+              const data = await this.fetchJson("/api/admin/knowledge/route/rejudge", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify(this.routeDocumentPayload())
+              });
+              const route = data.route || (data.document && data.document.route) || {};
+              this.selectedDocDraft.routeKnowledgeBase = route.knowledge_base || (data.proposed && data.proposed.knowledge_base) || this.selectedDocDraft.routeKnowledgeBase;
+              this.selectedDocDraft.routeDomain = route.domain || (data.proposed && data.proposed.domain) || this.selectedDocDraft.routeDomain;
+              this.selectedDocDraft.routeSection = route.section || (data.proposed && data.proposed.section) || this.selectedDocDraft.routeSection;
+              this.selectedDocDraft.routeSource = route.source || data.route_source || "llm";
+              this.selectedDocDraft.routeReason = route.reason || data.route_reason || "AI重新判断";
+              this.selectedDocDraft.routeConfidence = Number(route.confidence || data.route_confidence || 0);
+              this.setStatus("路由已重新判断，请确认后保存", "ok");
+            } catch (error) {
+              this.setStatus(error.message || "重新判断路由失败", "error");
+            } finally {
+              this.routeRejudging = false;
+            }
+          },
+          async saveSelectedDocRoute() {
+            if (!this.selectedDocDraft || !this.selectedDocDraft.relative_path) return;
+            this.routeSaving = true;
+            this.setStatus("正在保存路由...");
+            try {
+              const data = await this.fetchJson("/api/admin/knowledge/route/update", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify(this.routeDocumentPayload())
+              });
+              this.documentDescriptions = data.document_descriptions || this.documentDescriptions;
+              this.companySettings = data.company_settings || this.companySettings;
+              await this.loadProjectMaterials();
+              this.selectDoc(data.document || this.selectedDocDraft);
+              this.setStatus("路由已保存：" + (data.route && [data.route.knowledge_base, data.route.domain, data.route.section].filter(Boolean).join("/")), "ok");
+            } catch (error) {
+              this.setStatus(error.message || "保存路由失败", "error");
+            } finally {
+              this.routeSaving = false;
+            }
           },
           updateDocMetaInDescriptions(doc) {
             const targetKey = this.docKey(doc);

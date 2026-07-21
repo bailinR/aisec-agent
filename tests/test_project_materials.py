@@ -194,6 +194,9 @@ class ProjectMaterialStoreTest(unittest.TestCase):
             imported_doc = next(doc for doc in docs if doc["doc_id"] == result["doc_id"])
             self.assertEqual(result["sender_identity"], "健康顾问助理")
             self.assertEqual(imported_doc["sender_identity"], "健康顾问助理")
+            self.assertEqual(result["route_source"], "rule")
+            self.assertTrue(result["route_reason"])
+            self.assertEqual(result["route"]["knowledge_base"], result["knowledge_base"])
 
             selection = store.select_relevant_documents("骨积液怎么评估", project_id=project_id, scene_id="health_presales")
             self.assertIn(result["doc_id"], selection["document_ids"])

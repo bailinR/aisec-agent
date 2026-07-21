@@ -33,20 +33,20 @@ GLOBAL_OPERATOR_PROMPT = """
 
 
 DEFAULT_PROJECT_NAME = "大健康AI跨境综合企业服务平台"
-DEFAULT_KNOWLEDGE_BASE_NAME = "公司私信知识库"
-RECRUITMENT_KNOWLEDGE_BASE_NAME = "招聘知识库"
+DEFAULT_KNOWLEDGE_BASE_NAME = "公司基础资料板块"
+RECRUITMENT_KNOWLEDGE_BASE_NAME = "招聘与机器人面试业务板块"
 
 
 DEFAULT_KNOWLEDGE_DOCUMENTS: List[Dict[str, Any]] = [
     {
         "doc_id": "company_positioning",
-        "title": "公司定位",
+        "title": "公司定位与业务总览",
         "knowledge_base": DEFAULT_KNOWLEDGE_BASE_NAME,
-        "domain": "公司定位",
-        "section": "默认板块",
-        "category": "公司定位",
+        "domain": "公司定位与对外口径",
+        "section": "公司介绍",
+        "category": "公司定位与对外口径",
         "sender_identity": "品牌客服",
-        "relative_path": "knowledge/files/公司私信知识库/公司定位/默认板块/公司定位.md",
+        "relative_path": "knowledge/files/公司基础资料板块/公司定位与对外口径/公司介绍/公司定位与业务总览.md",
         "description": "说明公司总体定位、服务对象、业务闭环和五大聚焦方向。",
         "keywords": ["公司", "定位", "介绍", "平台", "大健康", "AI", "跨境", "服务对象", "解决方案"],
         "content": """# 公司定位
@@ -56,13 +56,13 @@ DEFAULT_KNOWLEDGE_DOCUMENTS: List[Dict[str, Any]] = [
     },
     {
         "doc_id": "healthcare_medical",
-        "title": "大健康医疗板块",
-        "knowledge_base": DEFAULT_KNOWLEDGE_BASE_NAME,
-        "domain": "三大核心业务板块",
-        "section": "默认板块",
-        "category": "三大核心业务板块",
+        "title": "膝骨关节项目说明",
+        "knowledge_base": "大健康业务板块",
+        "domain": "膝骨关节评估与干细胞合规咨询",
+        "section": "服务资料",
+        "category": "膝骨关节评估与干细胞合规咨询",
         "sender_identity": "健康顾问助理",
-        "relative_path": "knowledge/files/公司私信知识库/三大核心业务板块/默认板块/大健康医疗板块.md",
+        "relative_path": "knowledge/files/大健康业务板块/膝骨关节评估与干细胞合规咨询/服务资料/膝骨关节项目说明.md",
         "description": "大健康医疗核心主业，覆盖关节健康、干细胞、PRP、产品体系、合作渠道与合规优势。",
         "keywords": [
             "大健康", "医疗", "关节", "膝骨关节", "骨积液", "软骨修复", "口服", "贴剂",
@@ -80,13 +80,13 @@ DEFAULT_KNOWLEDGE_DOCUMENTS: List[Dict[str, Any]] = [
     },
     {
         "doc_id": "ai_technology_hardware",
-        "title": "AI技术与智能硬件板块",
-        "knowledge_base": DEFAULT_KNOWLEDGE_BASE_NAME,
-        "domain": "三大核心业务板块",
-        "section": "默认板块",
-        "category": "三大核心业务板块",
+        "title": "AI内容生产与智能硬件业务说明",
+        "knowledge_base": "AI技术与私信自动化业务板块",
+        "domain": "AI内容生产与智能硬件",
+        "section": "业务资料",
+        "category": "AI内容生产与智能硬件",
         "sender_identity": "运营顾问",
-        "relative_path": "knowledge/files/公司私信知识库/三大核心业务板块/默认板块/AI技术与智能硬件板块.md",
+        "relative_path": "knowledge/files/AI技术与私信自动化业务板块/AI内容生产与智能硬件/业务资料/AI内容生产与智能硬件业务说明.md",
         "description": "AI内容生产、智能硬件、私信引流、舆论管控、数据采集和AI Agent自动化调度能力。",
         "keywords": [
             "AI", "智能硬件", "内容生产", "文生视频", "批量剪辑", "自动发布", "评论采集",
@@ -103,13 +103,13 @@ DEFAULT_KNOWLEDGE_DOCUMENTS: List[Dict[str, Any]] = [
     },
     {
         "doc_id": "cross_border_services",
-        "title": "跨境与综合业务板块",
-        "knowledge_base": DEFAULT_KNOWLEDGE_BASE_NAME,
-        "domain": "三大核心业务板块",
-        "section": "默认板块",
-        "category": "三大核心业务板块",
+        "title": "跨境电商托管服务说明",
+        "knowledge_base": "跨境电商与综合服务板块",
+        "domain": "跨境电商托管",
+        "section": "服务资料",
+        "category": "跨境电商托管",
         "sender_identity": "跨境运营顾问",
-        "relative_path": "knowledge/files/公司私信知识库/三大核心业务板块/默认板块/跨境与综合业务板块.md",
+        "relative_path": "knowledge/files/跨境电商与综合服务板块/跨境电商托管/服务资料/跨境电商托管服务说明.md",
         "description": "跨境电商、AI选品、内容托管、自动化运营、留学移民和企业资源对接。",
         "keywords": [
             "跨境", "综合业务", "跨境电商", "全平台运营", "AI选品", "内容托管",
@@ -125,11 +125,11 @@ DEFAULT_KNOWLEDGE_DOCUMENTS: List[Dict[str, Any]] = [
         "doc_id": "recruitment_company_profile",
         "title": "招聘公司介绍",
         "knowledge_base": RECRUITMENT_KNOWLEDGE_BASE_NAME,
-        "domain": "公司资料",
-        "section": "默认板块",
-        "category": "公司资料",
+        "domain": "Boss沟通",
+        "section": "沟通资料",
+        "category": "Boss沟通",
         "sender_identity": "招聘助理",
-        "relative_path": "knowledge/files/招聘知识库/公司资料/默认板块/招聘公司介绍.md",
+        "relative_path": "knowledge/files/招聘与机器人面试业务板块/Boss沟通/沟通资料/招聘公司介绍.md",
         "description": "当候选人询问公司背景、业务方向、团队情况或岗位可信度时读取。",
         "keywords": ["招聘", "公司", "业务", "团队", "岗位", "候选人", "HR", "介绍", "发展方向"],
         "content": """# 招聘公司介绍
@@ -143,11 +143,11 @@ DEFAULT_KNOWLEDGE_DOCUMENTS: List[Dict[str, Any]] = [
         "doc_id": "recruitment_ai_project_manager",
         "title": "AI项目经理岗位说明",
         "knowledge_base": RECRUITMENT_KNOWLEDGE_BASE_NAME,
-        "domain": "岗位资料",
+        "domain": "机器人面试",
         "section": "AI项目经理",
-        "category": "岗位资料",
+        "category": "机器人面试",
         "sender_identity": "招聘助理",
-        "relative_path": "knowledge/files/招聘知识库/岗位资料/AI项目经理/AI项目经理岗位说明.md",
+        "relative_path": "knowledge/files/招聘与机器人面试业务板块/机器人面试/AI项目经理/AI项目经理岗位说明.md",
         "description": "当候选人评论或咨询 AI 项目经理、产品项目、自动化系统落地岗位时读取。",
         "keywords": ["招聘", "AI项目经理", "项目经理", "产品", "需求", "自动化", "沟通", "交付", "岗位职责"],
         "content": """# AI项目经理岗位说明
@@ -166,11 +166,11 @@ DEFAULT_KNOWLEDGE_DOCUMENTS: List[Dict[str, Any]] = [
         "doc_id": "recruitment_engineer_role",
         "title": "技术工程师岗位说明",
         "knowledge_base": RECRUITMENT_KNOWLEDGE_BASE_NAME,
-        "domain": "岗位资料",
+        "domain": "机器人面试",
         "section": "技术工程师",
-        "category": "岗位资料",
+        "category": "机器人面试",
         "sender_identity": "招聘助理",
-        "relative_path": "knowledge/files/招聘知识库/岗位资料/技术工程师/技术工程师岗位说明.md",
+        "relative_path": "knowledge/files/招聘与机器人面试业务板块/机器人面试/技术工程师/技术工程师岗位说明.md",
         "description": "当候选人咨询工程师、后端、前端、自动化、爬虫或 AI Agent 开发岗位时读取。",
         "keywords": ["招聘", "工程师", "后端", "前端", "自动化", "爬虫", "AI Agent", "接口", "数据库", "岗位"],
         "content": """# 技术工程师岗位说明
@@ -189,11 +189,11 @@ DEFAULT_KNOWLEDGE_DOCUMENTS: List[Dict[str, Any]] = [
         "doc_id": "recruitment_interview_process",
         "title": "面试流程说明",
         "knowledge_base": RECRUITMENT_KNOWLEDGE_BASE_NAME,
-        "domain": "招聘流程",
-        "section": "默认板块",
-        "category": "招聘流程",
+        "domain": "机器人面试",
+        "section": "流程规则",
+        "category": "机器人面试",
         "sender_identity": "招聘助理",
-        "relative_path": "knowledge/files/招聘知识库/招聘流程/默认板块/面试流程说明.md",
+        "relative_path": "knowledge/files/招聘与机器人面试业务板块/机器人面试/流程规则/面试流程说明.md",
         "description": "当候选人询问如何投递、是否方便沟通、面试安排、到岗时间时读取。",
         "keywords": ["招聘", "面试", "投递", "简历", "沟通", "到岗", "流程", "安排", "HR"],
         "content": """# 面试流程说明
@@ -211,11 +211,11 @@ DEFAULT_KNOWLEDGE_DOCUMENTS: List[Dict[str, Any]] = [
         "doc_id": "recruitment_compensation_compliance",
         "title": "薪资福利与沟通合规",
         "knowledge_base": RECRUITMENT_KNOWLEDGE_BASE_NAME,
-        "domain": "薪资福利与合规",
-        "section": "默认板块",
-        "category": "薪资福利与合规",
+        "domain": "Boss沟通",
+        "section": "沟通资料",
+        "category": "Boss沟通",
         "sender_identity": "招聘助理",
-        "relative_path": "knowledge/files/招聘知识库/薪资福利与合规/默认板块/薪资福利与沟通合规.md",
+        "relative_path": "knowledge/files/招聘与机器人面试业务板块/Boss沟通/沟通资料/薪资福利与沟通合规.md",
         "description": "当候选人询问薪资、福利、真假、录用承诺或敏感招聘问题时读取。",
         "keywords": ["招聘", "薪资", "福利", "待遇", "社保", "真假", "录用", "合规", "承诺", "面试"],
         "content": """# 薪资福利与沟通合规
@@ -611,6 +611,14 @@ class ProjectMaterialStore:
         sender_identity = self._display_sender_identity(
             meta.get("sender_identity") if self._is_valid_sender_identity(meta.get("sender_identity")) else self._suggest_sender_identity_by_rules(category, file_name, content)
         ) or "品牌客服"
+        route_source = str(meta.get("route_source") or "rule").strip() or "rule"
+        route_reason = str(meta.get("route_reason") or f"规则推断: {knowledge_base}/{domain}/{section}").strip()
+        if not route_reason:
+            route_reason = f"规则推断: {knowledge_base}/{domain}/{section}"
+        try:
+            route_confidence = float(meta.get("route_confidence") or 0.92)
+        except (TypeError, ValueError):
+            route_confidence = 0.92
 
         relative_path = f"knowledge/files/{self._safe_title(knowledge_base)}/{self._safe_title(domain)}/{self._safe_title(section)}/{title}.md"
         doc_path = project_dir / relative_path
@@ -645,6 +653,17 @@ class ProjectMaterialStore:
                 "source_file_name": file_name,
                 "imported_at": datetime.now().isoformat(timespec="seconds"),
                 "chunk_count": len(chunks),
+                "route_source": route_source,
+                "route_reason": route_reason,
+                "route_confidence": route_confidence,
+                "route": {
+                    "knowledge_base": knowledge_base,
+                    "domain": domain,
+                    "section": section,
+                    "source": route_source,
+                    "reason": route_reason,
+                    "confidence": route_confidence,
+                },
             },
         )
         self._upsert_chunks(project_dir, doc_id, file_name, relative_path, chunks, sender_identity=sender_identity)
@@ -664,6 +683,17 @@ class ProjectMaterialStore:
             "keywords": keywords,
             "chunk_count": len(chunks),
             "content_chars": len(content),
+            "route_source": route_source,
+            "route_reason": route_reason,
+            "route_confidence": route_confidence,
+            "route": {
+                "knowledge_base": knowledge_base,
+                "domain": domain,
+                "section": section,
+                "source": route_source,
+                "reason": route_reason,
+                "confidence": route_confidence,
+            },
         }
 
     def parse_file_content(self, file_name: str, file_data: bytes) -> str:

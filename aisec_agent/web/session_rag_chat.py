@@ -45,6 +45,7 @@ HTML_FILE = STATIC_DIR / "session_rag_chat.html"
 FILE_PARSER_HTML_FILE = STATIC_DIR / "file_parser.html"
 PROJECT_MATERIALS_HTML_FILE = STATIC_DIR / "project_materials.html"
 ADMIN_VUE_HTML_FILE = STATIC_DIR / "admin_vue.html"
+WORKSPACE_HTML_FILE = STATIC_DIR / "workspace.html"
 ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 DEFAULT_COMPANY_NAME = "默认公司"
 
@@ -929,6 +930,10 @@ def _compact_private_message_response(
     return {
         "input": input_data,
         "reply": answer,
+        "answer": answer,
+        "session_id": session_id,
+        "user_id": user_id,
+        "provider": provider,
         "prompts": prompt_modules,
         "config": {
             "provider": provider,
@@ -1987,8 +1992,26 @@ def _doc_description_path(store: ProjectMaterialStore, project_id: str) -> tuple
     return _admin_json_path(store, project_id, "knowledge/document_descriptions.json")
 
 
-DEFAULT_KNOWLEDGE_BASE_NAME = "公司私信知识库"
-RECRUITMENT_KNOWLEDGE_BASE_NAME = "招聘知识库"
+DEFAULT_KNOWLEDGE_BASE_NAME = "公司基础资料板块"
+RECRUITMENT_KNOWLEDGE_BASE_NAME = "招聘与机器人面试业务板块"
+LEGACY_KNOWLEDGE_BASE_DISPLAY_ALIASES = {
+    DEFAULT_KNOWLEDGE_BASE_NAME: ["公司私信知识库"],
+    RECRUITMENT_KNOWLEDGE_BASE_NAME: ["招聘知识库"],
+}
+
+
+def _knowledge_base_aliases(name: Any) -> List[str]:
+    current = str(name or "").strip()
+    return [
+        alias
+        for alias in LEGACY_KNOWLEDGE_BASE_DISPLAY_ALIASES.get(current, [])
+        if alias and alias != current
+    ]
+
+
+def _knowledge_base_alias_context_line(name: Any) -> str:
+    aliases = _knowledge_base_aliases(name)
+    return f"knowledge_base_aliases: {', '.join(aliases)}" if aliases else ""
 
 
 def _scene_templates_path(store: ProjectMaterialStore, project_id: str) -> tuple[Path, Path]:
@@ -2007,6 +2030,10 @@ def _company_settings_path(store: ProjectMaterialStore, project_id: str) -> tupl
     return _admin_json_path(store, project_id, "companies.json")
 
 
+def _business_targets_path(store: ProjectMaterialStore, project_id: str) -> tuple[Path, Path]:
+    return _admin_json_path(store, project_id, "business_targets.json")
+
+
 def _empty_document_descriptions(project_id: str) -> Dict[str, Any]:
     domains: List[Dict[str, Any]] = []
     return {
@@ -2017,13 +2044,13 @@ def _empty_document_descriptions(project_id: str) -> Dict[str, Any]:
             {
                 "kb_id": _knowledge_base_id(DEFAULT_KNOWLEDGE_BASE_NAME),
                 "name": DEFAULT_KNOWLEDGE_BASE_NAME,
-                "description": "用于公司业务、视频评论、私信承接、活动钩子和客户沟通的资料。",
+                "description": "沉淀公司定位、对外口径、承接边界和跨业务通用资料。",
                 "domains": domains,
             },
             {
                 "kb_id": _knowledge_base_id(RECRUITMENT_KNOWLEDGE_BASE_NAME),
                 "name": RECRUITMENT_KNOWLEDGE_BASE_NAME,
-                "description": "用于招聘评论、候选人私信、岗位咨询、面试邀约和招聘合规沟通的资料。",
+                "description": "面向 Boss 沟通、岗位咨询、线上初面和销售招聘流程的业务资料。",
                 "domains": [],
             }
         ],
@@ -2058,7 +2085,7 @@ def _normalize_description_structure(data: Dict[str, Any]) -> Dict[str, Any]:
             {
                 "kb_id": _knowledge_base_id(DEFAULT_KNOWLEDGE_BASE_NAME),
                 "name": DEFAULT_KNOWLEDGE_BASE_NAME,
-                "description": "用于公司业务、视频评论、私信承接、活动钩子和客户沟通的资料。",
+                "description": "沉淀公司定位、对外口径、承接边界和跨业务通用资料。",
                 "domains": legacy_domains,
             }
         ]
@@ -2185,6 +2212,279 @@ def _knowledge_base_summaries(data: Dict[str, Any]) -> List[Dict[str, Any]]:
             "document_count": count,
         })
     return summaries
+
+
+def _business_key(knowledge_base_name: str, domain_name: str, kb_id: str = "", domain_id: str = "") -> str:
+    resolved_kb_id = str(kb_id or _knowledge_base_id(knowledge_base_name)).strip()
+    resolved_domain_id = str(domain_id or _domain_id(domain_name)).strip()
+    return f"{resolved_kb_id}:{resolved_domain_id}"
+
+
+def _business_board_key(board_name: str, board_id: str = "") -> str:
+    resolved_board_id = str(board_id or _knowledge_base_id(board_name)).strip()
+    return resolved_board_id or _knowledge_base_id(board_name)
+
+
+WORKSPACE_INTERNAL_DOMAIN_NAMES = {"README与路由"}
+
+
+def _is_workspace_internal_document(doc: Dict[str, Any]) -> bool:
+    relative = str(doc.get("relative_path") or "").replace("\\", "/").strip().lower()
+    title = str(doc.get("title") or "").strip().lower()
+    source = str(doc.get("source_file_name") or "").strip().lower()
+    if relative.endswith("/readme.md") or relative.endswith("readme.md"):
+        return True
+    if "/prompts/" in relative or relative.endswith("/prompts"):
+        return True
+    if title in {"readme", "readme与路由", "readme与路由 readme"}:
+        return True
+    if source == "readme.md":
+        return True
+    return False
+
+
+def _flatten_knowledge_businesses(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    data = _normalize_description_structure(data)
+    businesses: List[Dict[str, Any]] = []
+    for base in data.get("knowledge_bases", []):
+        board_name = str(base.get("name") or DEFAULT_KNOWLEDGE_BASE_NAME).strip() or DEFAULT_KNOWLEDGE_BASE_NAME
+        board_id = str(base.get("kb_id") or _knowledge_base_id(board_name)).strip()
+        for domain in base.get("domains", []):
+            module_name = str(domain.get("name") or "默认业务模块").strip() or "默认业务模块"
+            if module_name in WORKSPACE_INTERNAL_DOMAIN_NAMES:
+                continue
+            module_id = str(domain.get("domain_id") or _domain_id(module_name)).strip()
+            documents = []
+            sections = []
+            for section in domain.get("sections", []):
+                section_name = str(section.get("name") or "具体资料").strip() or "具体资料"
+                section_docs = section.get("documents", []) if isinstance(section.get("documents"), list) else []
+                visible_docs = [doc for doc in section_docs if isinstance(doc, dict) and not _is_workspace_internal_document(doc)]
+                if not visible_docs:
+                    continue
+                sections.append({
+                    "section_id": str(section.get("section_id") or _section_id(module_name, section_name, board_name)),
+                    "name": section_name,
+                    "document_count": len(visible_docs),
+                })
+                for doc in visible_docs:
+                    documents.append({
+                        **doc,
+                        "knowledge_base": board_name,
+                        "kb_id": board_id,
+                        "business_board_id": board_id,
+                        "business_board_name": board_name,
+                        "domain": module_name,
+                        "domain_id": module_id,
+                        "business_module_id": module_id,
+                        "business_module_name": module_name,
+                        "section": section_name,
+                        "section_id": str(section.get("section_id") or _section_id(module_name, section_name, board_name)),
+                    })
+            if not documents:
+                continue
+            businesses.append({
+                "business_key": _business_key(board_name, module_name, board_id, module_id),
+                "kb_id": board_id,
+                "knowledge_base": board_name,
+                "business_board_id": board_id,
+                "business_board_name": board_name,
+                "domain_id": module_id,
+                "business_module_id": module_id,
+                "business_module_name": module_name,
+                "name": module_name,
+                "description": str(domain.get("description") or "").strip(),
+                "sections": sections,
+                "documents": documents,
+                "document_count": len(documents),
+            })
+    return businesses
+
+
+def _workspace_business_boards(data: Dict[str, Any], businesses: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    data = _normalize_description_structure(data)
+    modules_by_board: Dict[str, List[Dict[str, Any]]] = {}
+    for business in businesses:
+        board_id = str(business.get("business_board_id") or business.get("kb_id") or "").strip()
+        if not board_id:
+            continue
+        modules_by_board.setdefault(board_id, []).append({
+            "business_key": business.get("business_key"),
+            "business_module_id": business.get("business_module_id") or business.get("domain_id"),
+            "business_module_name": business.get("business_module_name") or business.get("name"),
+            "name": business.get("name"),
+            "description": business.get("description") or "",
+            "document_count": business.get("document_count") or 0,
+        })
+
+    boards: List[Dict[str, Any]] = []
+    for base in data.get("knowledge_bases", []):
+        board_name = str(base.get("name") or DEFAULT_KNOWLEDGE_BASE_NAME).strip() or DEFAULT_KNOWLEDGE_BASE_NAME
+        board_id = _business_board_key(board_name, str(base.get("kb_id") or ""))
+        modules = modules_by_board.get(board_id, [])
+        if not modules:
+            continue
+        boards.append({
+            "business_board_id": board_id,
+            "business_board_name": board_name,
+            "name": board_name,
+            "description": str(base.get("description") or "").strip(),
+            "business_module_count": len(modules),
+            "document_count": sum(int(module.get("document_count") or 0) for module in modules),
+            "modules": modules,
+        })
+    return boards
+
+
+def _empty_business_targets(project_id: str) -> Dict[str, Any]:
+    return {
+        "version": 1,
+        "project_id": project_id,
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
+        "profiles": [],
+    }
+
+
+def _normalize_business_goal(raw: Dict[str, Any], index: int = 0) -> Optional[Dict[str, Any]]:
+    if not isinstance(raw, dict):
+        return None
+    goal_type = str(raw.get("goal_type") or raw.get("type") or "wechat").strip() or "wechat"
+    if goal_type not in {"wechat", "phone", "link", "booking", "material", "ask_reply", "other"}:
+        goal_type = "other"
+    label = _clip_text(raw.get("label"), 60)
+    value = _clip_text(raw.get("goal_value") or raw.get("value"), 300)
+    note = _clip_text(raw.get("note"), 300)
+    if not label and not value and not note:
+        return None
+    try:
+        priority = int(raw.get("priority") or index + 1)
+    except (TypeError, ValueError):
+        priority = index + 1
+    goal_id = str(raw.get("goal_id") or raw.get("id") or "").strip() or "goal_" + uuid.uuid4().hex[:10]
+    return {
+        "goal_id": goal_id,
+        "goal_type": goal_type,
+        "label": label or _business_goal_type_label(goal_type),
+        "goal_value": value,
+        "note": note,
+        "priority": max(1, priority),
+        "enabled": bool(raw.get("enabled", True)),
+    }
+
+
+def _business_goal_type_label(goal_type: str) -> str:
+    return {
+        "wechat": "加微信",
+        "phone": "留电话",
+        "link": "打开链接",
+        "booking": "预约",
+        "material": "领取资料",
+        "ask_reply": "引导回复",
+        "other": "其他目标",
+    }.get(goal_type, "其他目标")
+
+
+def _normalize_business_targets(
+    data: Dict[str, Any],
+    project_id: str,
+    businesses: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    if not isinstance(data, dict):
+        data = {}
+    businesses = businesses or []
+    business_by_key = {str(item.get("business_key") or ""): item for item in businesses}
+    now = datetime.now().isoformat(timespec="seconds")
+    profiles = []
+    seen = set()
+    raw_profiles = data.get("profiles") if isinstance(data.get("profiles"), list) else []
+    for raw in raw_profiles:
+        if not isinstance(raw, dict):
+            continue
+        business_key = str(raw.get("business_key") or "").strip()
+        if not business_key:
+            business_key = _business_key(
+                str(raw.get("knowledge_base") or ""),
+                str(raw.get("domain") or raw.get("name") or ""),
+                str(raw.get("kb_id") or ""),
+                str(raw.get("domain_id") or ""),
+            )
+        if not business_key or business_key in seen:
+            continue
+        seen.add(business_key)
+        business = business_by_key.get(business_key, {})
+        goals = []
+        for index, raw_goal in enumerate(raw.get("goals", []) if isinstance(raw.get("goals"), list) else []):
+            goal = _normalize_business_goal(raw_goal, index)
+            if goal:
+                goals.append(goal)
+        goals.sort(key=lambda item: item.get("priority", 999))
+        knowledge_base = str(raw.get("knowledge_base") or business.get("knowledge_base") or DEFAULT_KNOWLEDGE_BASE_NAME).strip()
+        domain = str(raw.get("domain") or raw.get("name") or business.get("name") or "默认领域").strip()
+        profiles.append({
+            "profile_id": str(raw.get("profile_id") or "").strip() or "bt_" + uuid.uuid5(uuid.NAMESPACE_URL, f"{project_id}:{business_key}").hex[:10],
+            "business_key": business_key,
+            "kb_id": str(raw.get("kb_id") or business.get("kb_id") or _knowledge_base_id(knowledge_base)).strip(),
+            "knowledge_base": knowledge_base,
+            "domain_id": str(raw.get("domain_id") or business.get("domain_id") or _domain_id(domain)).strip(),
+            "domain": domain,
+            "enabled": bool(raw.get("enabled", True)),
+            "goals": goals,
+            "notes": _clip_text(raw.get("notes"), 500),
+            "updated_at": raw.get("updated_at") or now,
+        })
+    return {
+        "version": data.get("version") or 1,
+        "project_id": project_id,
+        "updated_at": data.get("updated_at") or now,
+        "profiles": profiles,
+    }
+
+
+def _load_business_targets(
+    store: ProjectMaterialStore,
+    project_id: str,
+    businesses: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    project_dir, path = _business_targets_path(store, project_id)
+    data = _load_json_file(path, _empty_business_targets(project_dir.name))
+    return _normalize_business_targets(data, project_dir.name, businesses)
+
+
+def _save_business_targets(
+    store: ProjectMaterialStore,
+    project_id: str,
+    data: Dict[str, Any],
+    businesses: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    project_dir, path = _business_targets_path(store, project_id)
+    normalized = _normalize_business_targets(data, project_dir.name, businesses)
+    normalized["updated_at"] = datetime.now().isoformat(timespec="seconds")
+    for profile in normalized.get("profiles", []):
+        profile["updated_at"] = normalized["updated_at"]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _write_json_file(path, normalized)
+    return normalized
+
+
+def _merge_business_targets(
+    businesses: List[Dict[str, Any]],
+    business_targets: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    profiles = {
+        str(profile.get("business_key") or ""): profile
+        for profile in business_targets.get("profiles", [])
+        if isinstance(profile, dict)
+    }
+    merged = []
+    for business in businesses:
+        profile = profiles.get(str(business.get("business_key") or ""), {})
+        merged.append({
+            **business,
+            "target_profile": profile or None,
+            "goals": profile.get("goals", []) if profile else [],
+            "target_enabled": bool(profile.get("enabled", True)) if profile else True,
+        })
+    return merged
 
 
 def _filter_descriptions_by_kb_ids(data: Dict[str, Any], allowed_kb_ids: List[str]) -> Dict[str, Any]:
@@ -2818,9 +3118,9 @@ def _doc_id_from_relative_path(relative_path: str) -> str:
 
 
 def _section_from_filesystem_path(parts: List[str]) -> str:
-    if len(parts) <= 4:
-        return "README与路由" if parts[-1].lower() == "readme.md" else "默认板块"
-    return parts[-2] or "默认板块"
+    if len(parts) < 5:
+        return "README与路由" if parts[-1].lower() == "readme.md" else ""
+    return parts[-2] or ""
 
 
 def _merge_filesystem_documents_into_descriptions(
@@ -3017,7 +3317,7 @@ def _empty_identity_settings(project_id: str) -> Dict[str, Any]:
                 "product_id": "health_overview",
                 "product_name": "大健康医疗服务",
                 "sender_identity": "健康顾问助理",
-                "related_doc_ids": ["healthcare_medical", "mock_health_compliance"],
+                "related_doc_ids": ["doc_3b14058fefa7", "doc_2b02715a7e82"],
                 "tags": ["大健康", "医疗", "康养", "干细胞", "PRP"],
                 "enabled": True,
             },
@@ -3025,7 +3325,7 @@ def _empty_identity_settings(project_id: str) -> Dict[str, Any]:
                 "product_id": "sleep_assessment",
                 "product_name": "睡眠状态初评",
                 "sender_identity": "健康顾问助理",
-                "related_doc_ids": ["mock_sleep_assessment", "mock_health_compliance"],
+                "related_doc_ids": ["doc_d596748b7764", "doc_b1b633fa76db"],
                 "tags": ["睡眠", "失眠", "睡不好", "压力大", "初评"],
                 "enabled": True,
             },
@@ -3033,7 +3333,7 @@ def _empty_identity_settings(project_id: str) -> Dict[str, Any]:
                 "product_id": "joint_assessment",
                 "product_name": "大健康膝骨关节干细胞",
                 "sender_identity": "健康顾问助理",
-                "related_doc_ids": ["healthcare_medical", "mock_joint_assessment", "mock_health_compliance"],
+                "related_doc_ids": ["doc_3b14058fefa7", "doc_2b02715a7e82"],
                 "tags": ["膝骨关节", "膝盖疼", "上下楼疼", "骨积液", "软骨磨损", "干细胞", "PRP"],
                 "enabled": True,
             },
@@ -3041,7 +3341,7 @@ def _empty_identity_settings(project_id: str) -> Dict[str, Any]:
                 "product_id": "ai_dm_system",
                 "product_name": "自动私信引流系统",
                 "sender_identity": "运营顾问",
-                "related_doc_ids": ["ai_technology_hardware", "mock_ai_dm_system", "mock_conversion_hooks"],
+                "related_doc_ids": ["doc_92f002f215b5", "doc_553ec2c9c03f", "doc_4f901b1dad34"],
                 "tags": ["AI私信", "自动回复", "评论采集", "私域引流", "模型切换"],
                 "enabled": True,
             },
@@ -3049,7 +3349,7 @@ def _empty_identity_settings(project_id: str) -> Dict[str, Any]:
                 "product_id": "ai_content_hardware",
                 "product_name": "AI内容生产与智能硬件",
                 "sender_identity": "运营顾问",
-                "related_doc_ids": ["ai_technology_hardware", "mock_ai_dm_system"],
+                "related_doc_ids": ["doc_1316c4e13bfd", "doc_92f002f215b5"],
                 "tags": ["文生视频", "批量剪辑", "自动发布", "智能硬件", "录音转纪要"],
                 "enabled": True,
             },
@@ -3057,7 +3357,7 @@ def _empty_identity_settings(project_id: str) -> Dict[str, Any]:
                 "product_id": "cross_border_operation",
                 "product_name": "跨境电商托管",
                 "sender_identity": "跨境运营顾问",
-                "related_doc_ids": ["cross_border_services", "mock_cross_border_operation"],
+                "related_doc_ids": ["doc_087015520f13", "doc_0163908dfe70"],
                 "tags": ["跨境", "跨境电商", "货源", "店铺托管", "AI选品"],
                 "enabled": True,
             },
@@ -3065,7 +3365,7 @@ def _empty_identity_settings(project_id: str) -> Dict[str, Any]:
                 "product_id": "general_brand_service",
                 "product_name": "综合企业服务咨询",
                 "sender_identity": "品牌客服",
-                "related_doc_ids": ["company_positioning", "mock_business_overview", "mock_conversion_hooks"],
+                "related_doc_ids": ["doc_0208fb112400", "doc_d4e1cc37dfb8", "doc_4f901b1dad34"],
                 "tags": ["公司介绍", "综合服务", "资料包", "承接方式"],
                 "enabled": True,
             },
@@ -3161,6 +3461,57 @@ def build_admin_state_response(
     }
 
 
+def _strip_workspace_project_ids(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _strip_workspace_project_ids(item)
+            for key, item in value.items()
+            if key != "project_id"
+        }
+    if isinstance(value, list):
+        return [_strip_workspace_project_ids(item) for item in value]
+    return value
+
+
+def build_workspace_state_response(
+    project_store: Optional[ProjectMaterialStore] = None,
+) -> Dict[str, Any]:
+    store = _project_store(project_store)
+    project_dir, _ = _project_root_and_meta(store, "")
+    descriptions = _load_document_descriptions(store, project_dir.name)
+    businesses = _flatten_knowledge_businesses(descriptions)
+    business_targets = _load_business_targets(store, project_dir.name, businesses)
+    company_settings = _load_company_settings(store, project_dir.name, descriptions)
+    current_company = (company_settings.get("companies") or [_default_company()])[0]
+    return {
+        "company": _strip_workspace_project_ids(current_company),
+        "company_settings": _strip_workspace_project_ids(company_settings),
+        "document_descriptions": _strip_workspace_project_ids(descriptions),
+        "business_boards": _strip_workspace_project_ids(_workspace_business_boards(descriptions, businesses)),
+        "businesses": _strip_workspace_project_ids(_merge_business_targets(businesses, business_targets)),
+        "business_targets": _strip_workspace_project_ids(business_targets),
+    }
+
+
+def build_workspace_business_targets_save_response(
+    payload: Dict[str, Any],
+    project_store: Optional[ProjectMaterialStore] = None,
+) -> Dict[str, Any]:
+    store = _project_store(project_store)
+    settings = payload.get("business_targets")
+    if not isinstance(settings, dict):
+        settings = {"profiles": payload.get("profiles", [])}
+    project_dir, _ = _project_root_and_meta(store, "")
+    descriptions = _load_document_descriptions(store, project_dir.name)
+    businesses = _flatten_knowledge_businesses(descriptions)
+    saved = _save_business_targets(store, project_dir.name, settings, businesses)
+    return {
+        "business_targets": _strip_workspace_project_ids(saved),
+        "business_boards": _strip_workspace_project_ids(_workspace_business_boards(descriptions, businesses)),
+        "businesses": _strip_workspace_project_ids(_merge_business_targets(businesses, saved)),
+    }
+
+
 def build_admin_company_settings_save_response(
     payload: Dict[str, Any],
     project_store: Optional[ProjectMaterialStore] = None,
@@ -3207,6 +3558,282 @@ def _remove_document_from_descriptions(
             kept.append(doc)
         section["documents"] = kept
     return removed
+
+
+def _find_document_description_location(
+    descriptions: Dict[str, Any],
+    doc_id: str,
+    relative_path: str,
+) -> tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    descriptions = _normalize_description_structure(descriptions)
+    normalized_relative = _description_path_key(relative_path)
+    for base in descriptions.get("knowledge_bases", []):
+        for domain in base.get("domains", []):
+            for section in domain.get("sections", []):
+                for doc in section.get("documents", []):
+                    same_doc_id = bool(doc_id) and str(doc.get("doc_id") or "") == doc_id
+                    same_path = bool(normalized_relative) and _description_path_key(doc.get("relative_path")) == normalized_relative
+                    if same_doc_id or same_path:
+                        return base, domain, section, doc
+    return None, None, None, None
+
+
+def _project_document_title(relative_path: str, fallback: str = "") -> str:
+    name = Path(str(relative_path or "").replace("\\", "/")).stem.strip()
+    if name:
+        return name
+    fallback_name = Path(str(fallback or "").replace("\\", "/")).stem.strip()
+    return fallback_name or "未命名文档"
+
+
+def _project_document_route_payload(
+    doc: Dict[str, Any],
+    route_source: str,
+    route_reason: str,
+    route_confidence: float,
+    knowledge_base_name: str,
+    domain_name: str,
+    section_name: str,
+    relative_path: str,
+) -> Dict[str, Any]:
+    title = str(doc.get("title") or _project_document_title(relative_path, doc.get("source_file_name") or "")).strip()
+    payload = {
+        **doc,
+        "title": title,
+        "knowledge_base": knowledge_base_name,
+        "kb_id": _knowledge_base_id(knowledge_base_name),
+        "domain": domain_name,
+        "section": section_name,
+        "category": str(doc.get("category") or domain_name).strip() or domain_name,
+        "relative_path": relative_path,
+        "route_source": route_source,
+        "route_reason": route_reason,
+        "route_confidence": route_confidence,
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
+        "route": {
+            "knowledge_base": knowledge_base_name,
+            "domain": domain_name,
+            "section": section_name,
+            "source": route_source,
+            "reason": route_reason,
+            "confidence": route_confidence,
+        },
+    }
+    return payload
+
+
+def build_admin_knowledge_route_rejudge_response(
+    payload: Dict[str, Any],
+    project_store: Optional[ProjectMaterialStore] = None,
+    llm_tools: Any = None,
+    model_conf: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    store = _project_store(project_store)
+    project_id = str(payload.get("project_id") or "").strip()
+    doc_id = str(payload.get("doc_id") or "").strip()
+    relative_path = str(payload.get("relative_path") or "").strip()
+    if not doc_id and not relative_path:
+        raise WebInputError("doc_id or relative_path is required")
+
+    project_dir, _ = _project_root_and_meta(store, project_id)
+    descriptions = _load_document_descriptions(store, project_dir.name)
+    base, domain, section, target_doc = _find_document_description_location(descriptions, doc_id, relative_path)
+    if not target_doc:
+        raise WebInputError("document not found")
+
+    _, current_relative = _resolve_project_document_file(
+        store,
+        project_dir.name,
+        {**target_doc, "relative_path": relative_path or target_doc.get("relative_path") or ""},
+    )
+    current_path = project_dir / current_relative
+    if not current_path.exists() or not current_path.is_file():
+        raise WebInputError("document file not found")
+
+    content = current_path.read_text(encoding="utf-8", errors="replace").strip()
+    if not content:
+        raise WebInputError("document content is empty")
+
+    current_name = str(target_doc.get("source_file_name") or Path(current_relative).name or target_doc.get("title") or "").strip()
+    meta = store._suggest_imported_document_meta(current_name, content, llm_tools, model_conf)
+    route_source = str(meta.get("route_source") or "rule").strip() or "rule"
+    route_reason = str(meta.get("route_reason") or "自动识别").strip() or "自动识别"
+    try:
+        route_confidence = float(meta.get("route_confidence") or 0)
+    except (TypeError, ValueError):
+        route_confidence = 0.0
+
+    knowledge_base_name = str(meta.get("knowledge_base") or target_doc.get("knowledge_base") or DEFAULT_KNOWLEDGE_BASE_NAME).strip() or DEFAULT_KNOWLEDGE_BASE_NAME
+    domain_name = str(meta.get("domain") or target_doc.get("domain") or "默认领域").strip() or "默认领域"
+    section_name = str(meta.get("section") or target_doc.get("section") or "默认板块").strip() or "默认板块"
+    updated_doc = _project_document_route_payload(
+        target_doc,
+        route_source,
+        route_reason,
+        route_confidence,
+        knowledge_base_name,
+        domain_name,
+        section_name,
+        current_relative,
+    )
+    return {
+        "document": updated_doc,
+        "route": updated_doc["route"],
+        "route_source": route_source,
+        "route_reason": route_reason,
+        "route_confidence": route_confidence,
+        "document_descriptions": descriptions,
+        "proposed": {
+            "knowledge_base": knowledge_base_name,
+            "domain": domain_name,
+            "section": section_name,
+        },
+    }
+
+
+def build_admin_knowledge_route_update_response(
+    payload: Dict[str, Any],
+    project_store: Optional[ProjectMaterialStore] = None,
+    llm_tools: Any = None,
+    model_conf: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    store = _project_store(project_store)
+    project_id = str(payload.get("project_id") or "").strip()
+    doc_id = str(payload.get("doc_id") or "").strip()
+    relative_path = str(payload.get("relative_path") or "").strip()
+    route_mode = str(payload.get("route_mode") or "manual").strip() or "manual"
+    if not doc_id and not relative_path:
+        raise WebInputError("doc_id or relative_path is required")
+
+    project_dir, _ = _project_root_and_meta(store, project_id)
+    descriptions = _load_document_descriptions(store, project_dir.name)
+    base, domain, section, target_doc = _find_document_description_location(descriptions, doc_id, relative_path)
+    if not target_doc:
+        raise WebInputError("document not found")
+
+    _, current_relative = _resolve_project_document_file(
+        store,
+        project_dir.name,
+        {**target_doc, "relative_path": relative_path or target_doc.get("relative_path") or ""},
+    )
+    current_path = project_dir / current_relative
+    if not current_path.exists() or not current_path.is_file():
+        raise WebInputError("document file not found")
+
+    content = current_path.read_text(encoding="utf-8", errors="replace")
+    source_file_name = str(target_doc.get("source_file_name") or Path(current_relative).name or target_doc.get("title") or "").strip()
+    if route_mode == "ai":
+        meta = store._suggest_imported_document_meta(source_file_name, content, llm_tools, model_conf)
+        route_source = str(meta.get("route_source") or "llm").strip() or "llm"
+        route_reason = str(meta.get("route_reason") or "自动识别").strip() or "自动识别"
+        try:
+            route_confidence = float(meta.get("route_confidence") or 0)
+        except (TypeError, ValueError):
+            route_confidence = 0.0
+        knowledge_base_name = str(payload.get("knowledge_base") or meta.get("knowledge_base") or target_doc.get("knowledge_base") or DEFAULT_KNOWLEDGE_BASE_NAME).strip() or DEFAULT_KNOWLEDGE_BASE_NAME
+        domain_name = str(payload.get("domain") or meta.get("domain") or target_doc.get("domain") or "默认领域").strip() or "默认领域"
+        section_name = str(payload.get("section") or meta.get("section") or target_doc.get("section") or "").strip()
+        if section_name == "默认板块":
+            section_name = ""
+    else:
+        knowledge_base_name = str(payload.get("knowledge_base") or target_doc.get("knowledge_base") or DEFAULT_KNOWLEDGE_BASE_NAME).strip() or DEFAULT_KNOWLEDGE_BASE_NAME
+        domain_name = str(payload.get("domain") or target_doc.get("domain") or "默认领域").strip() or "默认领域"
+        section_name = str(payload.get("section") or target_doc.get("section") or "").strip()
+        if section_name == "默认板块":
+            section_name = ""
+        route_source = str(payload.get("route_source") or target_doc.get("route_source") or "manual").strip() or "manual"
+        route_reason = str(payload.get("route_reason") or "人工修改").strip() or "人工修改"
+        try:
+            route_confidence = float(payload.get("route_confidence") or target_doc.get("route_confidence") or 1.0)
+        except (TypeError, ValueError):
+            route_confidence = 1.0
+
+    title = str(payload.get("title") or target_doc.get("title") or _project_document_title(current_relative, source_file_name)).strip()
+    filename = Path(current_relative).name or f"{_safe_segment(title, 'document')}.md"
+    path_parts = [
+        "knowledge",
+        "files",
+        _safe_segment(knowledge_base_name, DEFAULT_KNOWLEDGE_BASE_NAME),
+        _safe_segment(domain_name, "默认领域"),
+    ]
+    if section_name:
+        path_parts.append(_safe_segment(section_name, "默认板块"))
+    path_parts.append(filename)
+    new_relative_path = "/".join(path_parts)
+    new_path = project_dir / new_relative_path
+    if new_relative_path != current_relative:
+        if new_path.exists():
+            raise WebInputError("target file already exists")
+        new_path.parent.mkdir(parents=True, exist_ok=True)
+        current_path.rename(new_path)
+        _remove_empty_parent_dirs(current_path, project_dir / "knowledge" / "files")
+    else:
+        new_path = current_path
+
+    chunks = store._split_text(ProjectMaterialStore._sanitize_prompt_document_text(content).strip() or content)
+    updated_doc = _project_document_route_payload(
+        target_doc,
+        route_source,
+        route_reason,
+        route_confidence,
+        knowledge_base_name,
+        domain_name,
+        section_name,
+        new_relative_path,
+    )
+    updated_doc["title"] = title
+    updated_doc["source_file_name"] = source_file_name
+    updated_doc["content_chars"] = len(content)
+    updated_doc["chunk_count"] = len(chunks)
+
+    removed_doc = _remove_document_from_descriptions(descriptions, doc_id, current_relative)
+    if not removed_doc and current_relative != new_relative_path:
+        removed_doc = _remove_document_from_descriptions(descriptions, doc_id, new_relative_path)
+    target_section = _ensure_description_domain(descriptions, domain_name, section_name, knowledge_base_name)
+    docs = [
+        item for item in target_section.setdefault("documents", [])
+        if item.get("doc_id") != updated_doc["doc_id"]
+    ]
+    docs.append(updated_doc)
+    target_section["documents"] = docs
+    _remove_empty_sections_and_domains(descriptions)
+    descriptions = _save_document_descriptions(store, project_dir.name, descriptions)
+    company_settings = _load_company_settings(store, project_dir.name, descriptions)
+
+    manifest_doc = {
+        **updated_doc,
+        "title": title,
+        "description": str(target_doc.get("description") or "").strip(),
+        "keywords": list(target_doc.get("keywords") or []),
+        "sender_identity": str(target_doc.get("sender_identity") or "").strip(),
+        "imported_at": str(target_doc.get("imported_at") or datetime.now().isoformat(timespec="seconds")),
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    store._upsert_manifest_document(project_dir, manifest_doc)
+    store._upsert_chunks(
+        project_dir,
+        str(updated_doc.get("doc_id") or doc_id),
+        source_file_name or filename,
+        new_relative_path,
+        chunks,
+        sender_identity=str(updated_doc.get("sender_identity") or target_doc.get("sender_identity") or ""),
+    )
+
+    return {
+        "document": updated_doc,
+        "route": updated_doc["route"],
+        "document_descriptions": descriptions,
+        "company_settings": company_settings,
+        "manifest_document": manifest_doc,
+        "absolute_path": str(new_path),
+        "moved": {
+            "doc_id": updated_doc["doc_id"],
+            "from": current_relative,
+            "to": new_relative_path,
+            "moved": new_relative_path != current_relative,
+            "route_mode": route_mode,
+        },
+    }
 
 
 def _remove_empty_sections_and_domains(descriptions: Dict[str, Any]) -> bool:
@@ -3711,6 +4338,12 @@ def build_admin_knowledge_upload_response(
         raise WebInputError("file content is empty after parsing")
 
     meta = store._suggest_imported_document_meta(file_name, content, llm_tools, model_conf)
+    route_source = str(meta.get("route_source") or "rule").strip() or "rule"
+    route_reason = str(meta.get("route_reason") or "自动识别").strip() or "自动识别"
+    try:
+        route_confidence = float(meta.get("route_confidence") or 0)
+    except (TypeError, ValueError):
+        route_confidence = 0.0
     knowledge_base_name = _safe_segment(
         knowledge_base or meta.get("knowledge_base") or DEFAULT_KNOWLEDGE_BASE_NAME,
         DEFAULT_KNOWLEDGE_BASE_NAME,
@@ -3761,6 +4394,9 @@ def build_admin_knowledge_upload_response(
         "source_file_name": file_name,
         "imported_at": datetime.now().isoformat(timespec="seconds"),
         "chunk_count": len(chunks),
+        "route_source": route_source,
+        "route_reason": route_reason,
+        "route_confidence": route_confidence,
     }
     store._upsert_manifest_document(project_dir, manifest_doc)
     store._upsert_chunks(project_dir, doc_id, file_name, relative_path, chunks, sender_identity=sender_identity)
@@ -3787,6 +4423,17 @@ def build_admin_knowledge_upload_response(
         "content_chars": len(content),
         "chunk_count": len(chunks),
         "updated_at": datetime.now().isoformat(timespec="seconds"),
+        "route_source": route_source,
+        "route_reason": route_reason,
+        "route_confidence": route_confidence,
+        "route": {
+            "knowledge_base": knowledge_base_name,
+            "domain": domain_name,
+            "section": section_name,
+            "source": route_source,
+            "reason": route_reason,
+            "confidence": route_confidence,
+        },
     }
     documents.append(document_meta)
     target_section["documents"] = documents
@@ -3809,6 +4456,14 @@ def build_admin_knowledge_upload_response(
 
     return {
         "document": document_meta,
+        "route": {
+            "knowledge_base": knowledge_base_name,
+            "domain": domain_name,
+            "section": section_name,
+            "source": route_source,
+            "reason": route_reason,
+            "confidence": route_confidence,
+        },
         "document_descriptions": descriptions,
         "company_settings": company_settings,
         "manifest_document": manifest_doc,
@@ -4362,13 +5017,16 @@ def build_admin_prompt_restore_response(
         target_note=_clip_text(payload.get("target_note"), 600),
     )
     selected_docs_context = "\n\n".join(
-        "\n".join([
-            f"[{index}] {doc.get('title')} ({doc.get('relative_path')})",
-            f"knowledge_base: {doc.get('knowledge_base') or ''}",
-            f"domain: {doc.get('domain') or ''}",
-            f"section: {doc.get('section') or ''}",
-            str(doc.get("content") or ""),
-        ])
+        "\n".join(
+            item for item in [
+                f"[{index}] {doc.get('title')} ({doc.get('relative_path')})",
+                f"knowledge_base: {doc.get('knowledge_base') or ''}",
+                _knowledge_base_alias_context_line(doc.get("knowledge_base")),
+                f"domain: {doc.get('domain') or ''}",
+                f"section: {doc.get('section') or ''}",
+                str(doc.get("content") or ""),
+            ] if item
+        )
         for index, doc in enumerate(selected_docs, 1)
     )
     sender_identity, sender_identity_source = _resolve_sender_identity(
@@ -4794,7 +5452,7 @@ def build_public_private_message_response(
     prompts = trace.get("prompt_modules") or []
     if not prompts and trace.get("final_prompt"):
         prompts = [_prompt_module("final_prompt", "最终完整 Prompt", trace.get("final_prompt") or "")]
-    return _compact_private_message_response(
+    response = _compact_private_message_response(
         question=str(normalized.get("question") or ""),
         session_id=str(data.get("session_id") or ""),
         user_id=str(data.get("user_id") or ""),
@@ -4814,6 +5472,14 @@ def build_public_private_message_response(
             "video_overview": normalized.get("video_overview"),
         },
     )
+    response.update({
+        "sender_identity": data.get("sender_identity") or "",
+        "sender_identity_source": data.get("sender_identity_source") or {},
+        "project": data.get("project") or {},
+        "project_documents": data.get("project_documents") or {},
+        "prompt_trace": trace,
+    })
+    return response
 
 
 def build_public_prompt_preview_response(
@@ -6302,7 +6968,7 @@ def build_business_reply_response(
         },
     ]
 
-    return _compact_private_message_response(
+    response = _compact_private_message_response(
         question=message,
         session_id=session_id,
         user_id=user_id,
@@ -6316,6 +6982,28 @@ def build_business_reply_response(
             "user_identity": user_identity_structured,
         },
     )
+    prompt_trace = {
+        "final_prompt": final_prompt,
+        "prompt_modules": prompt_modules,
+        "opening_control": {
+            "required": bool(opening_question),
+            "question": opening_question,
+        },
+        "interview_control": interview_control,
+        "answer_guard": answer_guard,
+    }
+    response.update({
+        "route": context.get("route") or {},
+        "selected_documents": context.get("documents") or [],
+        "user_identity": user_identity,
+        "user_identity_structured": user_identity_structured,
+        "prompt_trace": prompt_trace,
+        "dialogue_list": dialogue_list,
+        "conversation_history": dialogue_list,
+        "memory_id": memory_id,
+        "memory_error": memory_error,
+    })
+    return response
 
 
 def build_chat_stream_events(
@@ -6556,6 +7244,8 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self._send_html()
         elif path == "/file-parser":
             self._send_html(FILE_PARSER_HTML_FILE)
+        elif path in {"/workspace", "/user-console"}:
+            self._send_html(WORKSPACE_HTML_FILE)
         elif path == "/project-materials":
             self.send_response(HTTPStatus.FOUND)
             self.send_header("Location", "/admin-vue")
@@ -6569,6 +7259,8 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self._send_artifact(path.removeprefix(f"{DM_DEBUG_ARTIFACT_URL_PREFIX}/"))
         elif path == "/api/v1/douyin/private-message/tasks":
             self._handle_douyin_dm_task_list(parsed_url)
+        elif path == "/api/v1/douyin/private-message/conversation-monitors":
+            self._handle_douyin_conversation_monitor_list()
         elif path.startswith("/api/v1/douyin/private-message/tasks/") and not path.endswith("/clear"):
             self._handle_douyin_dm_task_status(parsed_url)
         elif path == "/api/presets":
@@ -6633,6 +7325,8 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self._handle_project_materials(parsed_url)
         elif path == "/api/admin/state":
             self._handle_admin_state(parsed_url)
+        elif path == "/api/workspace/state":
+            self._handle_workspace_state(parsed_url)
         elif path == "/api/admin/http-audit-logs":
             self._handle_http_audit_log_list(parsed_url)
         elif path == "/api/health":
@@ -6683,6 +7377,13 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self._handle_douyin_dm_task_submit()
             return
 
+        if path in {
+            "/api/v1/douyin/private-message/conversation-monitors/start",
+            "/api/v1/douyin/private-message/conversation-monitors/stop",
+        }:
+            self._handle_douyin_conversation_monitor_control(path.rsplit("/", 1)[-1])
+            return
+
         if path == "/api/v1/douyin/private-message/tasks/clear":
             self._handle_douyin_dm_task_clear()
             return
@@ -6727,6 +7428,14 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self._handle_admin_knowledge_upload()
             return
 
+        if path == "/api/admin/knowledge/route/rejudge":
+            self._handle_admin_knowledge_route_rejudge()
+            return
+
+        if path == "/api/admin/knowledge/route/update":
+            self._handle_admin_knowledge_route_update()
+            return
+
         if path == "/api/admin/knowledge/save":
             self._handle_admin_knowledge_save()
             return
@@ -6753,6 +7462,10 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/company-settings/save":
             self._handle_admin_company_settings_save()
+            return
+
+        if path == "/api/workspace/business-targets/save":
+            self._handle_workspace_business_targets_save()
             return
 
         if path == "/api/admin/open-file-location":
@@ -6939,6 +7652,17 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
+    def _handle_workspace_state(self, parsed_url):
+        try:
+            data = build_workspace_state_response(
+                project_store=self.server.project_store,
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
     def _handle_http_audit_log_list(self, parsed_url=None):
         try:
             params = parse_qs((parsed_url.query if parsed_url is not None else urlparse(self.path).query) or "")
@@ -7044,6 +7768,38 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
+    def _handle_admin_knowledge_route_rejudge(self):
+        try:
+            payload = self._read_json()
+            model_conf = _optional_document_selector_conf(payload)
+            data = build_admin_knowledge_route_rejudge_response(
+                payload,
+                project_store=self.server.project_store,
+                llm_tools=self.server.logic._llm() if model_conf else None,
+                model_conf=model_conf,
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_admin_knowledge_route_update(self):
+        try:
+            payload = self._read_json()
+            model_conf = _optional_document_selector_conf(payload)
+            data = build_admin_knowledge_route_update_response(
+                payload,
+                project_store=self.server.project_store,
+                llm_tools=self.server.logic._llm() if model_conf else None,
+                model_conf=model_conf,
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
     def _handle_admin_knowledge_save(self):
         try:
             payload = self._read_json()
@@ -7126,6 +7882,19 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
         try:
             payload = self._read_json()
             data = build_admin_company_settings_save_response(
+                payload,
+                project_store=self.server.project_store,
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_workspace_business_targets_save(self):
+        try:
+            payload = self._read_json()
+            data = build_workspace_business_targets_save_response(
                 payload,
                 project_store=self.server.project_store,
             )
@@ -7315,6 +8084,34 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
                 payload,
                 executor=_douyin_account_cookie_playwright_executor,
             )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_douyin_conversation_monitor_list(self):
+        try:
+            data = build_douyin_conversation_monitor_list_response()
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_douyin_conversation_monitor_control(self, action: str):
+        try:
+            payload = self._read_json()
+            if action == "start":
+                data = build_douyin_conversation_monitor_start_response(
+                    payload,
+                    logic=getattr(self.server, "logic", None),
+                    project_store=getattr(self.server, "project_store", None),
+                )
+            elif action == "stop":
+                data = build_douyin_conversation_monitor_stop_response(payload)
+            else:
+                raise WebInputError("unsupported monitor action")
             self._send_json({"ok": True, "data": data})
         except WebInputError as e:
             self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
@@ -7639,6 +8436,10 @@ DM_DEFAULT_VIEWPORT_WIDTH = 1440
 DM_DEFAULT_VIEWPORT_HEIGHT = 900
 DM_PLAYWRIGHT_PROFILE_ROOT = Path(os.getenv("AISEC_DM_PLAYWRIGHT_PROFILE_ROOT", Path(__file__).resolve().parents[2] / "content" / "playwright_profiles"))
 _DM_PLAYWRIGHT_SESSIONS: Dict[str, Dict[str, Any]] = {}
+_DM_PLAYWRIGHT_SESSIONS_LOCK = threading.RLock()
+_DM_ACCOUNT_CONTROLLERS: Dict[str, Any] = {}
+_DM_ACCOUNT_CONTROLLERS_LOCK = threading.RLock()
+DM_ACCOUNT_BROWSER_POOL_DEFAULT_MAX = max(1, _env_int("AISEC_DM_MAX_ACCOUNT_BROWSERS", 3))
 
 
 DM_FAILURE_PROFILES = {
@@ -7707,6 +8508,12 @@ DM_FAILURE_PROFILES = {
         "category": "browser",
         "reason": "浏览器、上下文或页面已关闭",
         "hint": "请检查浏览器进程、容器退出状态以及是否有页面崩溃或被手动关闭",
+    },
+    "account_browser_pool_full": {
+        "stage": "browser_runtime",
+        "category": "browser",
+        "reason": "账号浏览器池已达到并发上限",
+        "hint": "等待已有账号任务执行完成，或提高 AISEC_DM_MAX_ACCOUNT_BROWSERS / worker --max-account-browsers 配置",
     },
     "cookie_invalid": {
         "stage": "browser_login",
@@ -7801,7 +8608,8 @@ def _dm_pending_queue_for_account(account_key: str) -> str:
 
 
 def _dm_account_key_from_values(account_cookie: str = "", account_id: str = "") -> str:
-    seed = str(account_id or account_cookie or "").strip()
+    seed = str(account_id or "").strip() or _dm_account_identity_seed(account_cookie)
+    seed = seed or _dm_normalize_account_cookie_text(account_cookie)
     if not seed:
         return "default"
     import hashlib
@@ -7813,8 +8621,35 @@ def _dm_normalized_target(target_profile_url: str) -> str:
     return str(target_profile_url or "").strip().split("?", 1)[0]
 
 
-def _dm_parse_account_cookies(raw_cookies: str) -> List[Dict[str, Any]]:
-    text = str(raw_cookies or "").strip()
+def _dm_normalize_account_cookie_text(raw_cookies: Any) -> str:
+    if raw_cookies is None:
+        return ""
+    if isinstance(raw_cookies, bytes):
+        return raw_cookies.decode("utf-8", errors="ignore").strip()
+    if isinstance(raw_cookies, (dict, list)):
+        return json.dumps(raw_cookies, ensure_ascii=False)
+    return str(raw_cookies or "").strip()
+
+
+def _dm_has_account_cookie_value(raw_cookies: Any) -> bool:
+    if raw_cookies is None:
+        return False
+    if isinstance(raw_cookies, bytes):
+        return bool(raw_cookies.strip())
+    if isinstance(raw_cookies, (dict, list)):
+        return bool(raw_cookies)
+    return bool(str(raw_cookies or "").strip())
+
+
+def _dm_pick_account_cookie_payload(payload: Dict[str, Any]) -> Any:
+    for key in ("account_cookie", "account_cookies", "cookie", "cookies"):
+        if key in payload and _dm_has_account_cookie_value(payload.get(key)):
+            return payload.get(key)
+    return ""
+
+
+def _dm_parse_account_cookies(raw_cookies: Any) -> List[Dict[str, Any]]:
+    text = _dm_normalize_account_cookie_text(raw_cookies)
     if not text:
         return []
     cookies: List[Dict[str, Any]] = []
@@ -7853,6 +8688,29 @@ def _dm_parse_account_cookies(raw_cookies: str) -> List[Dict[str, Any]]:
     return cookies
 
 
+def _dm_account_identity_seed(raw_cookies: Any) -> str:
+    """Return a stable, non-secret account seed from an exported cookie set."""
+    cookies = _dm_parse_account_cookies(raw_cookies)
+    values = {str(item.get("name") or "").strip(): str(item.get("value") or "").strip() for item in cookies}
+    for name in ("uid_tt", "uid_tt_ss"):
+        if values.get(name):
+            return f"douyin_uid:{values[name]}"
+    return ""
+
+
+def _dm_account_id_from_values(raw_cookies: Any, account_id: str = "") -> str:
+    explicit = str(account_id or "").strip()
+    if explicit:
+        return explicit
+    identity_seed = _dm_account_identity_seed(raw_cookies)
+    if not identity_seed:
+        return ""
+    import hashlib
+
+    digest = hashlib.sha256(identity_seed.encode("utf-8", errors="ignore")).hexdigest()[:16]
+    return f"douyin_auto_{digest}"
+
+
 def _dm_browser_channel(browser_name: str) -> str:
     name = str(browser_name or "").strip().lower()
     if name in {"edge", "msedge", "microsoft-edge"}:
@@ -7883,6 +8741,12 @@ def _dm_playwright_user_data_dir(browser_name: str, options: Dict[str, Any]) -> 
         return Path(raw).expanduser()
     browser_key = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(browser_name or "edge").strip().lower() or "edge")
     return DM_PLAYWRIGHT_PROFILE_ROOT / f"douyin-{browser_key}"
+
+
+def _dm_account_browser_user_data_dir(browser_name: str, account_key: str) -> Path:
+    browser_key = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(browser_name or "edge").strip().lower() or "edge")
+    safe_account_key = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(account_key or "default").strip() or "default")
+    return DM_PLAYWRIGHT_PROFILE_ROOT / "accounts" / browser_key / safe_account_key
 
 
 def _dm_persistent_context_alive(context: Any) -> bool:
@@ -7920,21 +8784,13 @@ def _dm_get_playwright_context(sync_playwright_factory: Any, browser_name: str, 
     keep_browser_open = _dm_bool_text(options.get("keep_browser_open", not headless))
     use_persistent_context = _dm_bool_text(options.get("persistent_context", keep_browser_open or options.get("user_data_dir")))
     if use_persistent_context:
-        user_data_dir = _dm_playwright_user_data_dir(browser_name, options)
-        key = f"{str(browser_name or 'edge').lower()}|{user_data_dir.resolve()}"
-        session = _DM_PLAYWRIGHT_SESSIONS.get(key)
-        if session and _dm_persistent_context_alive(session.get("context")):
-            return session["playwright"], session["context"], None, keep_browser_open
         manager = sync_playwright_factory()
         playwright = manager.start()
         context = _dm_launch_persistent_playwright_context(playwright, browser_name, options)
-        _DM_PLAYWRIGHT_SESSIONS[key] = {
-            "manager": manager,
-            "playwright": playwright,
-            "context": context,
-            "user_data_dir": str(user_data_dir),
-        }
-        return playwright, context, None, keep_browser_open
+        # Sync Playwright objects are bound to the thread that created them. Web
+        # requests may run on different threads, so keep the profile directory
+        # persistent but do not cache/reuse the context object between requests.
+        return playwright, context, None, False
 
     manager = sync_playwright_factory()
     playwright = manager.start()
@@ -7955,6 +8811,332 @@ def _dm_stop_playwright_context(context: Any, browser: Any, playwright: Any) -> 
             context.close()
     except Exception:
         pass
+
+
+def _dm_keep_playwright_session(session_key: str, context: Any, browser: Any, playwright: Any, meta: Optional[Dict[str, Any]] = None) -> None:
+    clean_key = str(session_key or "default").strip() or "default"
+    with _DM_PLAYWRIGHT_SESSIONS_LOCK:
+        previous = _DM_PLAYWRIGHT_SESSIONS.get(clean_key)
+        if previous and previous.get("context") is not context:
+            _dm_stop_playwright_context(previous.get("context"), previous.get("browser"), previous.get("playwright"))
+        _DM_PLAYWRIGHT_SESSIONS[clean_key] = {
+            "context": context,
+            "browser": browser,
+            "playwright": playwright,
+            "last_used_at": time.time(),
+            **dict(meta or {}),
+        }
+
+
+def _dm_context_cookie_count(context: Any) -> int:
+    try:
+        return len(context.cookies())
+    except Exception:
+        return 0
+
+
+def _dm_reusable_context_page(context: Any):
+    try:
+        for candidate in list(context.pages or []):
+            try:
+                if not candidate.is_closed():
+                    return candidate
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return context.new_page()
+
+
+def _dm_account_session_key(account_key: str = "", account_id: str = "") -> str:
+    return str(account_key or account_id or "default").strip() or "default"
+
+
+def _dm_get_kept_playwright_session(session_key: str) -> Optional[Dict[str, Any]]:
+    clean_key = _dm_account_session_key(session_key)
+    with _DM_PLAYWRIGHT_SESSIONS_LOCK:
+        session = _DM_PLAYWRIGHT_SESSIONS.get(clean_key)
+        if not session:
+            return None
+        if not _dm_persistent_context_alive(session.get("context")):
+            _DM_PLAYWRIGHT_SESSIONS.pop(clean_key, None)
+            _dm_stop_playwright_context(session.get("context"), session.get("browser"), session.get("playwright"))
+            return None
+        session["last_used_at"] = time.time()
+        return dict(session)
+
+
+def _dm_detect_latest_douyin_message(page: Any) -> Dict[str, Any]:
+    script = """
+    () => {
+      const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+      const isVisible = (el) => {
+        if (!el || !el.getBoundingClientRect) return false;
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width >= 24 && rect.height >= 14 && rect.right > 0 && rect.bottom > 0 &&
+          style.visibility !== 'hidden' && style.display !== 'none' && style.opacity !== '0';
+      };
+      const editorNodes = Array.from(document.querySelectorAll('[contenteditable="true"], textarea, .public-DraftEditor-content')).filter(isVisible);
+      const inEditor = (el) => editorNodes.some((editor) => editor === el || editor.contains(el) || el.contains(editor));
+      const unreadNodes = Array.from(document.querySelectorAll('div, span, a, button, li'))
+        .filter(isVisible)
+        .map((el) => {
+          const text = normalize(el.innerText || el.textContent || '');
+          const rect = el.getBoundingClientRect();
+          const cls = String(el.className || '');
+          const aria = String(el.getAttribute('aria-label') || '');
+          let score = 0;
+          if (/未读|新消息|消息|私信|聊天/.test(text + aria)) score += 30;
+          if (/unread|message|chat|badge|notice/i.test(cls + aria)) score += 20;
+          if (/^[1-9][0-9]?$/.test(text)) score += 20;
+          if (rect.left < window.innerWidth * 0.45) score += 10;
+          return {el, text, score, x: rect.left, y: rect.top};
+        })
+        .filter((item) => item.score >= 30)
+        .sort((a, b) => b.score - a.score || a.y - b.y);
+      const candidates = Array.from(document.querySelectorAll('div, span, p, li, article, section'))
+        .filter((el) => isVisible(el) && !inEditor(el))
+        .map((el) => {
+          const text = normalize(el.innerText || el.textContent || '');
+          const rect = el.getBoundingClientRect();
+          const cls = String(el.className || '');
+          let score = 0;
+          if (text.length >= 2 && text.length <= 260) score += 20;
+          if (rect.left < window.innerWidth * 0.55) score += 16;
+          if (rect.top > 80 && rect.bottom < window.innerHeight - 70) score += 10;
+          if (/message|chat|bubble|msg|content/i.test(cls)) score += 20;
+          if (/抖音|记录美好生活|首页|推荐|关注|商城|搜索|发布/.test(text)) score -= 40;
+          if (/发送|表情|按住|输入|说点什么/.test(text)) score -= 20;
+          if (text.length > 120) score -= 8;
+          return {text, score, x: Math.round(rect.left), y: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height)};
+        })
+        .filter((item) => item.score >= 24 && item.text)
+        .sort((a, b) => b.score - a.score || b.y - a.y);
+      return {
+        url: location.href,
+        title: document.title || '',
+        hasEditor: editorNodes.length > 0,
+        unreadCount: unreadNodes.length,
+        latestText: candidates[0] ? candidates[0].text : '',
+        latestCandidate: candidates[0] || null,
+      };
+    }
+    """
+    try:
+        data = page.evaluate(script) or {}
+    except Exception as exc:
+        data = {"error": str(exc)}
+    if not isinstance(data, dict):
+        data = {}
+    latest_text = str(data.get("latestText") or "").strip()
+    return {
+        "url": str(data.get("url") or ""),
+        "title": str(data.get("title") or ""),
+        "has_editor": bool(data.get("hasEditor")),
+        "unread_count": int(data.get("unreadCount") or 0),
+        "latest_text": latest_text,
+        "latest_candidate": data.get("latestCandidate") if isinstance(data.get("latestCandidate"), dict) else {},
+        "error": str(data.get("error") or ""),
+    }
+
+
+def _dm_open_douyin_messages_surface(page: Any, timeout_ms: int = 12000) -> List[Dict[str, Any]]:
+    steps: List[Dict[str, Any]] = []
+    try:
+        current_url = str(getattr(page, "url", "") or "")
+        if "douyin.com" not in current_url:
+            page.goto("https://www.douyin.com/", wait_until="domcontentloaded", timeout=timeout_ms)
+            steps.append({"name": "open_douyin_home", "ok": True, "detail": "opened home"})
+        try:
+            page.wait_for_load_state("networkidle", timeout=min(timeout_ms, 8000))
+        except Exception:
+            pass
+        _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page, timeout_ms=1500))
+        if _dm_detect_latest_douyin_message(page).get("has_editor"):
+            steps.append({"name": "detect_message_surface", "ok": True, "detail": "editor already visible"})
+            return steps
+        candidates = [
+            page.get_by_role("link", name=re.compile(r"消息|私信|聊天|Message", re.I)),
+            page.get_by_role("button", name=re.compile(r"消息|私信|聊天|Message", re.I)),
+            page.locator("a:has-text('消息')"),
+            page.locator("button:has-text('消息')"),
+            page.locator("[role=button]:has-text('消息')"),
+            page.locator("text=消息"),
+            page.locator("text=私信"),
+        ]
+        try:
+            steps.append(_dm_click_first(page, candidates, "open_message_center", timeout_ms=min(timeout_ms, 5000)))
+            try:
+                page.wait_for_load_state("networkidle", timeout=min(timeout_ms, 6000))
+            except Exception:
+                pass
+        except Exception as exc:
+            steps.append({"name": "open_message_center", "ok": False, "detail": str(exc)})
+        return steps
+    except Exception as exc:
+        return [{"name": "open_message_center", "ok": False, "detail": str(exc)}]
+
+
+def _dm_click_unread_or_latest_chat(page: Any, timeout_ms: int = 5000) -> Dict[str, Any]:
+    script = """
+    () => {
+      const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+      const isVisible = (el) => {
+        if (!el || !el.getBoundingClientRect) return false;
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width >= 36 && rect.height >= 24 && rect.right > 0 && rect.bottom > 0 &&
+          style.visibility !== 'hidden' && style.display !== 'none' && style.opacity !== '0';
+      };
+      const rows = Array.from(document.querySelectorAll('a, button, li, [role=button], [role=listitem], div'))
+        .filter(isVisible)
+        .map((el) => {
+          const text = normalize(el.innerText || el.textContent || '');
+          const rect = el.getBoundingClientRect();
+          const cls = String(el.className || '');
+          let score = 0;
+          if (/未读|新消息/.test(text)) score += 50;
+          if (/^[1-9][0-9]?$/.test(text)) score += 25;
+          if (/message|chat|conversation|session|item|list/i.test(cls)) score += 20;
+          if (rect.left < window.innerWidth * 0.46) score += 20;
+          if (rect.top > 70 && rect.height >= 36 && rect.height <= 150) score += 10;
+          if (/抖音|记录美好生活|首页|推荐|商城|搜索|发布/.test(text)) score -= 50;
+          if (text.length > 320) score -= 30;
+          return {el, text, score, x: rect.left, y: rect.top};
+        })
+        .filter((item) => item.score >= 35)
+        .sort((a, b) => b.score - a.score || a.y - b.y);
+      const target = rows[0] && rows[0].el;
+      if (!target) return {clicked: false, detail: 'no unread or chat row found'};
+      target.click();
+      return {clicked: true, detail: rows[0].text.slice(0, 120)};
+    }
+    """
+    try:
+        result = page.evaluate(script) or {}
+    except Exception as exc:
+        result = {"clicked": False, "detail": str(exc)}
+    if isinstance(result, dict) and result.get("clicked"):
+        try:
+            _dm_visible_message_editor(page, timeout_ms=timeout_ms)
+        except Exception:
+            pass
+        return {"name": "open_latest_chat", "ok": True, "detail": str(result.get("detail") or "clicked")}
+    return {"name": "open_latest_chat", "ok": False, "detail": str((result or {}).get("detail") if isinstance(result, dict) else result)}
+
+
+class DouyinAccountBrowserPoolFull(RuntimeError):
+    pass
+
+
+class DouyinAccountCookieMismatch(RuntimeError):
+    pass
+
+
+class DouyinAccountBrowserPool:
+    def __init__(
+        self,
+        max_accounts: int = DM_ACCOUNT_BROWSER_POOL_DEFAULT_MAX,
+        browser_name: str = "edge",
+        headless: bool = False,
+        slow_mo: int = 120,
+    ):
+        self.max_accounts = max(1, int(max_accounts or DM_ACCOUNT_BROWSER_POOL_DEFAULT_MAX))
+        self.browser_name = str(browser_name or "edge").strip() or "edge"
+        self.headless = bool(headless)
+        self.slow_mo = int(slow_mo or 0)
+        self._sessions: Dict[str, Dict[str, Any]] = {}
+        self._lock = threading.RLock()
+
+    def active_account_keys(self) -> List[str]:
+        with self._lock:
+            self._drop_dead_locked()
+            return list(self._sessions.keys())
+
+    def can_accept(self, account_key: str) -> bool:
+        clean_key = str(account_key or "default").strip() or "default"
+        with self._lock:
+            self._drop_dead_locked()
+            return clean_key in self._sessions or len(self._sessions) < self.max_accounts
+
+    def close_all(self) -> None:
+        with self._lock:
+            sessions = list(self._sessions.values())
+            self._sessions = {}
+        for session in sessions:
+            _dm_stop_playwright_context(session.get("context"), None, session.get("playwright"))
+
+    def get_or_open(self, account_key: str, raw_cookies: Any, options: Dict[str, Any]) -> Dict[str, Any]:
+        clean_key = str(account_key or "default").strip() or "default"
+        with self._lock:
+            self._drop_dead_locked()
+            existing = self._sessions.get(clean_key)
+            if existing:
+                incoming_identity = _dm_account_identity_seed(raw_cookies)
+                if incoming_identity and existing.get("identity_seed") and incoming_identity != existing["identity_seed"]:
+                    raise DouyinAccountCookieMismatch(f"account cookie identity mismatch for {clean_key}")
+                cookies = _dm_parse_account_cookies(raw_cookies)
+                if cookies:
+                    cookie_names = {str(item.get("name") or "").strip() for item in cookies}
+                    if len(cookies) >= 5 or "uid_tt" in cookie_names or "uid_tt_ss" in cookie_names:
+                        try:
+                            existing["context"].clear_cookies()
+                        except Exception:
+                            pass
+                    existing["context"].add_cookies(cookies)
+                    existing["cookie_count"] = len(cookies)
+                    existing["cookies_refreshed"] = True
+                existing["last_used_at"] = time.time()
+                return {**existing, "opened_new": False}
+            if len(self._sessions) >= self.max_accounts:
+                raise DouyinAccountBrowserPoolFull(f"account browser pool full: {len(self._sessions)}/{self.max_accounts}")
+            session = self._open_locked(clean_key, raw_cookies, options)
+            self._sessions[clean_key] = session
+            return {**session, "opened_new": True}
+
+    def _drop_dead_locked(self) -> None:
+        dead_keys = []
+        for account_key, session in self._sessions.items():
+            if not _dm_persistent_context_alive(session.get("context")):
+                dead_keys.append(account_key)
+        for account_key in dead_keys:
+            session = self._sessions.pop(account_key, {})
+            _dm_stop_playwright_context(session.get("context"), None, session.get("playwright"))
+
+    def _open_locked(self, account_key: str, raw_cookies: Any, options: Dict[str, Any]) -> Dict[str, Any]:
+        from playwright.sync_api import sync_playwright
+
+        browser_name = str(options.get("browser") or options.get("browser_name") or self.browser_name or "edge").strip() or "edge"
+        user_data_dir = _dm_account_browser_user_data_dir(browser_name, account_key)
+        session_options = dict(options or {})
+        session_options.update({
+            "browser": browser_name,
+            "browser_name": browser_name,
+            "headless": bool(options.get("headless", self.headless)),
+            "slow_mo": int(options.get("slow_mo", self.slow_mo)),
+            "user_data_dir": str(user_data_dir),
+            "persistent_context": True,
+            "keep_browser_open": True,
+        })
+        manager = sync_playwright()
+        playwright = manager.start()
+        context = _dm_launch_persistent_playwright_context(playwright, browser_name, session_options)
+        cookies = _dm_parse_account_cookies(raw_cookies)
+        if cookies:
+            context.add_cookies(cookies)
+        return {
+            "account_key": account_key,
+            "identity_seed": _dm_account_identity_seed(raw_cookies),
+            "browser": browser_name,
+            "context": context,
+            "playwright": playwright,
+            "user_data_dir": str(user_data_dir),
+            "cookie_count": len(cookies),
+            "cookies_refreshed": False,
+            "created_at": time.time(),
+            "last_used_at": time.time(),
+        }
     try:
         if browser:
             browser.close()
@@ -8199,6 +9381,219 @@ def _dm_wait_message_sent(page: Any, message: str, timeout_ms: int = 8000, basel
         except Exception:
             time.sleep(0.25)
     raise RuntimeError(f"message send was not confirmed; editor still contains: {last_text[:80]}")
+
+
+class DouyinConversationMonitor:
+    def __init__(
+        self,
+        *,
+        account_id: str,
+        account_name: str,
+        account_key: str,
+        account_cookies: str,
+        browser_name: str,
+        headless: bool,
+        project_id: str,
+        company_id: str,
+        source_platform: str,
+        auto_send: bool,
+        poll_seconds: float,
+        logic: Optional[SessionRAGChatLogic] = None,
+        project_store: Optional[ProjectMaterialStore] = None,
+    ):
+        self.account_id = account_id
+        self.account_name = account_name or account_id or account_key
+        self.account_key = account_key
+        self.account_cookies = account_cookies
+        self.browser_name = browser_name or "edge"
+        self.headless = bool(headless)
+        self.project_id = project_id
+        self.company_id = company_id
+        self.source_platform = source_platform or "抖音"
+        self.auto_send = bool(auto_send)
+        self.poll_seconds = max(3.0, float(poll_seconds or 8))
+        self.logic = logic
+        self.project_store = project_store
+        self.stop_event = threading.Event()
+        self.thread: Optional[threading.Thread] = None
+        self.lock = threading.RLock()
+        self.status = "stopped"
+        self.last_error = ""
+        self.last_message = ""
+        self.last_reply = ""
+        self.last_seen_signature = ""
+        self.started_at = ""
+        self.updated_at = ""
+        self.loop_count = 0
+        self.reply_count = 0
+        self.logs: List[Dict[str, Any]] = []
+
+    def log(self, text: str, level: str = "info", extra: Optional[Dict[str, Any]] = None) -> None:
+        item = {
+            "time": _dm_now(),
+            "level": level,
+            "text": str(text or ""),
+            **dict(extra or {}),
+        }
+        with self.lock:
+            self.updated_at = item["time"]
+            self.logs.append(item)
+            self.logs = self.logs[-80:]
+
+    def start(self) -> None:
+        with self.lock:
+            if self.thread and self.thread.is_alive():
+                self.status = "running"
+                return
+            self.stop_event.clear()
+            self.status = "starting"
+            self.started_at = _dm_now()
+            self.updated_at = self.started_at
+            self.thread = threading.Thread(target=self._run, name=f"douyin-conversation-{self.account_key[:10]}", daemon=True)
+            self.thread.start()
+
+    def stop(self) -> None:
+        self.stop_event.set()
+        with self.lock:
+            self.status = "stopping"
+            self.updated_at = _dm_now()
+        self.log("已请求停止监控", "info")
+
+    def snapshot(self) -> Dict[str, Any]:
+        with self.lock:
+            alive = bool(self.thread and self.thread.is_alive())
+            if self.status in {"running", "starting", "stopping"} and not alive:
+                self.status = "stopped"
+            return {
+                "account_id": self.account_id,
+                "account_name": self.account_name,
+                "account_key": self.account_key,
+                "browser_name": self.browser_name,
+                "headless": self.headless,
+                "status": self.status,
+                "alive": alive,
+                "auto_send": self.auto_send,
+                "poll_seconds": self.poll_seconds,
+                "last_error": self.last_error,
+                "last_message": self.last_message,
+                "last_reply": self.last_reply,
+                "last_seen_signature": self.last_seen_signature,
+                "started_at": self.started_at,
+                "updated_at": self.updated_at,
+                "loop_count": self.loop_count,
+                "reply_count": self.reply_count,
+                "logs": list(self.logs[-30:]),
+            }
+
+    def _run(self) -> None:
+        page = None
+        context = None
+        browser = None
+        playwright = None
+        try:
+            from playwright.sync_api import sync_playwright
+
+            options = {
+                "browser": self.browser_name,
+                "browser_name": self.browser_name,
+                "headless": self.headless,
+                "slow_mo": 120,
+                "user_data_dir": str(_dm_account_browser_user_data_dir(self.browser_name, self.account_key)),
+                "persistent_context": True,
+                "keep_browser_open": True,
+                "viewport_width": DM_DEFAULT_VIEWPORT_WIDTH,
+                "viewport_height": DM_DEFAULT_VIEWPORT_HEIGHT,
+            }
+            playwright, context, browser, _ = _dm_get_playwright_context(sync_playwright, self.browser_name, options)
+            cookies = _dm_parse_account_cookies(self.account_cookies)
+            if cookies:
+                context.add_cookies(cookies)
+            page = _dm_reusable_context_page(context)
+            _dm_keep_playwright_session(self.account_key, context, browser, playwright, {
+                "browser": self.browser_name,
+                "user_data_dir": str(_dm_playwright_user_data_dir(self.browser_name, options)),
+                "monitor": True,
+            })
+            page.goto("https://www.douyin.com/", wait_until="domcontentloaded", timeout=45000)
+            self.log("已打开账号浏览器，开始监控新私信", "ok")
+            with self.lock:
+                self.status = "running"
+                self.updated_at = _dm_now()
+
+            while not self.stop_event.is_set():
+                with self.lock:
+                    self.loop_count += 1
+                    self.updated_at = _dm_now()
+                self._tick(page)
+                self.stop_event.wait(self.poll_seconds)
+        except Exception as exc:
+            with self.lock:
+                self.status = "error"
+                self.last_error = str(exc)
+                self.updated_at = _dm_now()
+            self.log("监控异常：" + str(exc), "error")
+        finally:
+            with self.lock:
+                if self.status != "error":
+                    self.status = "stopped"
+                self.updated_at = _dm_now()
+            self.log("监控已停止，浏览器窗口保持打开", "info")
+
+    def _tick(self, page: Any) -> None:
+        steps = _dm_open_douyin_messages_surface(page)
+        for step in steps:
+            if not step.get("ok"):
+                self.log("打开消息入口未确认：" + str(step.get("detail") or ""), "warn", {"step": step.get("name")})
+        detect = _dm_detect_latest_douyin_message(page)
+        if detect.get("error"):
+            self.log("读取消息失败：" + detect["error"], "warn")
+            return
+        if not detect.get("has_editor"):
+            click_step = _dm_click_unread_or_latest_chat(page)
+            if not click_step.get("ok"):
+                self.log("暂无可自动打开的新私信：" + str(click_step.get("detail") or ""), "info")
+                return
+            self.log("已打开疑似新会话：" + str(click_step.get("detail") or ""), "ok")
+            time.sleep(1.2)
+            detect = _dm_detect_latest_douyin_message(page)
+        message = str(detect.get("latest_text") or "").strip()
+        if not message:
+            self.log("已进入私信页面，但未识别到用户新消息", "warn")
+            return
+        signature = f"{detect.get('url')}|{message[-180:]}"
+        if signature == self.last_seen_signature:
+            return
+        with self.lock:
+            self.last_seen_signature = signature
+            self.last_message = message
+            self.updated_at = _dm_now()
+        self.log("识别到新消息：" + message[:120], "ok")
+        payload = {
+            "question": message,
+            "conversation_stage": "private_followup",
+            "session_id": "douyin_conversation_" + self.account_key,
+            "user_id": self.account_key,
+            "project_id": self.project_id,
+            "company_id": self.company_id,
+            "source_platform": self.source_platform,
+            "account_id": self.account_id,
+        }
+        response = build_chat_response(payload, logic=self.logic, project_store=self.project_store, use_saved_model_config=True)
+        reply = str(response.get("reply") or response.get("answer") or "").strip()
+        if not reply:
+            self.log("模型返回空回复，已跳过发送", "error")
+            return
+        with self.lock:
+            self.last_reply = reply
+        if not self.auto_send:
+            self.log("已生成回复，自动发送关闭：" + reply[:120], "info")
+            return
+        baseline = _dm_collect_message_bubble_matches(page, reply)
+        _dm_fill_message_editor(page, reply, timeout_ms=12000)
+        send_steps = _dm_send_and_confirm_current_message(page, reply, timeout_ms=10000, baseline=[item.get("signature") for item in baseline])
+        with self.lock:
+            self.reply_count += 1
+        self.log("已自动回复：" + reply[:120], "ok", {"steps": send_steps})
 
 
 def _dm_editor_send_click_point(page: Any) -> Optional[Dict[str, float]]:
@@ -8522,9 +9917,17 @@ def _dm_send_current_message(page: Any, timeout_ms: int = 8000) -> Dict[str, Any
     raise RuntimeError(f"send button not found: {last_error}")
 
 
-def _dm_send_and_confirm_current_message(page: Any, message: str, timeout_ms: int = 8000) -> List[Dict[str, Any]]:
-    baseline_matches = _dm_collect_message_bubble_matches(page, message)
-    baseline = [match.get("signature") for match in baseline_matches]
+def _dm_send_and_confirm_current_message(
+    page: Any,
+    message: str,
+    timeout_ms: int = 8000,
+    baseline: Optional[Iterable[str]] = None,
+) -> List[Dict[str, Any]]:
+    if baseline is None:
+        baseline_matches = _dm_collect_message_bubble_matches(page, message)
+        baseline_signatures = [match.get("signature") for match in baseline_matches]
+    else:
+        baseline_signatures = list(baseline)
     steps: List[Dict[str, Any]] = []
 
     try:
@@ -8534,7 +9937,7 @@ def _dm_send_and_confirm_current_message(page: Any, message: str, timeout_ms: in
         steps.append({"name": "press_enter_send", "ok": False, "detail": str(exc)})
 
     try:
-        steps.append(_dm_wait_message_sent(page, message, timeout_ms=timeout_ms, baseline=baseline))
+        steps.append(_dm_wait_message_sent(page, message, timeout_ms=timeout_ms, baseline=baseline_signatures))
         return steps
     except RuntimeError as exc:
         last_text = _dm_message_editor_text(page)
@@ -8544,7 +9947,7 @@ def _dm_send_and_confirm_current_message(page: Any, message: str, timeout_ms: in
 
     click_step = _dm_send_current_message(page, timeout_ms=timeout_ms)
     steps.append(click_step)
-    steps.append(_dm_wait_message_sent(page, message, timeout_ms=timeout_ms, baseline=baseline))
+    steps.append(_dm_wait_message_sent(page, message, timeout_ms=timeout_ms, baseline=baseline_signatures))
     return steps
 
 
@@ -8633,46 +10036,145 @@ def _douyin_private_message_playwright_executor(
 _douyin_private_message_playwright_executor.needs_raw_cookies = True
 
 
+def _douyin_private_message_account_pool_executor(
+    profile_url: str,
+    message: str,
+    browser_name: str,
+    auto_send: bool,
+    options: Dict[str, Any],
+) -> Dict[str, Any]:
+    account_pool = options.get("account_browser_pool")
+    if not isinstance(account_pool, DouyinAccountBrowserPool):
+        return _douyin_private_message_playwright_executor(profile_url, message, browser_name, auto_send, options)
+
+    steps: List[Dict[str, Any]] = []
+    page = None
+    try:
+        raw_cookies = options.get("_raw_account_cookies") or ""
+        cookies = _dm_parse_account_cookies(raw_cookies)
+        account_key = str(options.get("account_key") or _dm_account_key_from_values(_dm_normalize_account_cookie_text(raw_cookies), options.get("account_id") or "")).strip() or "default"
+        session = account_pool.get_or_open(account_key, raw_cookies, {**options, "browser": browser_name, "browser_name": browser_name})
+        context = session["context"]
+        steps.append({
+            "name": "account_browser",
+            "ok": True,
+            "detail": (
+                f"opened browser for {account_key}"
+                if session.get("opened_new")
+                else f"reused browser for {account_key}"
+                + (" and refreshed cookies" if session.get("cookies_refreshed") else "")
+            ),
+        })
+        if cookies:
+            steps.append({"name": "apply_account_cookies", "ok": True, "detail": f"{len(cookies)} cookies"})
+        page = _dm_reusable_context_page(context)
+        timeout_ms = int(options.get("timeout_ms") or 45000)
+        page.goto(profile_url, wait_until="domcontentloaded", timeout=timeout_ms)
+        steps.append({"name": "open_profile", "ok": True, "detail": "opened"})
+        try:
+            page.wait_for_load_state("networkidle", timeout=min(timeout_ms, 12000))
+        except Exception:
+            pass
+        _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page))
+        steps.append(_dm_click_first(page, [
+            page.get_by_role("button", name=re.compile(r"\u79c1\u4fe1|\u53d1\u79c1\u4fe1|\u804a\u5929|Message", re.I)),
+            page.locator("button:has-text('\u79c1\u4fe1')"),
+            page.locator("[role=button]:has-text('\u79c1\u4fe1')"),
+            page.locator("a:has-text('\u79c1\u4fe1')"),
+            page.locator("text=\u79c1\u4fe1"),
+            page.locator("text=\u53d1\u79c1\u4fe1"),
+            page.locator("text=\u804a\u5929"),
+        ], "open_private_message", timeout_ms=min(timeout_ms, 12000)))
+        _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page, timeout_ms=1200))
+        steps.append(_dm_fill_message_editor(page, message, timeout_ms=min(timeout_ms, 12000)))
+        sent = False
+        if auto_send:
+            _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page, timeout_ms=1200))
+            steps.extend(_dm_send_and_confirm_current_message(page, message, timeout_ms=min(timeout_ms, 10000)))
+            sent = True
+        return {
+            "success": True,
+            "opened": True,
+            "prefilled": True,
+            "sent": sent,
+            "resolved_browser": browser_name,
+            "engine": "playwright",
+            "steps": steps,
+            "account_cookie_loaded": bool(cookies) or _dm_context_cookie_count(context) > 0,
+            "account_cookie_count": len(cookies) or int(session.get("cookie_count") or 0),
+            "account_key": account_key,
+            "account_browser_reused": not bool(session.get("opened_new")),
+            "keep_browser_open": True,
+            "user_data_dir": str(session.get("user_data_dir") or ""),
+        }
+    except Exception as exc:
+        detail = str(exc)
+        steps.append({"name": "playwright_error", "ok": False, "detail": detail})
+        failure = _dm_screenshot_failure(page, options, detail)
+        return {
+            "success": False,
+            "opened": any(step.get("name") == "open_profile" and step.get("ok") for step in steps),
+            "prefilled": any(step.get("name") == "paste_message" and step.get("ok") for step in steps),
+            "sent": False,
+            "resolved_browser": browser_name,
+            "engine": "playwright",
+            "steps": steps,
+            "error": detail,
+            "keep_browser_open": True,
+            **failure,
+        }
+
+
+_douyin_private_message_account_pool_executor.needs_raw_cookies = True
+
+
 def _douyin_account_cookie_playwright_executor(raw_cookies: str, browser_name: str, options: Dict[str, Any]) -> Dict[str, Any]:
     from playwright.sync_api import sync_playwright
 
     steps: List[Dict[str, Any]] = []
     page = None
     browser = None
+    context = None
+    playwright = None
+    keep_browser_open = _dm_bool_text(options.get("keep_browser_open"))
     cookies = _dm_parse_account_cookies(raw_cookies)
     try:
-        with sync_playwright() as pw:
-            browser = _dm_launch_playwright_browser(pw, browser_name, options)
-            context = browser.new_context(
-                viewport={
-                    "width": int(options.get("viewport_width") or DM_DEFAULT_VIEWPORT_WIDTH),
-                    "height": int(options.get("viewport_height") or DM_DEFAULT_VIEWPORT_HEIGHT),
-                },
-                device_scale_factor=float(options.get("device_scale_factor") or 1.0),
-            )
-            if cookies:
-                context.add_cookies(cookies)
-            page = context.new_page()
-            page.goto("https://www.douyin.com/", wait_until="domcontentloaded", timeout=int(options.get("timeout_ms") or 45000))
-            steps.append({"name": "apply_account_cookies", "ok": True, "detail": f"{len(cookies)} cookies"})
-            context.close()
-            browser.close()
-            return {
-                "success": True,
-                "opened": True,
-                "resolved_browser": browser_name,
-                "engine": "playwright",
-                "account_cookie_loaded": bool(cookies),
-                "account_cookie_count": len(cookies),
-                "steps": steps,
-            }
+        playwright, context, browser, _ = _dm_get_playwright_context(sync_playwright, browser_name, options)
+        if cookies:
+            context.add_cookies(cookies)
+        page = context.new_page()
+        target_url = str(options.get("open_url") or options.get("target_url") or "https://www.douyin.com/").strip() or "https://www.douyin.com/"
+        page.goto(target_url, wait_until="domcontentloaded", timeout=int(options.get("timeout_ms") or 45000))
+        steps.append({"name": "apply_account_cookies", "ok": True, "detail": f"{len(cookies)} cookies"})
+        steps.append({"name": "open_account_page", "ok": True, "detail": target_url})
+        if not keep_browser_open:
+            _dm_stop_playwright_context(context, browser, playwright)
+        else:
+            session_key = str(options.get("account_key") or options.get("account_id") or _dm_playwright_user_data_dir(browser_name, options)).strip()
+            _dm_keep_playwright_session(session_key, context, browser, playwright, {
+                "browser": browser_name,
+                "user_data_dir": str(_dm_playwright_user_data_dir(browser_name, options)),
+                "opened_url": target_url,
+            })
+        return {
+            "success": True,
+            "opened": True,
+            "resolved_browser": browser_name,
+            "engine": "playwright",
+            "account_cookie_loaded": bool(cookies),
+            "account_cookie_count": len(cookies),
+            "steps": steps,
+            "keep_browser_open": keep_browser_open,
+            "opened_url": target_url,
+            "user_data_dir": str(_dm_playwright_user_data_dir(browser_name, options)) if _dm_bool_text(options.get("persistent_context", keep_browser_open or options.get("user_data_dir"))) else "",
+        }
     except Exception as exc:
         detail = str(exc)
         steps.append({"name": "apply_account_cookies", "ok": False, "detail": detail})
         failure = _dm_screenshot_failure(page, options, detail)
         try:
-            if browser:
-                browser.close()
+            if not keep_browser_open:
+                _dm_stop_playwright_context(context, browser, playwright)
         except Exception:
             pass
         return {
@@ -8684,6 +10186,7 @@ def _douyin_account_cookie_playwright_executor(raw_cookies: str, browser_name: s
             "account_cookie_count": len(cookies),
             "steps": steps,
             "error": detail,
+            "keep_browser_open": keep_browser_open,
             **failure,
         }
 
@@ -8747,6 +10250,34 @@ def _dm_remove_task_from_queues(redis_conn: Any, task_id: str, account_key: Any 
             redis_conn.zrem(zset, clean_task_id)
         except Exception:
             pass
+
+
+def _dm_pop_task_for_account_browser_pool(
+    redis_conn: Any,
+    queue_name: str,
+    account_browser_pool: DouyinAccountBrowserPool,
+    block_timeout: int = 1,
+) -> Optional[tuple]:
+    deadline = time.time() + max(0, int(block_timeout or 0))
+    while True:
+        try:
+            task_ids = [_dm_decode_scalar(item) for item in (redis_conn.lrange(queue_name, 0, -1) or [])]
+        except Exception:
+            task_ids = []
+        for task_id in task_ids:
+            task = _dm_redis_hash_all(redis_conn, _dm_task_key(task_id))
+            account_key = str(task.get("account_key") or "default").strip() or "default"
+            if not account_browser_pool.can_accept(account_key):
+                continue
+            try:
+                removed = int(redis_conn.lrem(queue_name, 1, task_id) or 0)
+            except Exception:
+                removed = 0
+            if removed:
+                return queue_name, task_id
+        if block_timeout <= 0 or time.time() >= deadline:
+            return None
+        time.sleep(0.2)
 
 
 def _dm_redact_task(task: Dict[str, Any]) -> Dict[str, Any]:
@@ -8942,6 +10473,8 @@ def _dm_infer_failure_code(error_code: str, error_text: str, detail: Optional[An
         return "playwright_missing"
     if any(marker in text for marker in ["browser has been closed", "page has been closed", "context has been closed", "target page, context or browser has been closed", "browser closed", "page closed"]):
         return "browser_closed"
+    if "account browser pool full" in text:
+        return "account_browser_pool_full"
     if any(marker in text for marker in ["timed out", "timeout", "read timed out"]):
         return "model_timeout" if any(marker in text for marker in ["model", "llm", "minimax", "openai", "deepseek", "anthropic"]) else "network_timeout"
     if any(marker in text for marker in ["private message button not found", "private chat editor not found", "message editor not found"]):
@@ -9323,7 +10856,11 @@ def build_douyin_dm_task_clear_response(
     try:
         # Keep Redis keys binary-safe: redis-py may yield bytes when decode_responses=False.
         # Converting bytes with str() would produce "b'...'" and make delete() miss the real keys.
-        keys = [_dm_decode_scalar(key) for key in redis_conn.scan_iter(match="dm:*")]
+        try:
+            raw_keys = list(redis_conn.scan_iter(match="dm:*"))
+        except TypeError:
+            raw_keys = list(redis_conn.scan_iter("dm:*"))
+        keys = [_dm_decode_scalar(key) for key in raw_keys]
     except Exception:
         keys = []
 
@@ -9383,9 +10920,12 @@ def build_douyin_private_message_demo_response(
         "persistent_context": _dm_bool_text(normalized.get("persistent_context", (not headless) or normalized.get("user_data_dir"))),
         "user_data_dir": str(normalized.get("user_data_dir") or "").strip(),
     }
+    for internal_key in ("account_key", "account_id", "account_browser_pool"):
+        if internal_key in normalized:
+            options[internal_key] = normalized.get(internal_key)
     if options.get("input_ratio_x") is None:
         options.pop("input_ratio_x", None)
-    raw_cookie_text = str(normalized.get("account_cookies") or normalized.get("account_cookie") or "").strip()
+    raw_cookie_text = _dm_normalize_account_cookie_text(_dm_pick_account_cookie_payload(normalized))
     if raw_cookie_text.startswith("{"):
         account_cookie_count = 1
     else:
@@ -9431,12 +10971,20 @@ def build_douyin_account_cookie_apply_response(
     executor: Optional[Any] = None,
 ) -> Dict[str, Any]:
     normalized = dict(payload or {})
-    raw_cookies = str(normalized.get("account_cookies") or normalized.get("account_cookie") or "").strip()
+    raw_cookies = _dm_normalize_account_cookie_text(_dm_pick_account_cookie_payload(normalized))
     browser = str(normalized.get("browser_name") or normalized.get("browser") or "edge").strip() or "edge"
     headless = _dm_bool_text(normalized.get("headless"))
     use_cdp = _dm_bool_text(normalized.get("use_cdp"))
     if headless:
         use_cdp = False
+    account_id = str(normalized.get("account_id") or normalized.get("account") or normalized.get("account_name") or "").strip()
+    account_key = _dm_account_key_from_values(raw_cookies, account_id)
+    open_url = str(normalized.get("open_url") or normalized.get("target_url") or normalized.get("url") or "").strip()
+    keep_browser_open = _dm_bool_text(normalized.get("keep_browser_open", bool(open_url) and not headless))
+    persistent_context = _dm_bool_text(normalized.get("persistent_context", keep_browser_open or normalized.get("user_data_dir")))
+    user_data_dir = str(normalized.get("user_data_dir") or "").strip()
+    if persistent_context and not user_data_dir:
+        user_data_dir = str(_dm_account_browser_user_data_dir(browser, account_key))
     viewport_width = int(_payload_float(normalized, "viewport_width", DM_DEFAULT_VIEWPORT_WIDTH))
     viewport_height = int(_payload_float(normalized, "viewport_height", DM_DEFAULT_VIEWPORT_HEIGHT))
     options = {
@@ -9452,6 +11000,12 @@ def build_douyin_account_cookie_apply_response(
         "screenshot_on_failure": _dm_bool_text(normalized.get("screenshot_on_failure", True)),
         "screenshot_dir": str(normalized.get("screenshot_dir") or DM_DEBUG_ARTIFACT_DIR),
         "screenshot_prefix": str(normalized.get("screenshot_prefix") or normalized.get("task_id") or "dm"),
+        "open_url": open_url,
+        "keep_browser_open": keep_browser_open,
+        "persistent_context": persistent_context,
+        "user_data_dir": user_data_dir,
+        "account_id": account_id,
+        "account_key": account_key,
     }
     if raw_cookies.startswith("{"):
         account_cookie_count = 1
@@ -9486,6 +11040,76 @@ def build_douyin_account_cookie_apply_response(
     return _dm_enrich_failure_response(result)
 
 
+def _dm_controller_from_payload(payload: Dict[str, Any]) -> DouyinConversationMonitor:
+    normalized = dict(payload or {})
+    raw_cookies = _dm_normalize_account_cookie_text(_dm_pick_account_cookie_payload(normalized))
+    if not raw_cookies:
+        raise WebInputError("account_cookie is required")
+    account_id = str(normalized.get("account_id") or normalized.get("account") or normalized.get("account_name") or "").strip()
+    account_key = _dm_account_key_from_values(raw_cookies, account_id)
+    return DouyinConversationMonitor(
+        account_id=account_id or account_key,
+        account_name=str(normalized.get("account_name") or account_id or account_key).strip(),
+        account_key=account_key,
+        account_cookies=raw_cookies,
+        browser_name=str(normalized.get("browser_name") or normalized.get("browser") or "edge").strip() or "edge",
+        headless=_dm_bool_text(normalized.get("headless")),
+        project_id=str(normalized.get("project_id") or "").strip(),
+        company_id=str(normalized.get("company_id") or "").strip(),
+        source_platform=str(normalized.get("source_platform") or "抖音").strip() or "抖音",
+        auto_send=_dm_bool_text(normalized.get("auto_send", True)),
+        poll_seconds=_payload_float(normalized, "poll_seconds", 8),
+        logic=normalized.get("_logic"),
+        project_store=normalized.get("_project_store"),
+    )
+
+
+def build_douyin_conversation_monitor_start_response(
+    payload: Dict[str, Any],
+    logic: Optional[SessionRAGChatLogic] = None,
+    project_store: Optional[ProjectMaterialStore] = None,
+) -> Dict[str, Any]:
+    normalized = dict(payload or {})
+    normalized["_logic"] = logic
+    normalized["_project_store"] = project_store
+    controller = _dm_controller_from_payload(normalized)
+    with _DM_ACCOUNT_CONTROLLERS_LOCK:
+        existing = _DM_ACCOUNT_CONTROLLERS.get(controller.account_key)
+        if existing and existing.snapshot().get("alive"):
+            return {"started": False, "monitor": existing.snapshot(), "reason": "already_running"}
+        _DM_ACCOUNT_CONTROLLERS[controller.account_key] = controller
+    controller.start()
+    return {"started": True, "monitor": controller.snapshot()}
+
+
+def build_douyin_conversation_monitor_stop_response(payload: Dict[str, Any]) -> Dict[str, Any]:
+    normalized = dict(payload or {})
+    raw_cookies = _dm_normalize_account_cookie_text(_dm_pick_account_cookie_payload(normalized))
+    account_id = str(normalized.get("account_id") or normalized.get("account") or normalized.get("account_name") or "").strip()
+    account_key = str(normalized.get("account_key") or "").strip() or _dm_account_key_from_values(raw_cookies, account_id)
+    if not account_key:
+        raise WebInputError("account_key or account_cookie is required")
+    with _DM_ACCOUNT_CONTROLLERS_LOCK:
+        controller = _DM_ACCOUNT_CONTROLLERS.get(account_key)
+    if not controller:
+        return {"stopped": False, "account_key": account_key, "reason": "not_found"}
+    controller.stop()
+    return {"stopped": True, "monitor": controller.snapshot()}
+
+
+def build_douyin_conversation_monitor_list_response() -> Dict[str, Any]:
+    with _DM_ACCOUNT_CONTROLLERS_LOCK:
+        monitors = [controller.snapshot() for controller in _DM_ACCOUNT_CONTROLLERS.values()]
+    return {
+        "monitors": monitors,
+        "counts": {
+            "total": len(monitors),
+            "running": sum(1 for item in monitors if item.get("alive") and item.get("status") == "running"),
+            "error": sum(1 for item in monitors if item.get("status") == "error"),
+        },
+    }
+
+
 def build_douyin_dm_task_submit_response(
     payload: Dict[str, Any],
     redis_client: Optional[Any] = None,
@@ -9501,14 +11125,19 @@ def build_douyin_dm_task_submit_response(
         if not isinstance(item, dict):
             raise WebInputError("task must be an object")
         merged = {**defaults, **item}
-        required_fields = ["video_info", "account_cookie", "comment_info", "target_profile_url", "project_name"]
+        required_fields = ["video_info", "comment_info", "target_profile_url", "project_name"]
         missing = [field for field in required_fields if not str(merged.get(field) or "").strip()]
+        if not _dm_has_account_cookie_value(_dm_pick_account_cookie_payload(merged)):
+            missing.append("account_cookie")
         if missing:
             raise WebInputError(f"missing required fields: {', '.join(missing)}")
 
         task_id = str(merged.get("task_id") or merged.get("id") or uuid.uuid4().hex).strip()
-        account_cookie = str(merged.get("account_cookie") or merged.get("account_cookies") or merged.get("cookie") or merged.get("cookies") or "").strip()
-        account_id = str(merged.get("account_id") or merged.get("account") or merged.get("account_name") or "").strip()
+        account_cookie = _dm_normalize_account_cookie_text(_dm_pick_account_cookie_payload(merged))
+        account_id = _dm_account_id_from_values(
+            account_cookie,
+            str(merged.get("account_id") or merged.get("account") or merged.get("account_name") or "").strip(),
+        )
         account_key = _dm_account_key_from_values(account_cookie, account_id)
         debug_mode = _dm_bool_text(merged.get("debug_mode"))
         run_mode = str(merged.get("run_mode") or "send").strip().lower()
@@ -9628,6 +11257,7 @@ def process_douyin_dm_task_once(
     account_id: str = "",
     queue_name: str = "",
     block_timeout: int = 1,
+    account_browser_pool: Optional[DouyinAccountBrowserPool] = None,
 ) -> Optional[Dict[str, Any]]:
     redis_conn = _redis_conn(redis_client)
     requested_account_key = str(account_key or "").strip()
@@ -9635,7 +11265,10 @@ def process_douyin_dm_task_once(
     if not requested_account_key and account_selector_provided:
         requested_account_key = _dm_account_key_from_values(account_cookie, account_id)
     pending_queue = str(queue_name or "").strip() or (_dm_pending_queue_for_account(requested_account_key) if account_selector_provided else DM_REDIS_PENDING_QUEUE)
-    popped = redis_conn.blpop(pending_queue, timeout=block_timeout) if block_timeout else None
+    if account_browser_pool and pending_queue:
+        popped = _dm_pop_task_for_account_browser_pool(redis_conn, pending_queue, account_browser_pool, block_timeout=block_timeout)
+    else:
+        popped = redis_conn.blpop(pending_queue, timeout=block_timeout) if block_timeout else None
     if not popped:
         return None
     _, raw_task_id = popped
@@ -9717,20 +11350,24 @@ def process_douyin_dm_task_once(
 
         if run_mode in {"prefill", "send"}:
             auto_send = run_mode == "send" or _dm_bool_text(task.get("auto_send"))
+            send_executor = _douyin_private_message_account_pool_executor if account_browser_pool else _douyin_private_message_playwright_executor
             demo_result = build_douyin_private_message_demo_response({
                 "task_id": task_id,
                 "profile_url": task.get("target_profile_url") or "",
                 "message": reply,
                 "browser": task.get("browser") or "edge",
-                "headless": _dm_bool_text(task.get("headless", True)),
+                "headless": account_browser_pool.headless if account_browser_pool else _dm_bool_text(task.get("headless", True)),
                 "use_cdp": _dm_bool_text(task.get("use_cdp")),
-                "keep_browser_open": _dm_bool_text(task.get("keep_browser_open", not _dm_bool_text(task.get("headless", True)))),
-                "persistent_context": _dm_bool_text(task.get("persistent_context", (not _dm_bool_text(task.get("headless", True))) or task.get("user_data_dir"))),
+                "keep_browser_open": True if account_browser_pool else _dm_bool_text(task.get("keep_browser_open", not _dm_bool_text(task.get("headless", True)))),
+                "persistent_context": True if account_browser_pool else _dm_bool_text(task.get("persistent_context", (not _dm_bool_text(task.get("headless", True))) or task.get("user_data_dir"))),
                 "user_data_dir": task.get("user_data_dir") or "",
                 "auto_send": auto_send,
                 "account_cookies": task.get("account_cookie") or "",
+                "account_key": task.get("account_key") or "",
+                "account_id": task.get("account_id") or "",
+                "account_browser_pool": account_browser_pool,
                 "screenshot_prefix": task_id,
-            }, executor=_douyin_private_message_playwright_executor)
+            }, executor=send_executor)
             sent = bool(demo_result.get("sent"))
             prefilled = bool(demo_result.get("prefilled"))
             if run_mode == "send" and not sent:
@@ -9791,6 +11428,10 @@ def process_douyin_dm_task_once(
             "run_mode": run_mode,
             "result_ready": "true",
             "task_cleared": "true",
+            "headless": "true" if _dm_bool_text(demo_result.get("headless") if isinstance(demo_result, dict) and "headless" in demo_result else (account_browser_pool.headless if account_browser_pool else task.get("headless", True))) else "false",
+            "keep_browser_open": "true" if account_browser_pool or (isinstance(demo_result, dict) and _dm_bool_text(demo_result.get("keep_browser_open"))) else str(task.get("keep_browser_open") or "false").lower(),
+            "persistent_context": "true" if account_browser_pool else str(task.get("persistent_context") or "false").lower(),
+            "user_data_dir": str(demo_result.get("user_data_dir") or task.get("user_data_dir") or "") if isinstance(demo_result, dict) else str(task.get("user_data_dir") or ""),
             "first_private_message": "true" if first_private_message else "false",
             "first_private_message_status": first_private_message_status,
             "first_private_message_detail": first_private_message_detail,
@@ -9852,6 +11493,11 @@ def process_douyin_dm_task_once(
             manual_required = True
         elif any(marker in lower for marker in ["timeout", "timed out", "model timeout"]):
             error_code = "model_timeout" if any(marker in lower for marker in ["model", "llm", "minimax", "openai", "deepseek", "anthropic"]) else "network_timeout"
+            failure_type = "retryable"
+            retryable = True
+            manual_required = False
+        elif "account browser pool full" in lower:
+            error_code = "account_browser_pool_full"
             failure_type = "retryable"
             retryable = True
             manual_required = False
