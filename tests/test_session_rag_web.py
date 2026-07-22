@@ -747,6 +747,58 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(submit["tasks"][0]["auto_send"], "false")
         self.assertEqual(redis.lrange(DM_REDIS_AUTO_PENDING_QUEUE, 0, -1), [])
 
+    def test_douyin_dm_process_backfills_api_defaults_for_redis_seeded_task(self):
+        redis = FakeRedis()
+        task_id = "dm_seeded_001"
+        _dm_redis_hash_set(redis, f"dm:task:{task_id}", {
+            "task_id": task_id,
+            "video_info": "video",
+            "account_cookie": "cookie",
+            "comment_info": "comment",
+            "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+            "project_name": "test project",
+            "status": "pending",
+            "queue_status": "queued",
+        })
+        redis.rpush(DM_REDIS_PENDING_QUEUE, task_id)
+
+        def fake_demo_response(payload, executor=None):
+            self.assertEqual(payload["browser"], "edge")
+            self.assertFalse(payload["headless"])
+            self.assertTrue(payload["use_cdp"])
+            self.assertTrue(payload["keep_browser_open"])
+            self.assertTrue(payload["persistent_context"])
+            self.assertTrue(payload["auto_send"])
+            return {
+                "success": True,
+                "opened": True,
+                "prefilled": True,
+                "sent": True,
+                "resolved_browser": "edge",
+                "engine": "playwright",
+                "steps": [],
+            }
+
+        with patch(
+            "aisec_agent.web.session_rag_chat.build_public_private_message_response",
+            return_value={"reply": "hello"},
+        ), patch(
+            "aisec_agent.web.session_rag_chat.build_douyin_private_message_demo_response",
+            side_effect=fake_demo_response,
+        ):
+            processed = process_douyin_dm_task_once(redis_client=redis, mode="send", block_timeout=1)
+
+        self.assertEqual(processed["status"], "success")
+        stored = redis.hgetall(f"dm:task:{task_id}")
+        self.assertEqual(stored["run_mode"], "send")
+        self.assertEqual(stored["debug_mode"], "false")
+        self.assertEqual(stored["headless"], "false")
+        self.assertEqual(stored["use_cdp"], "true")
+        self.assertEqual(stored["keep_browser_open"], "true")
+        self.assertEqual(stored["persistent_context"], "true")
+        self.assertEqual(stored["auto_send"], "true")
+        self.assertEqual(stored["auto_process"], "true")
+
     def test_douyin_dm_success_result_does_not_report_unknown_failure(self):
         redis = FakeRedis()
         build_douyin_dm_task_submit_response(

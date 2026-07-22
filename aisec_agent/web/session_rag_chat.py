@@ -7827,6 +7827,57 @@ def _dm_cookie_text(raw_cookies: Any) -> str:
     return str(raw_cookies).strip()
 
 
+def _dm_task_submit_runtime_fields(item: Dict[str, Any]) -> Dict[str, str]:
+    normalized = dict(item or {})
+    raw_account_cookie = (
+        normalized.get("account_cookies")
+        or normalized.get("account_cookie")
+        or normalized.get("cookie")
+        or normalized.get("cookies")
+        or ""
+    )
+    account_cookie = _dm_cookie_text(raw_account_cookie)
+    account_id = str(normalized.get("account_id") or normalized.get("account") or normalized.get("account_name") or "").strip()
+    account_key = _dm_account_key_from_values(account_cookie, account_id)
+    debug_mode = _dm_bool_text(normalized.get("debug_mode"))
+    run_mode = str(normalized.get("run_mode") or "send").strip().lower()
+    auto_send = _dm_bool_text(normalized.get("auto_send", False))
+    auto_process = _dm_bool_text(normalized.get("auto_process", False))
+    headless = _dm_bool_text(normalized.get("headless", False))
+    force_resend = _dm_bool_text(normalized.get("force_resend", False))
+    if not debug_mode:
+        run_mode = "send"
+        auto_send = True
+        auto_process = True
+    keep_browser_open = _dm_bool_text(normalized.get("keep_browser_open", not headless))
+    persistent_context = _dm_bool_text(
+        normalized.get("persistent_context", (not headless) or normalized.get("user_data_dir"))
+    )
+    use_cdp = _dm_bool_text(normalized.get("use_cdp", not headless))
+    if headless:
+        use_cdp = False
+        keep_browser_open = False
+        persistent_context = False
+    return {
+        "account_id": account_id,
+        "account_key": account_key,
+        "account_cookie": account_cookie,
+        "account_cookies": account_cookie,
+        "target_key": _dm_normalized_target(str(normalized.get("target_profile_url") or "")),
+        "run_mode": run_mode,
+        "debug_mode": "true" if debug_mode else "false",
+        "browser": str(normalized.get("browser") or normalized.get("browser_name") or "edge"),
+        "headless": "true" if headless else "false",
+        "use_cdp": "true" if use_cdp else "false",
+        "keep_browser_open": "true" if keep_browser_open else "false",
+        "persistent_context": "true" if persistent_context else "false",
+        "user_data_dir": str(normalized.get("user_data_dir") or "").strip(),
+        "auto_send": "true" if auto_send else "false",
+        "auto_process": "true" if auto_process else "false",
+        "force_resend": "true" if force_resend else "false",
+    }
+
+
 def _dm_parse_account_cookies(raw_cookies: Any) -> List[Dict[str, Any]]:
     text = _dm_cookie_text(raw_cookies)
     if not text:
@@ -9605,58 +9656,41 @@ def build_douyin_dm_task_submit_response(
         merged = {**defaults, **item}
         required_fields = ["video_info", "comment_info", "target_profile_url", "project_name"]
         missing = [field for field in required_fields if not str(merged.get(field) or "").strip()]
-        raw_account_cookie = merged.get("account_cookie") or merged.get("account_cookies") or merged.get("cookie") or merged.get("cookies") or ""
-        account_cookie = _dm_cookie_text(raw_account_cookie)
-        account_cookie_count = _dm_account_cookie_count(raw_account_cookie)
+        runtime_fields = _dm_task_submit_runtime_fields(merged)
+        account_cookie = runtime_fields["account_cookie"]
+        account_cookie_count = _dm_account_cookie_count(account_cookie)
         if account_cookie_count <= 0:
             missing.append("account_cookie")
         if missing:
             raise WebInputError(f"missing required fields: {', '.join(missing)}")
 
         task_id = str(merged.get("task_id") or merged.get("id") or uuid.uuid4().hex).strip()
-        account_id = str(merged.get("account_id") or merged.get("account") or merged.get("account_name") or "").strip()
-        account_key = _dm_account_key_from_values(account_cookie, account_id)
-        debug_mode = _dm_bool_text(merged.get("debug_mode"))
-        run_mode = str(merged.get("run_mode") or "send").strip().lower()
-        auto_send = _dm_bool_text(merged.get("auto_send", False))
-        auto_process = _dm_bool_text(merged.get("auto_process", False))
-        headless = _dm_bool_text(merged.get("headless", False))
-        force_resend = _dm_bool_text(merged.get("force_resend", False))
-        if not debug_mode:
-            run_mode = "send"
-            auto_send = True
-            auto_process = True
-        keep_browser_open = _dm_bool_text(merged.get("keep_browser_open", not headless))
-        persistent_context = _dm_bool_text(merged.get("persistent_context", (not headless) or merged.get("user_data_dir")))
-        use_cdp = _dm_bool_text(merged.get("use_cdp", not headless))
-        if headless:
-            use_cdp = False
-            keep_browser_open = False
-            persistent_context = False
+        account_key = runtime_fields["account_key"]
+        auto_process = _dm_bool_text(runtime_fields["auto_process"])
 
         task = {
             "task_id": task_id,
-            "account_id": account_id,
-            "account_key": account_key,
-            "account_cookie": account_cookie,
-            "account_cookies": account_cookie,
+            "account_id": runtime_fields["account_id"],
+            "account_key": runtime_fields["account_key"],
+            "account_cookie": runtime_fields["account_cookie"],
+            "account_cookies": runtime_fields["account_cookies"],
             "video_info": str(merged.get("video_info") or ""),
             "comment_info": str(merged.get("comment_info") or ""),
             "target_profile_url": str(merged.get("target_profile_url") or ""),
-            "target_key": _dm_normalized_target(str(merged.get("target_profile_url") or "")),
+            "target_key": runtime_fields["target_key"],
             "project_name": str(merged.get("project_name") or ""),
             "project_id": str(merged.get("project_id") or ""),
-            "run_mode": run_mode,
-            "debug_mode": "true" if debug_mode else "false",
-            "browser": str(merged.get("browser") or merged.get("browser_name") or "edge"),
-            "headless": "true" if headless else "false",
-            "use_cdp": "true" if use_cdp else "false",
-            "keep_browser_open": "true" if keep_browser_open else "false",
-            "persistent_context": "true" if persistent_context else "false",
-            "user_data_dir": str(merged.get("user_data_dir") or "").strip(),
-            "auto_send": "true" if auto_send else "false",
-            "auto_process": "true" if auto_process else "false",
-            "force_resend": "true" if force_resend else "false",
+            "run_mode": runtime_fields["run_mode"],
+            "debug_mode": runtime_fields["debug_mode"],
+            "browser": runtime_fields["browser"],
+            "headless": runtime_fields["headless"],
+            "use_cdp": runtime_fields["use_cdp"],
+            "keep_browser_open": runtime_fields["keep_browser_open"],
+            "persistent_context": runtime_fields["persistent_context"],
+            "user_data_dir": runtime_fields["user_data_dir"],
+            "auto_send": runtime_fields["auto_send"],
+            "auto_process": runtime_fields["auto_process"],
+            "force_resend": runtime_fields["force_resend"],
             "reply": "",
             "sent": "false",
             "error": "",
@@ -9751,6 +9785,16 @@ def process_douyin_dm_task_once(
     if not task:
         redis_conn.rpush(DM_REDIS_FAILED_QUEUE, task_id)
         return {"task_id": task_id, "status": "failed", "error": "task hash not found", "queue_status": "failed"}
+
+    runtime_fields = _dm_task_submit_runtime_fields(task)
+    runtime_updates = {
+        field: value
+        for field, value in runtime_fields.items()
+        if (task.get(field) if field in task else "") != value
+    }
+    if runtime_updates:
+        _dm_redis_hash_set(redis_conn, key, runtime_updates)
+        task.update(runtime_updates)
 
     run_mode = str(mode or task.get("run_mode") or "generate").strip().lower()
     if run_mode not in {"dry_run", "generate", "prefill", "send"}:
