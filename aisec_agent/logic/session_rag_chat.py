@@ -108,8 +108,10 @@ class SessionRAGChatLogic:
             final_prompt = second_prompt
             final_answer = self._call_structured_llm(second_prompt, user_input, model_conf)
 
+        answer = self._format_private_message_readability(final_answer.get("answer", ""))
+
         result = SessionRAGChatResult(
-            answer=final_answer.get("answer", ""),
+            answer=answer,
             enough_info=bool(final_answer.get("enough_info", True)),
             second_pass=second_pass,
             missing_info=final_answer.get("missing_info") or first_answer.get("missing_info", ""),
@@ -154,6 +156,67 @@ class SessionRAGChatLogic:
             return int(value)
         except (TypeError, ValueError):
             return default
+
+    @staticmethod
+    def _format_private_message_readability(answer: Any, max_line_chars: int = 34, max_lines: int = 4) -> str:
+        text = str(answer or "").strip()
+        if not text:
+            return ""
+
+        existing_lines = [line.strip() for line in re.split(r"\n+", text) if line.strip()]
+        if len(existing_lines) > 1:
+            return "\n\n".join(existing_lines)
+        if len(text) <= max_line_chars:
+            return text
+
+        segments = SessionRAGChatLogic._split_reply_segments(text)
+        lines = []
+        current = ""
+        for segment in segments:
+            if not segment:
+                continue
+            if current and len(current) + len(segment) > max_line_chars:
+                lines.append(current.strip())
+                current = segment
+            else:
+                current += segment
+
+            while len(current) > max_line_chars + 8 and not any(mark in current for mark in "，,、。！？!?；;"):
+                lines.append(current[:max_line_chars].strip())
+                current = current[max_line_chars:].strip()
+
+        if current.strip():
+            lines.append(current.strip())
+
+        lines = [line for line in lines if line]
+        if len(lines) <= 1:
+            return text
+        if len(lines) > max_lines:
+            lines = lines[: max_lines - 1] + ["".join(lines[max_lines - 1:]).strip()]
+        return "\n\n".join(lines)
+
+    @staticmethod
+    def _split_reply_segments(text: str) -> List[str]:
+        sentence_parts = re.split(r"([。！？!?；;])", text)
+        sentence_segments = []
+        for index in range(0, len(sentence_parts), 2):
+            body = sentence_parts[index].strip()
+            mark = sentence_parts[index + 1] if index + 1 < len(sentence_parts) else ""
+            if body or mark:
+                sentence_segments.append(f"{body}{mark}")
+
+        segments = []
+        for sentence in sentence_segments:
+            if len(sentence) <= 34:
+                segments.append(sentence)
+                continue
+            comma_parts = re.split(r"([，,、])", sentence)
+            for index in range(0, len(comma_parts), 2):
+                body = comma_parts[index].strip()
+                mark = comma_parts[index + 1] if index + 1 < len(comma_parts) else ""
+                if body or mark:
+                    segments.append(f"{body}{mark}")
+        return segments
 
     def _memory(self):
         if self.memory_manager is None:
@@ -212,6 +275,9 @@ class SessionRAGChatLogic:
 - 视频概述只用于判断用户可能感兴趣的方向，不要在私信里明说“视频里讲的是/视频介绍的是/看到这个视频”；可以自然表达为“看到您对xx比较感兴趣”，信息不足时也可以不提视频。
 - 结尾只保留一个低门槛的回复问题或行动。如果已经给出入口或联系方式，不要再要求用户回复关键词。
 - 回复要简洁自然，优先控制在 200 个中文字符以内。
+- 为了方便用户阅读，单句不要过长；一句话明显过长时请主动换行。
+- 当语义发生明显切换、动作切换或信息层次变化时，请分段换行，不要把所有内容挤成一整段。
+- 优先输出 2-4 行自然短句，行与行之间空一行，保证像手机私信里真人发送的阅读感。
 """.strip()
         if conversation_stage == "private_followup":
             return """
@@ -219,6 +285,9 @@ class SessionRAGChatLogic:
 - 延续已有私信对话，直接回应用户最新关注点，不要重复首次私信里的自我介绍。
 - 如果还需要更多信息，也要先基于已有上下文给出有用的部分回答或下一步建议。
 - 只保留一个清晰的下一步行动；不要在同一条回复里同时要求回复关键词，又投递联系方式或入口。
+- 为了方便用户阅读，单句不要过长；一句话明显过长时请主动换行。
+- 当语义发生明显切换、动作切换或信息层次变化时，请分段换行，不要把所有内容挤成一整段。
+- 优先输出 2-4 行自然短句，行与行之间空一行，保证像手机私信里真人发送的阅读感。
 """.strip()
         return ""
     @staticmethod

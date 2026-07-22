@@ -2008,6 +2008,10 @@ def _company_settings_path(store: ProjectMaterialStore, project_id: str) -> tupl
     return _admin_json_path(store, project_id, "companies.json")
 
 
+def _account_settings_path(store: ProjectMaterialStore, project_id: str) -> tuple[Path, Path]:
+    return _admin_json_path(store, project_id, "account_settings.json")
+
+
 def _empty_document_descriptions(project_id: str) -> Dict[str, Any]:
     domains: List[Dict[str, Any]] = []
     return {
@@ -2343,6 +2347,79 @@ def _save_company_settings(
     normalized["updated_at"] = datetime.now().isoformat(timespec="seconds")
     for company in normalized.get("companies", []):
         company["updated_at"] = normalized["updated_at"]
+    _write_json_file(path, normalized)
+    return normalized
+
+
+def _empty_account_settings(project_id: str) -> Dict[str, Any]:
+    return {
+        "version": 1,
+        "project_id": project_id,
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
+        "accounts": [],
+    }
+
+
+def _account_id_from_fields(name: str, platform: str, homepage_url: str, cookie: str) -> str:
+    seed = "|".join([name, platform, homepage_url, cookie[:120]])
+    return "account_" + uuid.uuid5(uuid.NAMESPACE_URL, seed or uuid.uuid4().hex).hex[:12]
+
+
+def _normalize_account_settings(data: Dict[str, Any], project_id: str) -> Dict[str, Any]:
+    if not isinstance(data, dict):
+        data = {}
+    now = datetime.now().isoformat(timespec="seconds")
+    accounts = []
+    seen_account_ids = set()
+    for item in data.get("accounts", []) if isinstance(data.get("accounts"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or item.get("account_name") or "").strip()[:80]
+        platform = str(item.get("platform") or "抖音").strip()[:40] or "抖音"
+        homepage_url = str(item.get("homepage_url") or item.get("home_url") or item.get("profile_url") or "").strip()[:1000]
+        cookie = str(item.get("cookie") or item.get("account_cookie") or item.get("account_cookies") or "").strip()
+        browser_name = str(item.get("browser_name") or item.get("browser") or "edge").strip()[:40] or "edge"
+        account_id = str(item.get("account_id") or "").strip()
+        if not account_id:
+            account_id = _account_id_from_fields(name, platform, homepage_url, cookie)
+        if not account_id or account_id in seen_account_ids:
+            account_id = "account_" + uuid.uuid4().hex[:12]
+        seen_account_ids.add(account_id)
+        accounts.append({
+            "account_id": account_id,
+            "name": name or "未命名账号",
+            "platform": platform,
+            "homepage_url": homepage_url,
+            "cookie": cookie,
+            "browser_name": browser_name,
+            "enabled": item.get("enabled", True) is not False,
+            "created_at": item.get("created_at") or now,
+            "updated_at": item.get("updated_at") or now,
+        })
+    return {
+        "version": data.get("version") or 1,
+        "project_id": project_id,
+        "updated_at": data.get("updated_at") or now,
+        "accounts": accounts,
+    }
+
+
+def _load_account_settings(store: ProjectMaterialStore, project_id: str) -> Dict[str, Any]:
+    project_dir, path = _account_settings_path(store, project_id)
+    data = _load_json_file(path, _empty_account_settings(project_dir.name))
+    normalized = _normalize_account_settings(data, project_dir.name)
+    if not path.exists() or normalized != data:
+        normalized["updated_at"] = datetime.now().isoformat(timespec="seconds")
+        _write_json_file(path, normalized)
+    return normalized
+
+
+def _save_account_settings(store: ProjectMaterialStore, project_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    project_dir, path = _account_settings_path(store, project_id)
+    normalized = _normalize_account_settings(data, project_dir.name)
+    normalized["updated_at"] = datetime.now().isoformat(timespec="seconds")
+    for account in normalized.get("accounts", []):
+        account["updated_at"] = normalized["updated_at"]
     _write_json_file(path, normalized)
     return normalized
 
@@ -3147,6 +3224,7 @@ def build_admin_state_response(
     activities = _load_activity_settings(store, project_dir.name)
     identities = _load_identity_settings(store, project_dir.name)
     company_settings = _load_company_settings(store, project_dir.name, descriptions)
+    account_settings = _load_account_settings(store, project_dir.name)
     return {
         "projects": store.list_projects(),
         "project": {
@@ -3159,6 +3237,7 @@ def build_admin_state_response(
         "activity_settings": activities,
         "identity_settings": identities,
         "company_settings": company_settings,
+        "account_settings": account_settings,
     }
 
 
@@ -3174,6 +3253,19 @@ def build_admin_company_settings_save_response(
     descriptions = _load_document_descriptions(store, project_id)
     saved = _save_company_settings(store, project_id, settings, descriptions)
     return {"company_settings": saved}
+
+
+def build_admin_account_settings_save_response(
+    payload: Dict[str, Any],
+    project_store: Optional[ProjectMaterialStore] = None,
+) -> Dict[str, Any]:
+    store = _project_store(project_store)
+    project_id = str(payload.get("project_id") or "").strip()
+    settings = payload.get("account_settings")
+    if not isinstance(settings, dict):
+        raise WebInputError("account_settings is required")
+    saved = _save_account_settings(store, project_id, settings)
+    return {"account_settings": saved}
 
 
 def build_admin_knowledge_save_response(
@@ -4418,6 +4510,9 @@ def build_admin_prompt_restore_response(
 不要编造未在知识库或场景模板中出现的事实、价格、名额、医疗承诺或平台规则。
 如活动设置为空，不要主动编造“活动/义诊/优惠券”；如活动设置存在且适合当前评论，可自然表达为“咱们这边正好有活动/义诊/优惠券”。
 不要主动自证消息真实性、解释发送方式或强调自己是真人，要用对评论和视频内容的准确承接证明真人感。
+为了方便用户阅读，单句不要过长；一句话明显过长时请主动换行。
+当语义发生明显切换、动作切换或信息层次变化时，请分段换行，不要把所有内容挤成一整段。
+优先输出 2-4 行自然短句，行与行之间空一行，保证像手机私信里真人发送的阅读感。
 </task>
 """.strip()
     modules = [
@@ -6756,6 +6851,10 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self._handle_admin_company_settings_save()
             return
 
+        if path == "/api/admin/account-settings/save":
+            self._handle_admin_account_settings_save()
+            return
+
         if path == "/api/admin/open-file-location":
             self._handle_admin_open_file_location()
             return
@@ -7127,6 +7226,19 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
         try:
             payload = self._read_json()
             data = build_admin_company_settings_save_response(
+                payload,
+                project_store=self.server.project_store,
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_admin_account_settings_save(self):
+        try:
+            payload = self._read_json()
+            data = build_admin_account_settings_save_response(
                 payload,
                 project_store=self.server.project_store,
             )

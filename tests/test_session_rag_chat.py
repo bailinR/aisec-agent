@@ -140,6 +140,27 @@ class SessionRAGChatLogicTest(unittest.TestCase):
         self.assertEqual(result.answer, "no kb answer")
         self.assertEqual(knowledge.calls, [])
 
+    def test_generated_private_message_is_split_into_mobile_readable_lines(self):
+        memory = FakeMemory()
+        logic = FakeSessionRAGChatLogic(
+            responses=[
+                {
+                    "answer": "您好，我是健康顾问助理，看到您对这个方向比较关注，这类情况一般需要先看年龄、疼痛多久和有没有检查结果，我这边可以先发您一份资料，也可以帮您做一次初步评估，您是自己了解还是帮家人问呢？",
+                    "enough_info": True,
+                    "missing_info": "",
+                    "used_knowledge": [],
+                }
+            ],
+            memory_manager=memory,
+            knowledge_logic=FakeKnowledge(),
+        )
+
+        result = logic.chat_once("这个有用吗", "sid-readable", topics=[])
+
+        self.assertIn("\n\n", result.answer)
+        self.assertLessEqual(len([line for line in result.answer.splitlines() if line.strip()]), 4)
+        self.assertEqual(memory.store_calls[0][3], result.answer)
+
     def test_prompt_uses_only_session_template_and_knowledge_shell(self):
         prompt = SessionRAGChatLogic._build_prompt(
             session_id="sid-hooks",
@@ -158,6 +179,8 @@ class SessionRAGChatLogicTest(unittest.TestCase):
         self.assertIn("钩子", prompt)
         self.assertIn("不要只打招呼或只提问", prompt)
         self.assertIn("准确承接用户评论", prompt)
+        self.assertIn("一句话明显过长时请主动换行", prompt)
+        self.assertIn("行与行之间空一行", prompt)
         self.assertIn("不要在私信正文里明说“视频里讲的是/视频介绍的是/看到这个视频”", prompt)
         self.assertNotIn("You are a Douyin", prompt)
         self.assertNotIn("公司", prompt)
@@ -171,6 +194,8 @@ class SessionRAGChatLogicTest(unittest.TestCase):
         )
 
         self.assertIn("conversation_stage: private_followup", prompt)
+        self.assertIn("一句话明显过长时请主动换行", prompt)
+        self.assertIn("行与行之间空一行", prompt)
         self.assertNotIn("You are continuing a Douyin", prompt)
 
 

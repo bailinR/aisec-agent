@@ -469,6 +469,61 @@
     }
     .company-kb-name { font-weight: 900; }
     .company-kb-desc { color: var(--muted); font-size: 12px; line-height: 1.5; margin-top: 3px; }
+    .account-board {
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+    }
+    .account-list {
+      display: grid;
+      gap: 10px;
+    }
+    .account-card {
+      width: 100%;
+      min-height: 84px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+      color: var(--text);
+      box-shadow: none;
+      display: grid;
+      gap: 5px;
+      justify-items: start;
+      text-align: left;
+      padding: 12px;
+      white-space: normal;
+    }
+    .account-card.active {
+      border-color: rgba(13,135,152,.36);
+      background: var(--accent-soft);
+      color: #0b5f58;
+    }
+    .account-title {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      min-width: 0;
+      font-weight: 900;
+      line-height: 1.35;
+    }
+    .account-meta { color: var(--muted); font-size: 12px; line-height: 1.45; word-break: break-word; }
+    .account-cookie-textarea { min-height: 180px; font-family: Consolas, "SFMono-Regular", monospace; font-size: 12px; }
+    .account-action-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .account-badge {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 7px;
+      color: var(--muted);
+      background: #fbfdff;
+      font-size: 11px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
     .kb-command {
       display: grid;
       grid-template-columns: minmax(260px, 1fr) 180px auto auto;
@@ -1604,6 +1659,7 @@
       .dm-data-grid { grid-template-columns: 1fr; }
       .dm-flow { grid-template-columns: 1fr; }
       .batch-options, .batch-result { grid-template-columns: 1fr; }
+      .account-board { grid-template-columns: 1fr; }
       .kb-command { grid-template-columns: minmax(0, 1fr) 170px auto auto; }
       .kb-workbench { grid-template-columns: 1fr; }
       .kb-column-body { max-height: 420px; overflow: auto; }
@@ -1633,7 +1689,7 @@
       .prompt-restore-grid { grid-template-columns: 1fr; }
       .kb-editor-head { align-items: flex-start; flex-direction: column; }
       .kb-meta-grid { grid-template-columns: 1fr; }
-      .metric-grid, .field-grid, .field-grid.three, .dm-demo-strip { grid-template-columns: 1fr; }
+      .metric-grid, .field-grid, .field-grid.three, .dm-demo-strip, .account-action-grid { grid-template-columns: 1fr; }
       .prompt-compose-panel {
         margin: 0 12px 12px;
       }
@@ -1761,6 +1817,102 @@
                     </label>
                   </div>
                 </div>
+              </div>
+            </section>
+          </section>
+
+          <section v-if="activeMenu === 'accounts'" class="account-board">
+            <aside class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">账号列表</div>
+                  <div class="panel-meta">保存账号 Cookie、平台和主页，便于调试时快速切换。</div>
+                </div>
+                <button class="secondary mini" @click="addManagedAccount">新建</button>
+              </div>
+              <div class="panel-body">
+                <div class="account-list" v-if="accounts.length">
+                  <button
+                    class="account-card"
+                    v-for="account in accounts"
+                    :key="account.account_id"
+                    :class="{active: selectedAccountId === account.account_id}"
+                    @click="selectManagedAccount(account.account_id)"
+                  >
+                    <span class="account-title">
+                      {{ account.name || '未命名账号' }}
+                      <span class="account-badge">{{ account.platform || '未设置平台' }}</span>
+                    </span>
+                    <span class="account-meta">{{ account.homepage_url || '未填写主页' }}</span>
+                    <span class="account-meta">Cookie {{ accountHasCookie(account) ? '已填写' : '未填写' }} · {{ account.browser_name || 'edge' }}</span>
+                  </button>
+                </div>
+                <div class="empty" v-else>
+                  还没有账号。新建后填写 Cookie、平台和主页，就可以一键应用 Cookie 并打开主页。
+                </div>
+              </div>
+            </aside>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">{{ selectedAccount.name || '账号信息' }}</div>
+                  <div class="panel-meta">打开浏览器时会先把 Cookie 写入本地浏览器会话，再打开账号主页。</div>
+                </div>
+                <div class="panel-actions">
+                  <button class="danger mini" @click="deleteSelectedManagedAccount" :disabled="!selectedAccount.account_id || accountOpening">删除</button>
+                  <button @click="saveAccountSettings" :disabled="accountOpening">保存账号</button>
+                </div>
+              </div>
+              <div class="panel-body" v-if="selectedAccount.account_id">
+                <div class="field-grid three">
+                  <div>
+                    <label>名称</label>
+                    <input v-model.trim="selectedAccount.name" placeholder="例如：抖音运营号">
+                  </div>
+                  <div>
+                    <label>平台</label>
+                    <input v-model.trim="selectedAccount.platform" list="account-platform-options" placeholder="抖音">
+                    <datalist id="account-platform-options">
+                      <option value="抖音"></option>
+                      <option value="小红书"></option>
+                      <option value="视频号"></option>
+                      <option value="快手"></option>
+                    </datalist>
+                  </div>
+                  <div>
+                    <label>浏览器</label>
+                    <select v-model="selectedAccount.browser_name">
+                      <option value="edge">Edge</option>
+                      <option value="chrome">Chrome</option>
+                      <option value="default">系统默认</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label>首页</label>
+                  <input v-model.trim="selectedAccount.homepage_url" placeholder="https://www.douyin.com/user/...">
+                </div>
+                <div>
+                  <label>Cookie</label>
+                  <textarea
+                    class="account-cookie-textarea"
+                    v-model="selectedAccount.cookie"
+                    spellcheck="false"
+                    placeholder='{"cookies":[...]}，或 name=value; name2=value2'
+                  ></textarea>
+                </div>
+                <div class="actions">
+                  <input type="file" accept=".json,.txt,.cookie" @change="onManagedAccountCookieFile">
+                </div>
+                <div class="account-action-grid">
+                  <button class="secondary" @click="applyManagedAccountCookie" :disabled="!accountHasCookie(selectedAccount) || !accountCanApplyCookie(selectedAccount) || accountOpening">应用 Cookie</button>
+                  <button class="secondary" @click="openManagedAccountHomepage" :disabled="!selectedAccount.homepage_url || accountOpening">打开主页</button>
+                  <button @click="openManagedAccountWithCookie" :disabled="!selectedAccount.homepage_url || !accountHasCookie(selectedAccount) || !accountCanApplyCookie(selectedAccount) || accountOpening">应用并打开</button>
+                </div>
+              </div>
+              <div class="panel-body" v-else>
+                <div class="empty">选择或新建一个账号后，这里会显示 Cookie、平台和主页配置。</div>
               </div>
             </section>
           </section>
@@ -2539,6 +2691,9 @@
             documentDescriptions: {knowledge_bases: [], domains: []},
             companySettings: {companies: [], company_knowledge_bases: [], knowledge_bases: []},
             selectedCompanyId: "",
+            accountSettings: {accounts: []},
+            selectedAccountId: "",
+            accountOpening: false,
             sceneTemplates: {templates: []},
             activitySettings: {activities: []},
             projectFiles: [],
@@ -2600,6 +2755,7 @@
           menus() {
             return [
               {key: "company", label: "公司", icon: "CO", desc: "维护公司主体，并分配该公司可检索的知识库。"},
+              {key: "accounts", label: "账号管理", icon: "AC", desc: "维护账号 Cookie、平台和主页，并用账号信息打开浏览器。"},
               {key: "knowledge", label: "知识库", icon: "KB", desc: "文件夹式知识库，映射真实路径，支持文件预览和修改。"},
               {key: "prompts", label: "提示词", icon: "PT", desc: "管理全局、业务、任务规则、活动提示词，并说明最终组装关系。"},
               {key: "batch", label: "批量任务", icon: "BT", desc: "批量维护评论转私信任务，逐条生成并预填或发送。"},
@@ -2615,6 +2771,14 @@
           selectedCompany() {
             return this.companies.find(item => item.company_id === this.selectedCompanyId)
               || this.companies[0]
+              || {};
+          },
+          accounts() {
+            return (this.accountSettings && this.accountSettings.accounts || []).filter(Boolean);
+          },
+          selectedAccount() {
+            return this.accounts.find(item => item.account_id === this.selectedAccountId)
+              || this.accounts[0]
               || {};
           },
           currentCompanyId() {
@@ -4286,6 +4450,154 @@
             }
             await this.runDouyinDmDemo(this.dmForm.demo_mode === "send");
           },
+          blankManagedAccount() {
+            const now = new Date().toISOString();
+            return {
+              account_id: "account_" + this.uuid().slice(0, 12),
+              name: "新账号",
+              platform: "抖音",
+              homepage_url: "",
+              cookie: "",
+              browser_name: "edge",
+              enabled: true,
+              created_at: now,
+              updated_at: now,
+            };
+          },
+          selectManagedAccount(accountId) {
+            this.selectedAccountId = accountId || (this.accounts[0] && this.accounts[0].account_id) || "";
+          },
+          addManagedAccount() {
+            const account = this.blankManagedAccount();
+            this.accountSettings.accounts = [...(this.accountSettings.accounts || []), account];
+            this.selectedAccountId = account.account_id;
+            this.setStatus("已新建账号，填写 Cookie 和主页后保存", "info");
+          },
+          deleteSelectedManagedAccount() {
+            const account = this.selectedAccount;
+            if (!account || !account.account_id) return;
+            if (!window.confirm("确定删除账号“" + (account.name || "未命名账号") + "”吗？")) return;
+            this.accountSettings.accounts = this.accounts.filter(item => item.account_id !== account.account_id);
+            this.selectedAccountId = this.accounts[0] && this.accounts[0].account_id || "";
+            this.setStatus("账号已移除，记得保存配置", "info");
+          },
+          accountHasCookie(account) {
+            return !!String(account && account.cookie || "").trim();
+          },
+          accountCanApplyCookie(account) {
+            const platform = String(account && account.platform || "").trim();
+            return !platform || platform === "抖音";
+          },
+          async saveAccountSettings() {
+            this.setStatus("正在保存账号配置...");
+            try {
+              const data = await this.fetchJson("/api/admin/account-settings/save", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                  project_id: this.projectId,
+                  account_settings: this.accountSettings,
+                })
+              });
+              this.accountSettings = data.account_settings || this.accountSettings;
+              if (!this.selectedAccountId || !this.accounts.some(item => item.account_id === this.selectedAccountId)) {
+                this.selectedAccountId = this.accounts[0] && this.accounts[0].account_id || "";
+              }
+              this.setStatus("账号配置已保存", "ok");
+            } catch (error) {
+              this.setStatus(error.message || "保存账号配置失败", "error");
+            }
+          },
+          async onManagedAccountCookieFile(event) {
+            const file = event.target.files && event.target.files[0];
+            if (!file || !this.selectedAccount.account_id) return;
+            try {
+              const text = await file.text();
+              this.selectedAccount.cookie = String(text || "").trim();
+              this.setStatus("已读取 Cookie 文件：" + file.name, "ok");
+            } catch (error) {
+              this.setStatus(error.message || "读取 Cookie 文件失败", "error");
+            } finally {
+              event.target.value = "";
+            }
+          },
+          async applyManagedAccountCookie(account = this.selectedAccount) {
+            if (!this.accountCanApplyCookie(account)) {
+              this.setStatus("当前只支持给抖音账号自动注入 Cookie，其他平台可先保存主页信息", "info");
+              return null;
+            }
+            const accountCookies = String(account && account.cookie || "").trim();
+            if (!accountCookies) {
+              this.setStatus("请先填写账号 Cookie", "error");
+              return null;
+            }
+            this.accountOpening = true;
+            this.setStatus("正在应用账号 Cookie...");
+            try {
+              const data = await this.fetchJson("/api/v1/douyin/account-cookie/apply", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                  browser: account.browser_name || "edge",
+                  headless: false,
+                  use_cdp: true,
+                  account_cookies: accountCookies
+                })
+              });
+              if (data.success !== false) {
+                this.setStatus("账号 Cookie 已应用：" + (account.name || "未命名账号"), "ok");
+              } else {
+                const lastStep = ((data.steps || []).slice(-1)[0] || {});
+                this.setStatus("Cookie 应用未确认成功：" + (lastStep.detail || data.error || "请查看浏览器状态"), "error");
+              }
+              return data;
+            } catch (error) {
+              this.setStatus(error.message || "应用账号 Cookie 失败", "error");
+              return null;
+            } finally {
+              this.accountOpening = false;
+            }
+          },
+          async openManagedAccountHomepage(account = this.selectedAccount) {
+            const url = String(account && account.homepage_url || "").trim();
+            if (!url) {
+              this.setStatus("请先填写账号主页", "error");
+              return null;
+            }
+            this.accountOpening = true;
+            this.setStatus("正在打开账号主页...");
+            try {
+              const data = await this.fetchJson("/api/open-url", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                  url,
+                  browser: account.browser_name || "edge",
+                })
+              });
+              this.setStatus("已打开主页：" + (data.resolved_browser || data.browser || account.browser_name || "edge"), "ok");
+              return data;
+            } catch (error) {
+              try {
+                const opened = window.open(url, "_blank", "noopener,noreferrer");
+                if (opened) {
+                  this.setStatus("已尝试在当前浏览器打开主页", "ok");
+                  return {opened: true};
+                }
+              } catch (_) {}
+              this.setStatus(error.message || "打开账号主页失败", "error");
+              return null;
+            } finally {
+              this.accountOpening = false;
+            }
+          },
+          async openManagedAccountWithCookie() {
+            const account = this.selectedAccount;
+            if (!account || !account.account_id) return;
+            const cookieResult = await this.applyManagedAccountCookie(account);
+            if (!cookieResult || cookieResult.success === false) return;
+            await this.openManagedAccountHomepage(account);
+          },
           selectCompany(companyId) {
             this.selectedCompanyId = companyId || (this.companies[0] && this.companies[0].company_id) || "";
           },
@@ -4376,6 +4688,10 @@
               if (!this.selectedCompanyId || !this.companies.some(item => item.company_id === this.selectedCompanyId)) {
                 this.selectedCompanyId = this.companies[0] && this.companies[0].company_id || "";
               }
+              this.accountSettings = state.account_settings || {accounts: []};
+              if (!this.selectedAccountId || !this.accounts.some(item => item.account_id === this.selectedAccountId)) {
+                this.selectedAccountId = this.accounts[0] && this.accounts[0].account_id || "";
+              }
               this.sceneTemplates = state.scene_templates || {templates: []};
               this.activitySettings = state.activity_settings || {activities: []};
               await this.loadProjectMaterials();
@@ -4394,6 +4710,12 @@
             await this.loadState();
           },
           ensureInitialSelections() {
+            if (!this.selectedCompanyId && this.companies.length) {
+              this.selectedCompanyId = this.companies[0].company_id;
+            }
+            if (!this.selectedAccountId && this.accounts.length) {
+              this.selectedAccountId = this.accounts[0].account_id;
+            }
             if (!this.activePromptItem && this.promptCatalog.length && this.promptCatalog[0].items.length) {
               this.selectPromptItem(this.promptCatalog[0].items[0]);
             }

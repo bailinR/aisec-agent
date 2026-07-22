@@ -13,6 +13,7 @@ from aisec_agent.web.session_rag_chat import (
     WebInputError,
     build_admin_activity_delete_response,
     build_admin_activity_save_response,
+    build_admin_account_settings_save_response,
     build_admin_knowledge_delete_response,
     build_admin_knowledge_save_response,
     build_admin_knowledge_upload_response,
@@ -2849,6 +2850,42 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(saved["document_descriptions"]["domains"][-1]["name"], "测试领域")
         self.assertTrue(any(domain["name"] == "测试领域" for domain in refreshed["document_descriptions"]["domains"]))
 
+    def test_admin_account_settings_can_be_saved_and_loaded(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectMaterialStore(Path(temp_dir))
+            state = build_admin_state_response(project_store=store)
+            self.assertEqual(state["account_settings"]["accounts"], [])
+
+            saved = build_admin_account_settings_save_response(
+                {
+                    "project_id": state["project"]["project_id"],
+                    "account_settings": {
+                        "accounts": [
+                            {
+                                "name": "运营号",
+                                "platform": "抖音",
+                                "homepage_url": "https://www.douyin.com/user/test",
+                                "cookie": "sid_guard=abc; uid_tt=def",
+                                "browser_name": "edge",
+                            }
+                        ]
+                    },
+                },
+                project_store=store,
+            )
+            refreshed = build_admin_state_response(
+                project_store=store,
+                project_id=state["project"]["project_id"],
+            )
+
+        account = saved["account_settings"]["accounts"][0]
+        self.assertTrue(account["account_id"].startswith("account_"))
+        self.assertEqual(account["name"], "运营号")
+        self.assertEqual(account["platform"], "抖音")
+        self.assertEqual(account["homepage_url"], "https://www.douyin.com/user/test")
+        self.assertEqual(account["cookie"], "sid_guard=abc; uid_tt=def")
+        self.assertEqual(refreshed["account_settings"]["accounts"][0]["cookie"], "sid_guard=abc; uid_tt=def")
+
     def test_admin_scene_template_generate_save_and_prompt_restore(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             store = ProjectMaterialStore(Path(temp_dir))
@@ -2895,6 +2932,8 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertIn("<scene_template>", restored["final_prompt"])
         self.assertIn("<activity_settings>", restored["final_prompt"])
         self.assertIn("<retrieved_knowledge>", restored["final_prompt"])
+        self.assertIn("一句话明显过长时请主动换行", restored["final_prompt"])
+        self.assertIn("行与行之间空一行", restored["final_prompt"])
         self.assertNotIn("<conversion_goal>", restored["final_prompt"])
         self.assertNotIn("You are a Douyin", restored["final_prompt"])
 
