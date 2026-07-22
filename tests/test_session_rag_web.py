@@ -47,7 +47,10 @@ from aisec_agent.web.session_rag_chat import (
     DM_REDIS_PROCESSING_ZSET,
     build_douyin_account_cookie_apply_response,
     build_douyin_private_message_demo_response,
+    _dm_persistent_context_alive,
     _dm_collect_message_bubble_matches,
+    _dm_should_retry_browser_closed,
+    _dm_should_keep_browser_open_on_failure,
     build_model_config_save_response,
     build_project_create_response,
     build_project_material_save_response,
@@ -697,10 +700,10 @@ class SessionRAGWebTest(unittest.TestCase):
         )
 
         self.assertEqual(submit["tasks"][0]["run_mode"], "send")
-        self.assertEqual(submit["tasks"][0]["headless"], "true")
-        self.assertEqual(submit["tasks"][0]["use_cdp"], "false")
-        self.assertEqual(submit["tasks"][0]["keep_browser_open"], "false")
-        self.assertEqual(submit["tasks"][0]["persistent_context"], "false")
+        self.assertEqual(submit["tasks"][0]["headless"], "false")
+        self.assertEqual(submit["tasks"][0]["use_cdp"], "true")
+        self.assertEqual(submit["tasks"][0]["keep_browser_open"], "true")
+        self.assertEqual(submit["tasks"][0]["persistent_context"], "true")
         self.assertEqual(submit["tasks"][0]["auto_send"], "true")
         self.assertEqual(submit["tasks"][0]["auto_process"], "true")
         self.assertEqual(redis.lrange(DM_REDIS_AUTO_PENDING_QUEUE, 0, -1), ["dm_send_001"])
@@ -1520,6 +1523,41 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertTrue(response["seen"]["options"]["screenshot_on_failure"])
         self.assertNotIn("SECRET_COOKIE", str(response))
         self.assertNotIn("ANOTHER_SECRET", str(response))
+
+    def test_dm_persistent_context_alive_checks_browser_connection(self):
+        class FakeBrowser:
+            def is_connected(self):
+                return False
+
+        class FakeContext:
+            browser = FakeBrowser()
+
+            @property
+            def pages(self):
+                return []
+
+        self.assertFalse(_dm_persistent_context_alive(FakeContext()))
+
+    def test_dm_should_retry_browser_closed_only_before_send_stage(self):
+        self.assertTrue(_dm_should_retry_browser_closed(
+            "BrowserContext.add_cookies: Target page, context or browser has been closed",
+            [
+                {"name": "apply_account_cookies", "ok": True},
+                {"name": "open_profile", "ok": True},
+            ],
+        ))
+        self.assertFalse(_dm_should_retry_browser_closed(
+            "BrowserContext.add_cookies: Target page, context or browser has been closed",
+            [
+                {"name": "open_profile", "ok": True},
+                {"name": "send_message", "ok": False},
+            ],
+        ))
+
+    def test_dm_should_keep_browser_open_on_manual_failure(self):
+        self.assertTrue(_dm_should_keep_browser_open_on_failure("verification required", True))
+        self.assertTrue(_dm_should_keep_browser_open_on_failure("login required", True))
+        self.assertFalse(_dm_should_keep_browser_open_on_failure("verification required", False))
 
     def test_douyin_private_message_demo_rejects_non_douyin_url(self):
         with self.assertRaises(WebInputError):

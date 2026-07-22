@@ -7888,6 +7888,15 @@ def _dm_account_cookie_count(raw_cookies: Any) -> int:
     return len(parts) if parts else 1
 
 
+def _dm_task_account_cookie_text(task: Dict[str, Any]) -> str:
+    raw = task.get("account_cookies")
+    if raw is None or not str(raw).strip():
+        raw = task.get("account_cookie")
+    if raw is None or not str(raw).strip():
+        raw = task.get("cookie") or task.get("cookies") or ""
+    return _dm_cookie_text(raw)
+
+
 def _dm_browser_channel(browser_name: str) -> str:
     name = str(browser_name or "").strip().lower()
     if name in {"edge", "msedge", "microsoft-edge"}:
@@ -7922,10 +7931,47 @@ def _dm_playwright_user_data_dir(browser_name: str, options: Dict[str, Any]) -> 
 
 def _dm_persistent_context_alive(context: Any) -> bool:
     try:
+        browser = getattr(context, "browser", None)
+        if browser is not None:
+            is_connected = getattr(browser, "is_connected", None)
+            if callable(is_connected) and not bool(is_connected()):
+                return False
+        is_closed = getattr(context, "is_closed", None)
+        if callable(is_closed) and bool(is_closed()):
+            return False
         _ = context.pages
         return True
     except Exception:
         return False
+
+
+def _dm_step_name_looks_like_send_stage(name: Any) -> bool:
+    text = str(name or "").strip().lower()
+    if not text:
+        return False
+    return any(token in text for token in ("send", "confirm"))
+
+
+def _dm_should_retry_browser_closed(error_text: str, steps: Iterable[Dict[str, Any]]) -> bool:
+    if _dm_infer_failure_code("", error_text, None) != "browser_closed":
+        return False
+    for step in steps or []:
+        if isinstance(step, dict) and _dm_step_name_looks_like_send_stage(step.get("name")):
+            return False
+    return True
+
+
+def _dm_should_keep_browser_open_on_failure(error_text: str, keep_browser_open: bool) -> bool:
+    if not keep_browser_open:
+        return False
+    return _dm_infer_failure_code("", error_text, None) in {
+        "login_required",
+        "verification_required",
+        "account_risk",
+        "automation_changed",
+        "cookie_invalid",
+        "rate_limited",
+    }
 
 
 def _dm_launch_persistent_playwright_context(playwright: Any, browser_name: str, options: Dict[str, Any]):
@@ -7960,6 +8006,9 @@ def _dm_get_playwright_context(sync_playwright_factory: Any, browser_name: str, 
         session = _DM_PLAYWRIGHT_SESSIONS.get(key)
         if session and _dm_persistent_context_alive(session.get("context")):
             return session["playwright"], session["context"], None, keep_browser_open
+        if session:
+            _DM_PLAYWRIGHT_SESSIONS.pop(key, None)
+            _dm_stop_playwright_context(session.get("context"), None, session.get("playwright"))
         manager = sync_playwright_factory()
         playwright = manager.start()
         context = _dm_launch_persistent_playwright_context(playwright, browser_name, options)
@@ -8592,77 +8641,101 @@ def _douyin_private_message_playwright_executor(
 ) -> Dict[str, Any]:
     from playwright.sync_api import sync_playwright
 
-    steps: List[Dict[str, Any]] = []
-    page = None
-    browser = None
-    context = None
-    playwright = None
+    combined_steps: List[Dict[str, Any]] = []
     keep_browser_open = False
-    try:
-        playwright, context, browser, keep_browser_open = _dm_get_playwright_context(sync_playwright, browser_name, options)
-        raw_cookies = str(options.get("_raw_account_cookies") or "")
-        cookies = _dm_parse_account_cookies(raw_cookies)
-        if cookies:
-            context.add_cookies(cookies)
-            steps.append({"name": "apply_account_cookies", "ok": True, "detail": f"{len(cookies)} cookies"})
-        page = context.new_page()
-        timeout_ms = int(options.get("timeout_ms") or 45000)
-        page.goto(profile_url, wait_until="domcontentloaded", timeout=timeout_ms)
-        steps.append({"name": "open_profile", "ok": True, "detail": "opened"})
+    raw_cookies = str(options.get("_raw_account_cookies") or "")
+    timeout_ms = int(options.get("timeout_ms") or 45000)
+
+    for attempt in range(2):
+        steps: List[Dict[str, Any]] = []
+        page = None
+        browser = None
+        context = None
+        playwright = None
+        keep_browser_open = False
         try:
-            page.wait_for_load_state("networkidle", timeout=min(timeout_ms, 12000))
-        except Exception:
-            pass
-        _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page))
-        steps.append(_dm_click_first(page, [
-            page.get_by_role("button", name=re.compile(r"私信|发私信|聊天|Message", re.I)),
-            page.locator("button:has-text('私信')"),
-            page.locator("[role=button]:has-text('私信')"),
-            page.locator("a:has-text('私信')"),
-            page.locator("text=私信"),
-            page.locator("text=发私信"),
-            page.locator("text=聊天"),
-        ], "open_private_message", timeout_ms=min(timeout_ms, 12000)))
-        _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page, timeout_ms=1200))
-        steps.append(_dm_fill_message_editor(page, message, timeout_ms=min(timeout_ms, 12000)))
-        sent = False
-        if auto_send:
+            playwright, context, browser, keep_browser_open = _dm_get_playwright_context(sync_playwright, browser_name, options)
+            cookies = _dm_parse_account_cookies(raw_cookies)
+            if cookies:
+                context.add_cookies(cookies)
+                steps.append({"name": "apply_account_cookies", "ok": True, "detail": f"{len(cookies)} cookies"})
+            page = context.new_page()
+            page.goto(profile_url, wait_until="domcontentloaded", timeout=timeout_ms)
+            steps.append({"name": "open_profile", "ok": True, "detail": "opened"})
+            try:
+                page.wait_for_load_state("networkidle", timeout=min(timeout_ms, 12000))
+            except Exception:
+                pass
+            _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page))
+            private_message_label = "\u79c1\u4fe1"
+            send_private_message_label = "\u53d1\u79c1\u4fe1"
+            chat_label = "\u804a\u5929"
+            steps.append(_dm_click_first(page, [
+                page.get_by_role("button", name=re.compile(f"{private_message_label}|{send_private_message_label}|{chat_label}|Message", re.I)),
+                page.locator(f"button:has-text('{private_message_label}')"),
+                page.locator(f"[role=button]:has-text('{private_message_label}')"),
+                page.locator(f"a:has-text('{private_message_label}')"),
+                page.locator(f"text={private_message_label}"),
+                page.locator(f"text={send_private_message_label}"),
+                page.locator(f"text={chat_label}"),
+            ], "open_private_message", timeout_ms=min(timeout_ms, 12000)))
             _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page, timeout_ms=1200))
-            steps.extend(_dm_send_and_confirm_current_message(page, message, timeout_ms=min(timeout_ms, 10000)))
-            sent = True
-        if not keep_browser_open:
-            _dm_stop_playwright_context(context, browser, playwright)
-        return {
-            "success": True,
-            "opened": True,
-            "prefilled": True,
-            "sent": sent,
-            "resolved_browser": browser_name,
-            "engine": "playwright",
-            "steps": steps,
-            "account_cookie_loaded": bool(cookies),
-            "account_cookie_count": len(cookies),
-            "keep_browser_open": keep_browser_open,
-            "user_data_dir": str(_dm_playwright_user_data_dir(browser_name, options)) if _dm_bool_text(options.get("persistent_context", keep_browser_open or options.get("user_data_dir"))) else "",
-        }
-    except Exception as exc:
-        detail = str(exc)
-        steps.append({"name": "playwright_error", "ok": False, "detail": detail})
-        failure = _dm_screenshot_failure(page, options, detail)
-        if not keep_browser_open:
-            _dm_stop_playwright_context(context, browser, playwright)
-        return {
-            "success": False,
-            "opened": any(step.get("name") == "open_profile" and step.get("ok") for step in steps),
-            "prefilled": any(step.get("name") == "paste_message" and step.get("ok") for step in steps),
-            "sent": False,
-            "resolved_browser": browser_name,
-            "engine": "playwright",
-            "steps": steps,
-            "error": detail,
-            "keep_browser_open": keep_browser_open,
-            **failure,
-        }
+            steps.append(_dm_fill_message_editor(page, message, timeout_ms=min(timeout_ms, 12000)))
+            sent = False
+            if auto_send:
+                _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page, timeout_ms=1200))
+                steps.extend(_dm_send_and_confirm_current_message(page, message, timeout_ms=min(timeout_ms, 10000)))
+                sent = True
+            if not keep_browser_open:
+                _dm_stop_playwright_context(context, browser, playwright)
+            return {
+                "success": True,
+                "opened": True,
+                "prefilled": True,
+                "sent": sent,
+                "resolved_browser": browser_name,
+                "engine": "playwright",
+                "steps": combined_steps + steps,
+                "account_cookie_loaded": bool(cookies),
+                "account_cookie_count": len(cookies),
+                "keep_browser_open": keep_browser_open,
+                "user_data_dir": str(_dm_playwright_user_data_dir(browser_name, options)) if _dm_bool_text(options.get("persistent_context", keep_browser_open or options.get("user_data_dir"))) else "",
+            }
+        except Exception as exc:
+            detail = str(exc)
+            steps.append({"name": "playwright_error", "ok": False, "detail": detail})
+            failure = _dm_screenshot_failure(page, options, detail)
+            combined_steps.extend(steps)
+            if attempt == 0 and _dm_should_retry_browser_closed(detail, steps):
+                _dm_stop_playwright_context(context, browser, playwright)
+                combined_steps.append({"name": "restart_browser", "ok": True, "detail": "browser or context was closed; relaunching a fresh browser"})
+                continue
+            if not _dm_should_keep_browser_open_on_failure(detail, keep_browser_open):
+                _dm_stop_playwright_context(context, browser, playwright)
+            return {
+                "success": False,
+                "opened": any(step.get("name") == "open_profile" and step.get("ok") for step in combined_steps),
+                "prefilled": any(step.get("name") == "paste_message" and step.get("ok") for step in combined_steps),
+                "sent": False,
+                "resolved_browser": browser_name,
+                "engine": "playwright",
+                "steps": combined_steps,
+                "error": detail,
+                "keep_browser_open": keep_browser_open,
+                **failure,
+            }
+
+    return {
+        "success": False,
+        "opened": False,
+        "prefilled": False,
+        "sent": False,
+        "resolved_browser": browser_name,
+        "engine": "playwright",
+        "steps": combined_steps,
+        "error": "browser execution exhausted retries",
+        "keep_browser_open": keep_browser_open,
+    }
 
 
 _douyin_private_message_playwright_executor.needs_raw_cookies = True
@@ -9547,13 +9620,12 @@ def build_douyin_dm_task_submit_response(
         run_mode = str(merged.get("run_mode") or "send").strip().lower()
         auto_send = _dm_bool_text(merged.get("auto_send", False))
         auto_process = _dm_bool_text(merged.get("auto_process", False))
-        headless = _dm_bool_text(merged.get("headless", True))
+        headless = _dm_bool_text(merged.get("headless", False))
         force_resend = _dm_bool_text(merged.get("force_resend", False))
         if not debug_mode:
             run_mode = "send"
             auto_send = True
             auto_process = True
-            headless = True
         keep_browser_open = _dm_bool_text(merged.get("keep_browser_open", not headless))
         persistent_context = _dm_bool_text(merged.get("persistent_context", (not headless) or merged.get("user_data_dir")))
         use_cdp = _dm_bool_text(merged.get("use_cdp", not headless))
@@ -9567,6 +9639,7 @@ def build_douyin_dm_task_submit_response(
             "account_id": account_id,
             "account_key": account_key,
             "account_cookie": account_cookie,
+            "account_cookies": account_cookie,
             "video_info": str(merged.get("video_info") or ""),
             "comment_info": str(merged.get("comment_info") or ""),
             "target_profile_url": str(merged.get("target_profile_url") or ""),
@@ -9750,6 +9823,7 @@ def process_douyin_dm_task_once(
 
         if run_mode in {"prefill", "send"}:
             auto_send = run_mode == "send" or _dm_bool_text(task.get("auto_send"))
+            task_account_cookies = _dm_task_account_cookie_text(task)
             demo_result = build_douyin_private_message_demo_response({
                 "task_id": task_id,
                 "profile_url": task.get("target_profile_url") or "",
@@ -9761,7 +9835,7 @@ def process_douyin_dm_task_once(
                 "persistent_context": _dm_bool_text(task.get("persistent_context", (not _dm_bool_text(task.get("headless", True))) or task.get("user_data_dir"))),
                 "user_data_dir": task.get("user_data_dir") or "",
                 "auto_send": auto_send,
-                "account_cookies": task.get("account_cookie") or "",
+                "account_cookies": task_account_cookies,
                 "screenshot_prefix": task_id,
             }, executor=_douyin_private_message_playwright_executor)
             sent = bool(demo_result.get("sent"))
