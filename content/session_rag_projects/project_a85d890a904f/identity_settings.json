@@ -1,7 +1,7 @@
 {
   "version": 1,
   "project_id": "project_a85d890a904f",
-  "updated_at": "2026-07-08T03:16:54",
+  "updated_at": "2026-07-17T18:48:35",
   "default_sender_identity": "品牌客服",
   "accounts": [
     {
@@ -49,21 +49,35 @@
         "海外市场"
       ],
       "enabled": true
+    },
+    {
+      "account_id": "boss_recruiting_assistant",
+      "account_name": "招聘沟通号",
+      "platform": "Boss直聘",
+      "sender_identity": "招聘助理",
+      "description": "用于岗位咨询、候选人沟通和机器人面试流程承接。",
+      "tags": [
+        "招聘",
+        "Boss",
+        "机器人面试",
+        "岗位沟通"
+      ],
+      "enabled": true
     }
   ],
   "products": [
     {
-      "product_id": "health_overview",
-      "product_name": "大健康医疗服务",
+      "product_id": "joint_assessment",
+      "product_name": "膝骨关节评估与干细胞合规咨询",
       "sender_identity": "健康顾问助理",
       "related_doc_ids": [
-        "healthcare_medical",
-        "mock_health_compliance"
+        "doc_7617b8c70997",
+        "doc_3891c2b7659f"
       ],
       "tags": [
-        "大健康",
-        "医疗",
-        "康养",
+        "膝骨关节",
+        "膝盖疼",
+        "骨积液",
         "干细胞",
         "PRP"
       ],
@@ -71,38 +85,17 @@
     },
     {
       "product_id": "sleep_assessment",
-      "product_name": "睡眠状态初评",
+      "product_name": "睡眠初评服务",
       "sender_identity": "健康顾问助理",
       "related_doc_ids": [
-        "mock_sleep_assessment",
-        "mock_health_compliance"
+        "doc_9c4549f8c7c3",
+        "doc_004cc6aca862"
       ],
       "tags": [
         "睡眠",
         "失眠",
-        "睡不好",
-        "压力大",
+        "压力",
         "初评"
-      ],
-      "enabled": true
-    },
-    {
-      "product_id": "joint_assessment",
-      "product_name": "大健康膝骨关节干细胞",
-      "sender_identity": "健康顾问助理",
-      "related_doc_ids": [
-        "healthcare_medical",
-        "mock_joint_assessment",
-        "mock_health_compliance"
-      ],
-      "tags": [
-        "膝骨关节",
-        "膝盖疼",
-        "上下楼疼",
-        "骨积液",
-        "软骨磨损",
-        "干细胞",
-        "PRP"
       ],
       "enabled": true
     },
@@ -111,33 +104,16 @@
       "product_name": "自动私信引流系统",
       "sender_identity": "运营顾问",
       "related_doc_ids": [
-        "ai_technology_hardware",
-        "mock_ai_dm_system",
-        "mock_conversion_hooks"
+        "doc_997d9098a672",
+        "doc_050ba68c097d",
+        "doc_4e356180472a",
+        "doc_7617b8c70997"
       ],
       "tags": [
         "AI私信",
         "自动回复",
         "评论采集",
-        "私域引流",
-        "模型切换"
-      ],
-      "enabled": true
-    },
-    {
-      "product_id": "ai_content_hardware",
-      "product_name": "AI内容生产与智能硬件",
-      "sender_identity": "运营顾问",
-      "related_doc_ids": [
-        "ai_technology_hardware",
-        "mock_ai_dm_system"
-      ],
-      "tags": [
-        "文生视频",
-        "批量剪辑",
-        "自动发布",
-        "智能硬件",
-        "录音转纪要"
+        "私域引流"
       ],
       "enabled": true
     },
@@ -146,32 +122,31 @@
       "product_name": "跨境电商托管",
       "sender_identity": "跨境运营顾问",
       "related_doc_ids": [
-        "cross_border_services",
-        "mock_cross_border_operation"
+        "doc_43785ba9cfee",
+        "doc_562ebb422746"
       ],
       "tags": [
-        "跨境",
         "跨境电商",
-        "货源",
+        "Temu",
         "店铺托管",
         "AI选品"
       ],
       "enabled": true
     },
     {
-      "product_id": "general_brand_service",
-      "product_name": "综合企业服务咨询",
-      "sender_identity": "品牌客服",
+      "product_id": "recruitment_interview",
+      "product_name": "招聘与机器人面试",
+      "sender_identity": "招聘助理",
       "related_doc_ids": [
-        "company_positioning",
-        "mock_business_overview",
-        "mock_conversion_hooks"
+        "doc_23a1ae269d3b",
+        "doc_fb7932d16f08",
+        "doc_2400a730ead3",
+        "doc_2833c7496c74"
       ],
       "tags": [
-        "公司介绍",
-        "综合服务",
-        "资料包",
-        "承接方式"
+        "招聘",
+        "机器人面试",
+        "Boss沟通"
       ],
       "enabled": true
     }

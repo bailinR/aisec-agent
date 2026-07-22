@@ -198,6 +198,15 @@ class SessionRAGChatLogicTest(unittest.TestCase):
         self.assertIn("行与行之间空一行", prompt)
         self.assertNotIn("You are continuing a Douyin", prompt)
 
+    def test_invalid_model_json_falls_back_to_raw_answer(self):
+        parsed = SessionRAGChatLogic._parse_llm_json(
+            '{"answer": "可以先发您一份资料包" "enough_info": true}'
+        )
+
+        self.assertEqual(parsed["answer"], "可以先发您一份资料包")
+        self.assertTrue(parsed["enough_info"])
+        self.assertIn("invalid JSON", parsed["missing_info"])
+
 
 class ConsoleSmokeTest(unittest.TestCase):
     def test_console_uses_same_session_for_multiple_inputs(self):

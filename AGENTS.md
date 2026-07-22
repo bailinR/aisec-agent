@@ -21,5 +21,6 @@
 - 不要把服务器正式运行流程从 systemd Python 重新推回去；当前正式部署以 Docker Web 容器 + worker 容器为准。
 - 排查任务失败时，优先看任务详情里的结构化字段，再看截图和 worker 日志。
 - 解释私信任务状态时，先区分“提交成功/入队成功”和“worker 已消费/发送成功”。
+- 本地启动项目时，默认同时启动 Web 服务和 `aisec_agent.worker.douyin_dm_worker --mode send`；只启动 Web 只能提交/查询任务，不能自动发送私信。
 - 涉及真实公司接入时，先区分数据库事实数据、知识库业务口径、场景 CTA、合规边界。
 - 本地服务默认 `127.0.0.1:7860` 只能本机访问；需要局域网访问时必须用 `--host 0.0.0.0` 启动，并用 `Get-NetTCPConnection -LocalPort 7860 -State Listen` 确认监听地址是 `0.0.0.0`。

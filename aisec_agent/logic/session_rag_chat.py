@@ -376,8 +376,35 @@ session_id: {session_id}
         except json.JSONDecodeError:
             matches = re.findall(r"\{.*\}", text, flags=re.DOTALL)
             if matches:
-                return json.loads(matches[0])
-            raise
+                try:
+                    return json.loads(matches[0])
+                except json.JSONDecodeError:
+                    pass
+            fallback = SessionRAGChatLogic._fallback_answer_from_llm_text(text)
+            return {
+                "answer": fallback,
+                "enough_info": bool(fallback),
+                "missing_info": "model returned invalid JSON; used raw text fallback",
+                "used_knowledge": [],
+            }
+
+    @staticmethod
+    def _fallback_answer_from_llm_text(text: str) -> str:
+        text = str(text or "").strip()
+        if not text:
+            return ""
+        fenced = re.search(r"```(?:json)?\s*(.*?)```", text, flags=re.DOTALL | re.IGNORECASE)
+        if fenced:
+            text = fenced.group(1).strip()
+        answer_match = re.search(r'"answer"\s*:\s*"((?:\\.|[^"\\])*)', text, flags=re.DOTALL)
+        if answer_match:
+            try:
+                return json.loads('"' + answer_match.group(1) + '"').strip()
+            except json.JSONDecodeError:
+                return answer_match.group(1).strip()
+        text = re.sub(r"^\s*\{", "", text).strip()
+        text = re.sub(r"\}\s*$", "", text).strip()
+        return text[:600].strip()
 
     @staticmethod
     def _normalize_answer(data: Dict[str, Any]) -> Dict[str, Any]:

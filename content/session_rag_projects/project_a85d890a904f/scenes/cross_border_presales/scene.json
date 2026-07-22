@@ -1,4 +1,6 @@
 {
   "scene_id": "cross_border_presales",
-  "name": "跨境综合业务售前"
+  "name": "跨境电商售前承接",
+  "prompt": "识别跨境开店、Temu运营、店铺托管、AI选品和内容托管需求，优先做方向诊断。",
+  "materials": "不承诺销量、利润或平台审核结果，只做方向诊断和运营建议。"
 }

@@ -1,49 +1,94 @@
 {
   "version": 1,
   "project_id": "project_a85d890a904f",
-  "updated_at": "2026-07-16T10:35:48",
+  "updated_at": "2026-07-17T18:49:38",
   "companies": [
     {
       "company_id": "company_cf97f621f6",
       "name": "默认公司",
       "short_name": "默认公司",
       "status": "active",
-      "description": "默认公司，当前已有知识库默认归属此公司；后续可修改公司信息和知识库分配。",
-      "tags": [],
-      "created_at": "2026-07-16T10:31:14",
-      "updated_at": "2026-07-16T10:35:48"
+      "description": "当前内置公司账号，管理公司下的大健康、AI技术、跨境电商和招聘面试等业务知识库。",
+      "tags": [
+        "单公司",
+        "内置数据库"
+      ],
+      "created_at": "2026-07-17T18:48:35",
+      "updated_at": "2026-07-17T18:48:35"
     }
   ],
   "company_knowledge_bases": [
     {
       "company_id": "company_cf97f621f6",
-      "kb_id": "kb_717126999f",
+      "kb_id": "kb_5bede326e3",
       "role": "owner",
       "enabled": true,
-      "created_at": "2026-07-16T10:31:14",
-      "updated_at": "2026-07-16T10:31:14"
+      "created_at": "2026-07-17T18:48:35",
+      "updated_at": "2026-07-17T18:48:35"
     },
     {
       "company_id": "company_cf97f621f6",
-      "kb_id": "kb_828963cc66",
+      "kb_id": "kb_b85ac31bf1",
       "role": "owner",
       "enabled": true,
-      "created_at": "2026-07-16T10:31:14",
-      "updated_at": "2026-07-16T10:31:14"
+      "created_at": "2026-07-17T18:48:35",
+      "updated_at": "2026-07-17T18:48:35"
+    },
+    {
+      "company_id": "company_cf97f621f6",
+      "kb_id": "kb_7cf5474512",
+      "role": "owner",
+      "enabled": true,
+      "created_at": "2026-07-17T18:48:35",
+      "updated_at": "2026-07-17T18:48:35"
+    },
+    {
+      "company_id": "company_cf97f621f6",
+      "kb_id": "kb_8186c138ea",
+      "role": "owner",
+      "enabled": true,
+      "created_at": "2026-07-17T18:48:35",
+      "updated_at": "2026-07-17T18:48:35"
+    },
+    {
+      "company_id": "company_cf97f621f6",
+      "kb_id": "kb_da06906974",
+      "role": "owner",
+      "enabled": true,
+      "created_at": "2026-07-17T18:48:35",
+      "updated_at": "2026-07-17T18:48:35"
     }
   ],
   "knowledge_bases": [
     {
-      "kb_id": "kb_717126999f",
-      "name": "公司私信知识库",
-      "description": "用于公司业务、视频评论、私信承接、活动钩子和客户沟通的资料。",
-      "document_count": 33
+      "kb_id": "kb_5bede326e3",
+      "name": "AI技术与私信自动化业务板块",
+      "description": "面向自动私信、评论采集、AI内容生产、智能硬件和自动化运营的业务资料。",
+      "document_count": 4
     },
     {
-      "kb_id": "kb_828963cc66",
-      "name": "招聘知识库",
-      "description": "用于招聘评论、候选人私信、岗位咨询、面试邀约和招聘合规沟通的资料。",
-      "document_count": 7
+      "kb_id": "kb_b85ac31bf1",
+      "name": "公司基础资料板块",
+      "description": "沉淀公司定位、对外口径、通用承接边界和目标优先级。",
+      "document_count": 6
+    },
+    {
+      "kb_id": "kb_7cf5474512",
+      "name": "大健康业务板块",
+      "description": "面向睡眠、膝骨关节、健康咨询和合规评估承接的业务资料。",
+      "document_count": 4
+    },
+    {
+      "kb_id": "kb_8186c138ea",
+      "name": "招聘与机器人面试业务板块",
+      "description": "面向 Boss 沟通、岗位咨询、线上初面和招聘流程的业务资料。",
+      "document_count": 4
+    },
+    {
+      "kb_id": "kb_da06906974",
+      "name": "跨境电商与综合服务板块",
+      "description": "面向跨境开店、Temu运营、店铺托管和资源对接的业务资料。",
+      "document_count": 2
     }
   ]
 }
