@@ -1,3 +1,4 @@
+import json
 import unittest
 import tempfile
 from pathlib import Path
@@ -578,6 +579,36 @@ class SessionRAGWebTest(unittest.TestCase):
         status = build_douyin_dm_task_status_response("dm_legacy_hset_001", redis_client=redis)
         self.assertEqual(status["task"]["status"], "pending")
 
+    def test_douyin_dm_task_submit_accepts_cookie_object(self):
+        redis = FakeRedis()
+        cookie_object = {
+            "cookies": [
+                {
+                    "name": "sessionid",
+                    "value": "SECRET_COOKIE",
+                    "domain": ".douyin.com",
+                    "path": "/",
+                }
+            ]
+        }
+
+        submit = build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_cookie_object_001",
+                "video_info": "video about knee pain",
+                "account_cookie": cookie_object,
+                "comment_info": "my mom has knee pain",
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+
+        self.assertEqual(submit["accepted"], 1)
+        stored = redis.hgetall("dm:task:dm_cookie_object_001")
+        self.assertEqual(stored["account_cookie"], json.dumps(cookie_object, ensure_ascii=False))
+        self.assertTrue(stored["account_cookie"].startswith("{"))
+
     def test_douyin_dm_resubmit_clears_stale_queue_state(self):
         redis = FakeRedis()
         task_id = "dm_resubmit_001"
@@ -1008,6 +1039,56 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertIn("发送", status["result"]["failure_reason"])
         self.assertIn("message send was not confirmed", status["result"]["failure_step_detail"])
 
+    def test_douyin_dm_send_process_accepts_cookie_object(self):
+        redis = FakeRedis()
+        cookie_object = {
+            "cookies": [
+                {
+                    "name": "sessionid",
+                    "value": "SECRET_COOKIE",
+                    "domain": ".douyin.com",
+                    "path": "/",
+                }
+            ]
+        }
+        build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_cookie_send_001",
+                "video_info": "video about knee pain",
+                "account_cookie": cookie_object,
+                "comment_info": "my mom has knee pain",
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+
+        def fake_demo_response(payload, executor=None):
+            self.assertIsInstance(payload["account_cookies"], str)
+            self.assertTrue(payload["account_cookies"].startswith("{"))
+            return {
+                "success": True,
+                "opened": True,
+                "prefilled": True,
+                "sent": True,
+                "resolved_browser": "edge",
+                "engine": "playwright",
+                "steps": [],
+            }
+
+        with patch(
+            "aisec_agent.web.session_rag_chat.build_public_private_message_response",
+            return_value={"reply": "hello"},
+        ), patch(
+            "aisec_agent.web.session_rag_chat.build_douyin_private_message_demo_response",
+            side_effect=fake_demo_response,
+        ):
+            processed = process_douyin_dm_task_once(redis_client=redis, mode="send", block_timeout=1)
+
+        self.assertEqual(processed["task_id"], "dm_cookie_send_001")
+        self.assertEqual(processed["status"], "success")
+        self.assertTrue(processed["sent"])
+
     def test_douyin_dm_send_current_message_prefers_dom_button_click(self):
         class DummyPage:
             pass
@@ -1378,6 +1459,33 @@ class SessionRAGWebTest(unittest.TestCase):
                 "reply": "hello",
                 "browser_name": "edge",
                 "account_cookies": cookie_text,
+            },
+            executor=fake_douyin_demo_executor,
+        )
+
+        self.assertTrue(response["account_cookie_loaded"])
+        self.assertEqual(response["account_cookie_count"], 1)
+        self.assertEqual(response["seen"]["options"]["account_cookies"], "[redacted]")
+        self.assertNotIn("SECRET_COOKIE", str(response))
+
+    def test_douyin_private_message_demo_accepts_cookie_object(self):
+        cookie_object = {
+            "cookies": [
+                {
+                    "name": "sessionid",
+                    "value": "SECRET_COOKIE",
+                    "domain": ".douyin.com",
+                    "path": "/",
+                }
+            ]
+        }
+
+        response = build_douyin_private_message_demo_response(
+            {
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid?from_tab_name=main",
+                "reply": "hello",
+                "browser_name": "edge",
+                "account_cookies": cookie_object,
             },
             executor=fake_douyin_demo_executor,
         )

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import argparse
+import ast
 import cgi
 import json
 import logging
@@ -7813,14 +7814,38 @@ def _dm_normalized_target(target_profile_url: str) -> str:
     return str(target_profile_url or "").strip().split("?", 1)[0]
 
 
-def _dm_parse_account_cookies(raw_cookies: str) -> List[Dict[str, Any]]:
-    text = str(raw_cookies or "").strip()
+def _dm_cookie_text(raw_cookies: Any) -> str:
+    if raw_cookies is None:
+        return ""
+    if isinstance(raw_cookies, str):
+        return raw_cookies.strip()
+    if isinstance(raw_cookies, (dict, list, tuple)):
+        try:
+            return json.dumps(raw_cookies, ensure_ascii=False)
+        except Exception:
+            return str(raw_cookies).strip()
+    return str(raw_cookies).strip()
+
+
+def _dm_parse_account_cookies(raw_cookies: Any) -> List[Dict[str, Any]]:
+    text = _dm_cookie_text(raw_cookies)
     if not text:
         return []
     cookies: List[Dict[str, Any]] = []
     if text.startswith("{") or text.startswith("["):
-        data = json.loads(text)
-        items = data.get("cookies") if isinstance(data, dict) else data
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            data = ast.literal_eval(text)
+        if isinstance(data, dict):
+            if isinstance(data.get("cookies"), list):
+                items = data.get("cookies")
+            elif str(data.get("name") or "").strip() and str(data.get("value") or "").strip():
+                items = [data]
+            else:
+                items = [data]
+        else:
+            items = data
         if isinstance(items, list):
             for item in items:
                 if not isinstance(item, dict):
@@ -7851,6 +7876,16 @@ def _dm_parse_account_cookies(raw_cookies: str) -> List[Dict[str, Any]]:
             "path": "/",
         })
     return cookies
+
+
+def _dm_account_cookie_count(raw_cookies: Any) -> int:
+    text = _dm_cookie_text(raw_cookies)
+    if not text:
+        return 0
+    if text.startswith("{") or text.startswith("["):
+        return len(_dm_parse_account_cookies(text))
+    parts = [item for item in text.split(";") if "=" in item]
+    return len(parts) if parts else 1
 
 
 def _dm_browser_channel(browser_name: str) -> str:
@@ -9372,7 +9407,7 @@ def build_douyin_private_message_demo_response(
         "timeout_ms": int(_payload_float(normalized, "timeout_ms", 45000)),
         "slow_mo": int(_payload_float(normalized, "slow_mo", 120)),
         "input_ratio_x": _payload_float(normalized, "input_ratio_x", 0.0) if normalized.get("input_ratio_x") is not None else None,
-        "account_cookies": "[redacted]" if normalized.get("account_cookies") else "",
+        "account_cookies": "[redacted]" if _dm_cookie_text(normalized.get("account_cookies") or normalized.get("account_cookie")) else "",
         "viewport_width": viewport_width,
         "viewport_height": viewport_height,
         "device_scale_factor": _payload_float(normalized, "device_scale_factor", 1.0),
@@ -9385,11 +9420,8 @@ def build_douyin_private_message_demo_response(
     }
     if options.get("input_ratio_x") is None:
         options.pop("input_ratio_x", None)
-    raw_cookie_text = str(normalized.get("account_cookies") or normalized.get("account_cookie") or "").strip()
-    if raw_cookie_text.startswith("{"):
-        account_cookie_count = 1
-    else:
-        account_cookie_count = len([item for item in raw_cookie_text.split(";") if "=" in item]) if raw_cookie_text else 0
+    raw_cookie_text = _dm_cookie_text(normalized.get("account_cookies") or normalized.get("account_cookie") or "")
+    account_cookie_count = _dm_account_cookie_count(raw_cookie_text)
 
     if callable(executor):
         if getattr(executor, "needs_raw_cookies", False):
@@ -9417,7 +9449,7 @@ def build_douyin_private_message_demo_response(
     result["browser"] = browser
     result["auto_send"] = bool(auto_send)
     result["message_chars"] = len(message)
-    result["account_cookie_loaded"] = bool(result.get("account_cookie_loaded") or raw_cookie_text)
+    result["account_cookie_loaded"] = bool(result.get("account_cookie_loaded") or account_cookie_count)
     result["account_cookie_count"] = max(int(result.get("account_cookie_count") or 0), account_cookie_count)
     result.setdefault("failure_screenshot_path", "")
     result.setdefault("failure_screenshot_name", "")
@@ -9431,7 +9463,7 @@ def build_douyin_account_cookie_apply_response(
     executor: Optional[Any] = None,
 ) -> Dict[str, Any]:
     normalized = dict(payload or {})
-    raw_cookies = str(normalized.get("account_cookies") or normalized.get("account_cookie") or "").strip()
+    raw_cookies = _dm_cookie_text(normalized.get("account_cookies") or normalized.get("account_cookie") or "")
     browser = str(normalized.get("browser_name") or normalized.get("browser") or "edge").strip() or "edge"
     headless = _dm_bool_text(normalized.get("headless"))
     use_cdp = _dm_bool_text(normalized.get("use_cdp"))
@@ -9453,10 +9485,7 @@ def build_douyin_account_cookie_apply_response(
         "screenshot_dir": str(normalized.get("screenshot_dir") or DM_DEBUG_ARTIFACT_DIR),
         "screenshot_prefix": str(normalized.get("screenshot_prefix") or normalized.get("task_id") or "dm"),
     }
-    if raw_cookies.startswith("{"):
-        account_cookie_count = 1
-    else:
-        account_cookie_count = len([item for item in raw_cookies.split(";") if "=" in item]) if raw_cookies else 0
+    account_cookie_count = _dm_account_cookie_count(raw_cookies)
     if callable(executor):
         executor_cookies = raw_cookies if getattr(executor, "needs_raw_cookies", False) else ("[redacted]" if raw_cookies else "")
         result = dict(executor(executor_cookies, browser, options) or {})
@@ -9474,7 +9503,7 @@ def build_douyin_account_cookie_apply_response(
     result.setdefault("opened", False)
     result.setdefault("resolved_browser", browser)
     result.setdefault("engine", "playwright")
-    result.setdefault("account_cookie_loaded", bool(raw_cookies))
+    result.setdefault("account_cookie_loaded", bool(account_cookie_count))
     result["account_cookie_count"] = max(int(result.get("account_cookie_count") or 0), account_cookie_count)
     result.setdefault("steps", [])
     result["browser"] = browser
@@ -9501,13 +9530,17 @@ def build_douyin_dm_task_submit_response(
         if not isinstance(item, dict):
             raise WebInputError("task must be an object")
         merged = {**defaults, **item}
-        required_fields = ["video_info", "account_cookie", "comment_info", "target_profile_url", "project_name"]
+        required_fields = ["video_info", "comment_info", "target_profile_url", "project_name"]
         missing = [field for field in required_fields if not str(merged.get(field) or "").strip()]
+        raw_account_cookie = merged.get("account_cookie") or merged.get("account_cookies") or merged.get("cookie") or merged.get("cookies") or ""
+        account_cookie = _dm_cookie_text(raw_account_cookie)
+        account_cookie_count = _dm_account_cookie_count(raw_account_cookie)
+        if account_cookie_count <= 0:
+            missing.append("account_cookie")
         if missing:
             raise WebInputError(f"missing required fields: {', '.join(missing)}")
 
         task_id = str(merged.get("task_id") or merged.get("id") or uuid.uuid4().hex).strip()
-        account_cookie = str(merged.get("account_cookie") or merged.get("account_cookies") or merged.get("cookie") or merged.get("cookies") or "").strip()
         account_id = str(merged.get("account_id") or merged.get("account") or merged.get("account_name") or "").strip()
         account_key = _dm_account_key_from_values(account_cookie, account_id)
         debug_mode = _dm_bool_text(merged.get("debug_mode"))
