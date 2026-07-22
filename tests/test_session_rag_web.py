@@ -43,6 +43,8 @@ from aisec_agent.web.session_rag_chat import (
     DouyinAccountCookieMismatch,
     DM_DEBUG_ARTIFACT_DIR,
     _dm_click_editor_send_button,
+    _dm_click_private_message_entry,
+    _dm_open_douyin_messages_surface,
     DM_REDIS_PENDING_QUEUE,
     DM_REDIS_AUTO_PENDING_QUEUE,
     DM_REDIS_FAILED_QUEUE,
@@ -53,6 +55,8 @@ from aisec_agent.web.session_rag_chat import (
     build_douyin_account_cookie_apply_response,
     build_douyin_private_message_demo_response,
     _dm_collect_message_bubble_matches,
+    _dm_capture_conversation_monitor_diagnostic,
+    _dm_failure_metadata,
     build_model_config_save_response,
     build_project_create_response,
     build_project_material_save_response,
@@ -60,9 +64,11 @@ from aisec_agent.web.session_rag_chat import (
     build_project_route_debug_response,
     _public_model_configs,
     _dm_pending_queue_for_account,
+    _dm_controller_from_payload,
     _dm_redis_hash_set,
     _dm_send_and_confirm_current_message,
     _dm_send_current_message,
+    _dm_fill_message_editor,
     _dm_wait_message_sent,
     process_douyin_dm_task_once,
     parse_topics,
@@ -525,6 +531,189 @@ class FakeBusinessLogic(SessionRAGChatLogic):
 
 
 class SessionRAGWebTest(unittest.TestCase):
+    def test_conversation_monitor_can_reuse_existing_account_profile_without_cookie(self):
+        from pathlib import Path
+        import tempfile
+
+        account_key = "cookie_profile_test"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            profile_dir = Path(temp_dir) / "accounts" / "chrome" / account_key
+            profile_dir.mkdir(parents=True)
+            with patch("aisec_agent.web.session_rag_chat.DM_PLAYWRIGHT_PROFILE_ROOT", Path(temp_dir)):
+                controller = _dm_controller_from_payload(
+                    {
+                        "account_key": account_key,
+                        "account_id": "account_profile_test",
+                        "account_name": "profile account",
+                        "browser_name": "chrome",
+                        "auto_send": False,
+                        "generate_reply": False,
+                    }
+                )
+
+        self.assertEqual(controller.account_key, account_key)
+        self.assertEqual(controller.browser_name, "chrome")
+        self.assertFalse(controller.auto_send)
+        self.assertFalse(controller.generate_reply)
+        self.assertEqual(controller.account_cookies, "")
+        self.assertEqual(controller.snapshot()["last_diagnostic"], {})
+
+    def test_conversation_monitor_without_cookie_requires_existing_profile(self):
+        with self.assertRaises(WebInputError):
+            _dm_controller_from_payload(
+                {
+                    "account_key": "missing-profile",
+                    "browser_name": "chrome",
+                    "auto_send": False,
+                    "generate_reply": False,
+                }
+            )
+
+    def test_conversation_monitor_diagnostic_captures_page_context(self):
+        class DummyPage:
+            url = "https://www.douyin.com/"
+
+            def title(self):
+                return "抖音"
+
+            def screenshot(self, path, full_page=True):
+                Path(path).write_bytes(b"png")
+
+            def evaluate(self, _script):
+                return [
+                    {
+                        "text": "消息",
+                        "attrs": "message icon",
+                        "score": 120,
+                        "x": 1300,
+                        "y": 24,
+                        "width": 42,
+                        "height": 42,
+                    }
+                ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch("aisec_agent.web.session_rag_chat.DM_DEBUG_ARTIFACT_DIR", Path(temp_dir)):
+                diagnostic = _dm_capture_conversation_monitor_diagnostic(DummyPage(), "account-key", "panel missing")
+
+            self.assertTrue(diagnostic["failure_screenshot_exists"])
+            self.assertTrue(Path(diagnostic["failure_screenshot_path"]).exists())
+            self.assertIn("/api/v1/douyin/private-message/artifacts/", diagnostic["failure_screenshot_url"])
+            self.assertEqual(diagnostic["page_url"], "https://www.douyin.com/")
+            self.assertEqual(diagnostic["page_title"], "抖音")
+            self.assertEqual(diagnostic["message_entry_candidates"][0]["text"], "消息")
+
+    def test_open_douyin_messages_surface_prefers_scoped_topbar_controls(self):
+        class DummyLocator:
+            def __init__(self, desc):
+                self.desc = desc
+
+            @property
+            def first(self):
+                return self
+
+            def wait_for(self, *_args, **_kwargs):
+                return None
+
+            def click(self, *_args, **_kwargs):
+                return None
+
+            def get_by_role(self, role, name=None):
+                return DummyLocator(f"{self.desc} >> role:{role}:{name}")
+
+            def locator(self, selector):
+                return DummyLocator(f"{self.desc} >> locator:{selector}")
+
+        class DummyPage:
+            url = "https://www.douyin.com/"
+
+            def goto(self, *_args, **_kwargs):
+                return None
+
+            def wait_for_load_state(self, *_args, **_kwargs):
+                return None
+
+            def evaluate(self, script):
+                if "text.includes('私信')" in script:
+                    return False
+                return {"clicked": False, "detail": "top-right message control not found"}
+
+            def locator(self, selector):
+                return DummyLocator(f"locator:{selector}")
+
+            def get_by_role(self, role, name=None):
+                return DummyLocator(f"role:{role}:{name}")
+
+        captured = {}
+
+        def fake_click_first(_page, candidates, step_name, timeout_ms=8000):
+            captured["step_name"] = step_name
+            captured["candidates"] = [getattr(candidate, "desc", repr(candidate)) for candidate in candidates]
+            return {"name": step_name, "ok": True, "detail": "clicked"}
+
+        with patch("aisec_agent.web.session_rag_chat._dm_handle_douyin_login_save_prompt", return_value=None), patch(
+            "aisec_agent.web.session_rag_chat._dm_detect_douyin_login_required",
+            return_value={"required": False, "reason": ""},
+        ), patch(
+            "aisec_agent.web.session_rag_chat._dm_detect_latest_douyin_message",
+            return_value={"has_editor": False},
+        ), patch(
+            "aisec_agent.web.session_rag_chat._dm_click_first",
+            side_effect=fake_click_first,
+        ):
+            steps = _dm_open_douyin_messages_surface(DummyPage(), timeout_ms=1)
+
+        self.assertEqual(steps[0]["name"], "open_message_center")
+        self.assertEqual(captured["step_name"], "open_message_center")
+        self.assertTrue(any(desc.startswith("locator:header") for desc in captured["candidates"]))
+        self.assertTrue(any(desc.startswith("locator:nav") for desc in captured["candidates"]))
+        self.assertTrue(any("role:button" in desc or "role:link" in desc for desc in captured["candidates"]))
+        self.assertFalse(any(desc == "locator:text=消息" for desc in captured["candidates"]))
+        self.assertFalse(any(desc == "locator:text=私信" for desc in captured["candidates"]))
+
+    def test_douyin_private_message_entry_uses_dom_semantics_first(self):
+        class DummyPage:
+            def evaluate(self, _script):
+                return {"clicked": True, "detail": "private message", "score": 238}
+
+            def wait_for_timeout(self, *_args, **_kwargs):
+                return None
+
+        with patch("aisec_agent.web.session_rag_chat._dm_click_first") as fallback:
+            result = _dm_click_private_message_entry(DummyPage(), timeout_ms=1)
+
+        self.assertEqual(result["name"], "open_private_message")
+        self.assertTrue(result["ok"])
+        self.assertIn("dom click: private message", result["detail"])
+        fallback.assert_not_called()
+
+    def test_douyin_private_message_entry_falls_back_to_locators(self):
+        class DummyLocator:
+            @property
+            def first(self):
+                return self
+
+            def wait_for(self, *_args, **_kwargs):
+                return None
+
+            def click(self, *_args, **_kwargs):
+                return None
+
+        class DummyPage:
+            def evaluate(self, _script):
+                return {"clicked": False, "detail": "private message entry not found"}
+
+            def get_by_role(self, *_args, **_kwargs):
+                return DummyLocator()
+
+            def locator(self, *_args, **_kwargs):
+                return DummyLocator()
+
+        with patch("aisec_agent.web.session_rag_chat._dm_collect_message_entry_candidates", return_value=[]):
+            result = _dm_click_private_message_entry(DummyPage(), timeout_ms=1)
+
+        self.assertEqual(result, {"name": "open_private_message", "ok": True, "detail": "clicked"})
+
     def assert_no_project_id_key(self, value):
         if isinstance(value, dict):
             self.assertNotIn("project_id", value)
@@ -717,6 +906,50 @@ class SessionRAGWebTest(unittest.TestCase):
         first_task = redis.hgetall("dm:task:dm_auto_account_001")
         second_task = redis.hgetall("dm:task:dm_auto_account_002")
         self.assertEqual(first["account_queues"], second["account_queues"])
+        self.assertEqual(first_task["account_id"], second_task["account_id"])
+        self.assertTrue(first_task["account_id"].startswith("douyin_auto_"))
+
+    def test_douyin_dm_cookie_json_alias_groups_same_session_account(self):
+        redis = FakeRedis()
+        first = build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_cookie_alias_001",
+                "video_info": "video",
+                "cookies": {
+                    "cookies": [
+                        {"name": "sessionid", "value": "SESSION_SHARED", "domain": ".douyin.com", "path": "/"},
+                        {"name": "sid_tt", "value": "SID_SHARED", "domain": ".douyin.com", "path": "/"},
+                        {"name": "download_guide", "value": "1", "domain": ".douyin.com", "path": "/"},
+                    ]
+                },
+                "comment_info": "comment",
+                "target_profile_url": "https://www.douyin.com/user/alias-account",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+        second = build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_cookie_alias_002",
+                "video_info": "video",
+                "cookies": {
+                    "cookies": [
+                        {"name": "download_guide", "value": "2", "domain": ".douyin.com", "path": "/"},
+                        {"name": "sid_tt", "value": "SID_SHARED", "domain": ".douyin.com", "path": "/"},
+                        {"name": "sessionid", "value": "SESSION_SHARED", "domain": ".douyin.com", "path": "/"},
+                    ]
+                },
+                "comment_info": "comment",
+                "target_profile_url": "https://www.douyin.com/user/alias-account",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+
+        first_task = redis.hgetall("dm:task:dm_cookie_alias_001")
+        second_task = redis.hgetall("dm:task:dm_cookie_alias_002")
+        self.assertEqual(first["account_queues"], second["account_queues"])
+        self.assertEqual(first_task["account_key"], second_task["account_key"])
         self.assertEqual(first_task["account_id"], second_task["account_id"])
         self.assertTrue(first_task["account_id"].startswith("douyin_auto_"))
 
@@ -1281,6 +1514,24 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertIn("发送", status["result"]["failure_reason"])
         self.assertIn("message send was not confirmed", status["result"]["failure_step_detail"])
 
+    def test_douyin_dm_failure_reason_exposes_target_profile_unavailable(self):
+        meta = _dm_failure_metadata(
+            "",
+            "final",
+            "target profile unavailable: 用户不存在",
+            detail={
+                "steps": [
+                    {"name": "open_profile", "ok": True, "detail": "opened"},
+                    {"name": "open_profile", "ok": False, "detail": "target profile unavailable: 用户不存在"},
+                ]
+            },
+        )
+
+        self.assertEqual(meta["failure_code"], "target_profile_unavailable")
+        self.assertEqual(meta["failure_stage"], "page_open")
+        self.assertIn("目标抖音主页", meta["failure_reason"])
+        self.assertIn("重新", meta["failure_hint"])
+
     def test_douyin_dm_send_current_message_prefers_dom_button_click(self):
         class DummyPage:
             pass
@@ -1305,6 +1556,45 @@ class SessionRAGWebTest(unittest.TestCase):
         dom_click.assert_called_once()
         generic_click.assert_not_called()
         coordinate_click.assert_not_called()
+
+    def test_douyin_dm_fill_message_editor_uses_visible_editor_handle(self):
+        class DummyTarget:
+            def __init__(self):
+                self.clicked = 0
+                self.filled = ""
+
+            def click(self, *_args, **_kwargs):
+                self.clicked += 1
+
+            def fill(self, message, *_args, **_kwargs):
+                self.filled = message
+
+        class DummyPage:
+            def locator(self, *_args, **_kwargs):
+                self.fail("locator should not be used when visible editor is already resolved")
+
+        target = DummyTarget()
+        with patch(
+            "aisec_agent.web.session_rag_chat._dm_visible_message_editor",
+            return_value=target,
+        ):
+            result = _dm_fill_message_editor(DummyPage(), "hello", timeout_ms=1)
+
+        self.assertEqual(result["name"], "paste_message")
+        self.assertEqual(target.clicked, 1)
+        self.assertEqual(target.filled, "hello")
+
+    def test_douyin_dm_fill_message_editor_rejects_search_page(self):
+        class DummyPage:
+            url = "https://www.douyin.com/user/example/search/hello"
+
+            def wait_for_timeout(self, *_args, **_kwargs):
+                return None
+
+        with self.assertRaises(RuntimeError) as ctx:
+            _dm_fill_message_editor(DummyPage(), "hello", timeout_ms=1)
+
+        self.assertIn("Douyin search result page", str(ctx.exception))
 
     def test_douyin_dm_wait_message_sent_requires_new_bubble(self):
         class DummyPage:
@@ -1720,6 +2010,24 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertTrue(response["seen"]["options"]["screenshot_on_failure"])
         self.assertNotIn("SECRET_COOKIE", str(response))
         self.assertNotIn("ANOTHER_SECRET", str(response))
+
+    def test_douyin_account_cookie_apply_respects_requested_account_key(self):
+        cookie_text = "sessionid=SECRET_COOKIE; sid_guard=ANOTHER_SECRET"
+
+        response = build_douyin_account_cookie_apply_response(
+            {
+                "browser": "edge",
+                "account_key": "cookie_existing_profile",
+                "account_cookies": cookie_text,
+                "persistent_context": True,
+                "headless": True,
+            },
+            executor=fake_douyin_account_cookie_executor,
+        )
+
+        self.assertEqual(response["seen"]["options"]["account_key"], "cookie_existing_profile")
+        self.assertIn("cookie_existing_profile", response["seen"]["options"]["user_data_dir"])
+        self.assertNotIn("SECRET_COOKIE", str(response))
 
     def test_douyin_private_message_demo_rejects_non_douyin_url(self):
         with self.assertRaises(WebInputError):

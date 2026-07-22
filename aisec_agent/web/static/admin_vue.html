@@ -303,6 +303,17 @@
       padding: 4px 8px;
       font-size: 12px;
     }
+    .dm-cookie-source { display: grid; gap: 8px; }
+    .dm-cookie-source-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .dm-cookie-select {
+      flex: 1 1 260px;
+      min-width: min(260px, 100%);
+    }
     .dm-cookie-textarea {
       min-height: 96px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -2110,6 +2121,24 @@
                 <div class="panel-body">
                   <div class="field-grid three">
                     <div>
+                      <label>打开浏览器</label>
+                      <select v-model="selectedManagedAccount.browser_name" @change="persistManagedAccounts" :disabled="!selectedManagedAccount.id">
+                        <option value="edge">Edge</option>
+                        <option value="chrome">Google Chrome</option>
+                        <option value="default">默认浏览器</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label>监控账号</label>
+                      <input :value="selectedManagedAccount.name || '请选择账号'" readonly>
+                    </div>
+                    <div>
+                      <label>浏览器状态</label>
+                      <input :value="selectedManagedAccount.id ? managedAccountBrowserLabel(selectedManagedAccount.browser_name) : '未选择账号'" readonly>
+                    </div>
+                  </div>
+                  <div class="field-grid three">
+                    <div>
                       <label>最后用户消息</label>
                       <input :value="activeConversationMonitor.last_message || '暂无'" readonly>
                     </div>
@@ -2759,6 +2788,7 @@
                 </div>
                 <div class="panel-actions">
                   <button class="danger mini" @click="runDouyinDmDemo(true)" :disabled="!dmAnswer || !dmForm.target_profile_url || dmRunning">发送私信</button>
+                  <button class="secondary mini" @click="pauseDmAction" :disabled="!dmRunning">暂停</button>
                   <button @click="generateDm" :disabled="dmRunning">生成私信</button>
                 </div>
               </div>
@@ -2792,9 +2822,29 @@
               </div>
                 <div class="dm-cookie-panel">
                   <div class="dm-cookie-head">
-                    <label class="dm-cookie-title">
+                    <label class="dm-cookie-title">账号 Cookie / 登录信息</label>
+                    <div class="dm-cookie-tools">
+                      <button class="secondary mini" @click="syncDmCookieFromAccount" :disabled="!dmSelectedAccount.cookie_text">从账号管理带入</button>
+                      <button class="secondary mini" @click="clearDmCookie" :disabled="!dmForm.account_cookie_text && !dmForm.use_account_cookie">清空</button>
+                    </div>
+                  </div>
+                  <div class="dm-cookie-source">
+                    <div class="dm-cookie-source-row">
+                      <select class="dm-cookie-select" v-model="dmForm.selected_account_id">
+                        <option value="">从账号管理选择</option>
+                        <option
+                          v-for="account in managedAccounts"
+                          :key="'dm-cookie-' + account.id"
+                          :value="account.id"
+                        >
+                          {{ account.name || '未命名账号' }} · {{ account.cookie_text ? '已保存 Cookie' : '未保存 Cookie' }}
+                        </option>
+                      </select>
+                      <button class="secondary mini" @click="syncDmCookieFromAccount" :disabled="!dmSelectedAccount.cookie_text">使用所选账号 Cookie</button>
+                    </div>
+                    <label class="actions">
                       <input class="inline-check" type="checkbox" v-model="dmForm.use_account_cookie">
-                      <span>使用账号 Cookie 跳过登录</span>
+                      <span>使用 Cookie 访问抖音，留空时优先带入所选账号</span>
                     </label>
                   </div>
                   <textarea
@@ -2804,7 +2854,7 @@
                     spellcheck="false"
                     placeholder='粘贴 {"cookies":[...]}，或 name=value; name2=value2'
                   ></textarea>
-                  <div class="panel-meta">Cookie 只会传给本地调试接口，不写入代码；发送私信时会随当前调试请求使用。</div>
+                  <div class="panel-meta">Cookie 只会传给本地调试接口，不写入代码；未粘贴时会优先使用所选账号管理里的 Cookie。</div>
                 </div>
                 <div class="field-grid">
                   <div>
@@ -2955,6 +3005,7 @@
               demo_mode: "prefill",
               headless: false,
               use_account_cookie: false,
+              selected_account_id: "",
               account_cookie_text: "",
               conversion_target: "",
               target_note: ""
@@ -2996,6 +3047,11 @@
           selectedManagedAccount() {
             return this.managedAccounts.find(item => item.id === this.selectedManagedAccountId)
               || this.managedAccounts[0]
+              || {};
+          },
+          dmSelectedAccount() {
+            return this.managedAccounts.find(item => item.id === this.dmForm.selected_account_id)
+              || this.selectedManagedAccount
               || {};
           },
           managedAccountStats() {
@@ -3404,6 +3460,7 @@
           this.dmForm.demo_mode = savedDmForm.demo_mode || this.dmForm.demo_mode;
           this.dmForm.headless = savedDmForm.headless === true;
           this.dmForm.use_account_cookie = savedDmForm.use_account_cookie === true;
+          this.dmForm.selected_account_id = savedDmForm.selected_account_id || "";
           this.dmForm.account_cookie_text = savedDmForm.account_cookie_text || this.dmForm.account_cookie_text;
           this.dmForm.conversion_target = savedDmForm.conversion_target || saved.conversionTarget || "";
           this.dmForm.target_note = savedDmForm.target_note || saved.targetNote || "";
@@ -3415,6 +3472,9 @@
             this.persistDmState(true);
           });
           this.loadManagedAccounts();
+          if (!this.dmForm.selected_account_id && this.selectedManagedAccountId) {
+            this.dmForm.selected_account_id = this.selectedManagedAccountId;
+          }
           this.loadConversationSettings();
           this.loadBatchTasks();
           this.promptResizeHandler = () => this.schedulePromptLayoutMeasure();
@@ -3900,6 +3960,7 @@
                 demo_mode: String(this.dmForm.demo_mode || "prefill"),
                 headless: this.dmForm.headless === true,
                 use_account_cookie: this.dmForm.use_account_cookie === true,
+                selected_account_id: String(this.dmForm.selected_account_id || ""),
                 account_cookie_text: String(this.dmForm.account_cookie_text || ""),
                 conversion_target: String(this.dmForm.conversion_target || ""),
                 target_note: String(this.dmForm.target_note || "")
@@ -3962,6 +4023,14 @@
               this.dmRunning = false;
               this.dmAction = "";
             }
+          },
+          pauseDmAction() {
+            if (!this.dmRunning) {
+              this.setStatus("当前没有正在执行的私信调试任务", "info");
+              return;
+            }
+            if (this.dmAbortController) this.dmAbortController.abort();
+            this.setStatus("已暂停私信调试", "info");
           },
           managedAccountsStorageKey() {
             return "session-rag-admin-managed-accounts";
@@ -4819,9 +4888,31 @@
               this.setStatus("复制失败，请手动选择文本", "error");
             }
           },
+          syncDmCookieFromAccount() {
+            const account = this.dmSelectedAccount || {};
+            const accountCookies = String(account.cookie_text || "").trim();
+            if (!account.id) {
+              this.setStatus("请先从账号管理选择一个账号", "info");
+              return;
+            }
+            if (!accountCookies) {
+              this.setStatus("所选账号还没有保存 Cookie", "error");
+              return;
+            }
+            this.dmForm.use_account_cookie = true;
+            this.dmForm.account_cookie_text = accountCookies;
+            this.setStatus("已带入所选账号 Cookie", "ok");
+          },
+          clearDmCookie() {
+            this.dmForm.use_account_cookie = false;
+            this.dmForm.account_cookie_text = "";
+            this.setStatus("已清空私信调试 Cookie", "ok");
+          },
           douyinAccountCookiePayload() {
-            const accountCookies = String(this.dmForm.account_cookie_text || "").trim();
-            if (!this.dmForm.use_account_cookie || !accountCookies) return {};
+            if (!this.dmForm.use_account_cookie) return {};
+            const accountCookies = String(this.dmForm.account_cookie_text || "").trim()
+              || String((this.dmSelectedAccount || {}).cookie_text || "").trim();
+            if (!accountCookies) return {};
             return {account_cookies: accountCookies};
           },
           async runDouyinDmDemo(forceSend = false) {

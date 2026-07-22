@@ -21,7 +21,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, Iterable, Iterator, List, Optional
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -8434,6 +8434,7 @@ DM_DEBUG_ARTIFACT_DIR = Path(__file__).resolve().parents[2] / "content" / "douyi
 DM_DEBUG_ARTIFACT_URL_PREFIX = "/api/v1/douyin/private-message/artifacts"
 DM_DEFAULT_VIEWPORT_WIDTH = 1440
 DM_DEFAULT_VIEWPORT_HEIGHT = 900
+DM_CONVERSATION_MONITOR_DIAGNOSTIC_INTERVAL_SECONDS = 45
 DM_PLAYWRIGHT_PROFILE_ROOT = Path(os.getenv("AISEC_DM_PLAYWRIGHT_PROFILE_ROOT", Path(__file__).resolve().parents[2] / "content" / "playwright_profiles"))
 _DM_PLAYWRIGHT_SESSIONS: Dict[str, Dict[str, Any]] = {}
 _DM_PLAYWRIGHT_SESSIONS_LOCK = threading.RLock()
@@ -8484,6 +8485,12 @@ DM_FAILURE_PROFILES = {
         "category": "automation",
         "reason": "抖音页面结构变化，自动化入口找不到",
         "hint": "需要更新私信按钮或编辑器的选择器逻辑",
+    },
+    "target_profile_unavailable": {
+        "stage": "page_open",
+        "category": "target",
+        "reason": "目标抖音主页不存在或当前账号不可访问",
+        "hint": "请重新从评论来源复制最新主页链接，或用同一个发送账号在浏览器里手动确认该主页可打开",
     },
     "page_timeout": {
         "stage": "page_open",
@@ -8695,6 +8702,14 @@ def _dm_account_identity_seed(raw_cookies: Any) -> str:
     for name in ("uid_tt", "uid_tt_ss"):
         if values.get(name):
             return f"douyin_uid:{values[name]}"
+    for name in ("sid_tt", "sessionid", "sessionid_ss"):
+        if values.get(name):
+            return f"douyin_session:{values[name]}"
+    sid_guard = values.get("sid_guard") or ""
+    if sid_guard:
+        session_token = unquote(sid_guard).split("|", 1)[0].strip()
+        if session_token:
+            return f"douyin_session:{session_token}"
     return ""
 
 
@@ -8747,6 +8762,11 @@ def _dm_account_browser_user_data_dir(browser_name: str, account_key: str) -> Pa
     browser_key = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(browser_name or "edge").strip().lower() or "edge")
     safe_account_key = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(account_key or "default").strip() or "default")
     return DM_PLAYWRIGHT_PROFILE_ROOT / "accounts" / browser_key / safe_account_key
+
+
+def _dm_account_browser_profile_exists(browser_name: str, account_key: str) -> bool:
+    user_data_dir = _dm_account_browser_user_data_dir(browser_name, account_key)
+    return user_data_dir.exists() and user_data_dir.is_dir()
 
 
 def _dm_persistent_context_alive(context: Any) -> bool:
@@ -8869,6 +8889,12 @@ def _dm_get_kept_playwright_session(session_key: str) -> Optional[Dict[str, Any]
 def _dm_detect_latest_douyin_message(page: Any) -> Dict[str, Any]:
     script = """
     () => {
+      const asText = (value) => {
+        if (!value) return '';
+        if (typeof value === 'string') return value;
+        if (typeof value.baseVal === 'string') return value.baseVal;
+        return String(value);
+      };
       const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
       const isVisible = (el) => {
         if (!el || !el.getBoundingClientRect) return false;
@@ -8878,6 +8904,17 @@ def _dm_detect_latest_douyin_message(page: Any) -> Dict[str, Any]:
           style.visibility !== 'hidden' && style.display !== 'none' && style.opacity !== '0';
       };
       const editorNodes = Array.from(document.querySelectorAll('[contenteditable="true"], textarea, .public-DraftEditor-content')).filter(isVisible);
+      if (!editorNodes.length) {
+        return {
+          url: location.href,
+          title: document.title || '',
+          hasEditor: false,
+          unreadCount: 0,
+          latestText: '',
+          latestCandidate: null,
+        };
+      }
+      const editorRect = editorNodes[0].getBoundingClientRect();
       const inEditor = (el) => editorNodes.some((editor) => editor === el || editor.contains(el) || el.contains(editor));
       const unreadNodes = Array.from(document.querySelectorAll('div, span, a, button, li'))
         .filter(isVisible)
@@ -8903,11 +8940,12 @@ def _dm_detect_latest_douyin_message(page: Any) -> Dict[str, Any]:
           const cls = String(el.className || '');
           let score = 0;
           if (text.length >= 2 && text.length <= 260) score += 20;
-          if (rect.left < window.innerWidth * 0.55) score += 16;
-          if (rect.top > 80 && rect.bottom < window.innerHeight - 70) score += 10;
+          if (rect.bottom < editorRect.top - 8) score += 30;
+          if (Math.abs((rect.left + rect.right) / 2 - (editorRect.left + editorRect.right) / 2) < Math.max(260, editorRect.width * 0.75)) score += 16;
           if (/message|chat|bubble|msg|content/i.test(cls)) score += 20;
           if (/抖音|记录美好生活|首页|推荐|关注|商城|搜索|发布/.test(text)) score -= 40;
           if (/发送|表情|按住|输入|说点什么/.test(text)) score -= 20;
+          if (/下载客户端|实时接收好友消息|私信|智能客服接待结束/.test(text)) score -= 80;
           if (text.length > 120) score -= 8;
           return {text, score, x: Math.round(rect.left), y: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height)};
         })
@@ -8941,6 +8979,48 @@ def _dm_detect_latest_douyin_message(page: Any) -> Dict[str, Any]:
     }
 
 
+def _dm_detect_douyin_login_required(page: Any) -> Dict[str, Any]:
+    script = """
+    () => {
+      const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+      const visible = (el) => {
+        if (!el || !el.getBoundingClientRect) return false;
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width >= 24 && rect.height >= 14 && rect.right > 0 && rect.bottom > 0 &&
+          style.visibility !== 'hidden' && style.display !== 'none' && style.opacity !== '0';
+      };
+      const texts = Array.from(document.querySelectorAll('div, section, form, button, span, p'))
+        .filter(visible)
+        .map((el) => normalize(el.innerText || el.textContent || ''))
+        .filter(Boolean);
+      const joined = texts.slice(0, 160).join(' ');
+      const modal = /扫码登录|验证码登录|密码登录|登录后免费|请输入手机号|获取验证码/.test(joined);
+      const loginButton = texts.some((text) => text === '登录' || text === '立即登录');
+      return {
+        required: Boolean(modal || (loginButton && /扫码|验证码|手机号|登录/.test(joined))),
+        reason: modal ? 'login modal visible' : (loginButton ? 'login button visible' : ''),
+        sampleText: joined.slice(0, 240),
+        url: location.href,
+        title: document.title || '',
+      };
+    }
+    """
+    try:
+        data = page.evaluate(script) or {}
+    except Exception as exc:
+        data = {"required": False, "reason": str(exc)}
+    if not isinstance(data, dict):
+        data = {}
+    return {
+        "required": bool(data.get("required")),
+        "reason": str(data.get("reason") or ""),
+        "sample_text": str(data.get("sampleText") or ""),
+        "url": str(data.get("url") or ""),
+        "title": str(data.get("title") or ""),
+    }
+
+
 def _dm_open_douyin_messages_surface(page: Any, timeout_ms: int = 12000) -> List[Dict[str, Any]]:
     steps: List[Dict[str, Any]] = []
     try:
@@ -8953,20 +9033,150 @@ def _dm_open_douyin_messages_surface(page: Any, timeout_ms: int = 12000) -> List
         except Exception:
             pass
         _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page, timeout_ms=1500))
+        login_state = _dm_detect_douyin_login_required(page)
+        if login_state.get("required"):
+            steps.append({
+                "name": "check_login",
+                "ok": False,
+                "detail": "login_required: " + str(login_state.get("reason") or "login required"),
+            })
+            return steps
+        panel_open = False
+        try:
+            panel_open = bool(page.evaluate(
+                """
+                () => Array.from(document.querySelectorAll('div, section, aside'))
+                  .some((el) => {
+                    const rect = el.getBoundingClientRect();
+                    const style = window.getComputedStyle(el);
+                    const text = String(el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim();
+                    return rect.left > window.innerWidth * 0.55 &&
+                      rect.right > window.innerWidth * 0.82 &&
+                      rect.width >= 260 &&
+                      rect.height >= 300 &&
+                      style.visibility !== 'hidden' &&
+                      style.display !== 'none' &&
+                      style.opacity !== '0' &&
+                      text.includes('私信');
+                  })
+                """
+            ))
+        except Exception:
+            panel_open = False
+        if panel_open:
+            steps.append({"name": "detect_message_panel", "ok": True, "detail": "private message panel already visible"})
+            return steps
         if _dm_detect_latest_douyin_message(page).get("has_editor"):
             steps.append({"name": "detect_message_surface", "ok": True, "detail": "editor already visible"})
             return steps
-        candidates = [
-            page.get_by_role("link", name=re.compile(r"消息|私信|聊天|Message", re.I)),
-            page.get_by_role("button", name=re.compile(r"消息|私信|聊天|Message", re.I)),
-            page.locator("a:has-text('消息')"),
-            page.locator("button:has-text('消息')"),
-            page.locator("[role=button]:has-text('消息')"),
-            page.locator("text=消息"),
-            page.locator("text=私信"),
-        ]
+        fallback = {}
         try:
-            steps.append(_dm_click_first(page, candidates, "open_message_center", timeout_ms=min(timeout_ms, 5000)))
+            fallback = page.evaluate(
+                """
+                () => {
+                  const asText = (value) => {
+                    if (!value) return '';
+                    if (typeof value === 'string') return value;
+                    if (typeof value.baseVal === 'string') return value.baseVal;
+                    return String(value);
+                  };
+                  const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+                  const label = (el) => normalize([
+                    el.innerText,
+                    el.textContent,
+                    el.getAttribute('aria-label'),
+                    el.getAttribute('title'),
+                    el.getAttribute('alt'),
+                  ].filter(Boolean).join(' '));
+                  const visible = (el) => {
+                    const rect = el.getBoundingClientRect();
+                    const style = window.getComputedStyle(el);
+                    return rect.width >= 12 && rect.height >= 12 &&
+                      rect.top >= 0 && rect.top < 220 &&
+                      rect.left > window.innerWidth * 0.72 &&
+                      style.visibility !== 'hidden' &&
+                      style.display !== 'none' &&
+                      style.opacity !== '0';
+                  };
+                  const visibleRoot = (el) => {
+                    const rect = el.getBoundingClientRect();
+                    const style = window.getComputedStyle(el);
+                    return rect.width >= 80 && rect.height >= 24 &&
+                      rect.top >= 0 && rect.top < 220 &&
+                      rect.right > window.innerWidth * 0.72 &&
+                      style.visibility !== 'hidden' &&
+                      style.display !== 'none' &&
+                      style.opacity !== '0';
+                  };
+                  const roots = Array.from(document.querySelectorAll('header, nav, [role=banner]')).filter(visibleRoot);
+                  const searchRoots = roots.length ? roots : [document.body];
+                  const nodes = searchRoots
+                    .flatMap((root) => Array.from(root.querySelectorAll('a, button, [role=button], [aria-label], [title]')))
+                    .filter(visible)
+                    .map((el) => {
+                      const rect = el.getBoundingClientRect();
+                      const target = el.closest('a, button, [role=button]') || el;
+                      const text = label(el);
+                      const targetText = label(target);
+                      const attrs = normalize([
+                        asText(el.id),
+                        asText(el.className),
+                        el.getAttribute('data-e2e'),
+                        el.getAttribute('data-testid'),
+                        target.getAttribute('aria-label'),
+                        target.getAttribute('title'),
+                        target.getAttribute('href'),
+                      ].filter(Boolean).join(' '));
+                      const combined = `${text} ${targetText} ${attrs}`;
+                      let score = 0;
+                      if (text === '消息' || text === '私信') score += 100;
+                      if (/消息|私信|聊天|会话|Message|Messages|Chat|IM/i.test(combined)) score += 80;
+                      if (/notice|notify|notification|message|msg|chat|im|conversation/i.test(combined)) score += 35;
+                      if ((targetText || text).length <= 12) score += 20;
+                      if (rect.width <= 140 && rect.height <= 90) score += 20;
+                      if (/发布|登录|搜索|上传|充值|下载|菜单|通知|壁纸|投稿|客户端|客户端下载/.test(combined)) score -= 70;
+                      return {el: target, text: targetText || text || attrs, score, y: rect.top, x: rect.left};
+                    })
+                    .filter((item) => item.score >= 80)
+                    .sort((a, b) => b.score - a.score || b.x - a.x || a.y - b.y);
+                  const target = nodes[0];
+                  if (!target) return {clicked: false, detail: 'top-right message control not found'};
+                  target.el.click();
+                  return {clicked: true, detail: target.text.slice(0, 80)};
+                }
+                """
+            ) or {}
+        except Exception as fallback_error:
+            fallback = {"clicked": false, "detail": String(fallback_error)}
+        if fallback.get("clicked"):
+            steps.append({"name": "open_message_center", "ok": True, "detail": "clicked DOM control: " + str(fallback.get("detail") or "")})
+            try:
+                page.wait_for_timeout(1200)
+            except Exception:
+                pass
+            return steps
+        message_roots = [
+            page.locator("header"),
+            page.locator("nav"),
+            page.locator('[role="banner"]'),
+        ]
+        candidates = []
+        for root in message_roots:
+            candidates.extend([
+                root.get_by_role("link", name=re.compile(r"消息|私信|聊天|Message", re.I)),
+                root.get_by_role("button", name=re.compile(r"消息|私信|聊天|Message", re.I)),
+                root.locator("a:has-text('消息')"),
+                root.locator("button:has-text('消息')"),
+                root.locator("[role=button]:has-text('消息')"),
+                root.locator("a:has-text('私信')"),
+                root.locator("button:has-text('私信')"),
+                root.locator("[role=button]:has-text('私信')"),
+                root.locator("a:has-text('聊天')"),
+                root.locator("button:has-text('聊天')"),
+                root.locator("[role=button]:has-text('聊天')"),
+            ])
+        try:
+            steps.append(_dm_click_first(page, candidates, "open_message_center", timeout_ms=min(timeout_ms, 900)))
             try:
                 page.wait_for_load_state("networkidle", timeout=min(timeout_ms, 6000))
             except Exception:
@@ -8989,28 +9199,91 @@ def _dm_click_unread_or_latest_chat(page: Any, timeout_ms: int = 5000) -> Dict[s
         return rect.width >= 36 && rect.height >= 24 && rect.right > 0 && rect.bottom > 0 &&
           style.visibility !== 'hidden' && style.display !== 'none' && style.opacity !== '0';
       };
-      const rows = Array.from(document.querySelectorAll('a, button, li, [role=button], [role=listitem], div'))
-        .filter(isVisible)
+      const allVisible = Array.from(document.querySelectorAll('div, section, aside, ul, li, a, button')).filter(isVisible);
+      const panelCandidates = allVisible
         .map((el) => {
-          const text = normalize(el.innerText || el.textContent || '');
           const rect = el.getBoundingClientRect();
-          const cls = String(el.className || '');
-          let score = 0;
-          if (/未读|新消息/.test(text)) score += 50;
-          if (/^[1-9][0-9]?$/.test(text)) score += 25;
-          if (/message|chat|conversation|session|item|list/i.test(cls)) score += 20;
-          if (rect.left < window.innerWidth * 0.46) score += 20;
-          if (rect.top > 70 && rect.height >= 36 && rect.height <= 150) score += 10;
-          if (/抖音|记录美好生活|首页|推荐|商城|搜索|发布/.test(text)) score -= 50;
-          if (text.length > 320) score -= 30;
-          return {el, text, score, x: rect.left, y: rect.top};
+          const text = normalize(el.innerText || el.textContent || '');
+          const style = window.getComputedStyle(el);
+          const rightSide = rect.left > window.innerWidth * 0.55 && rect.right > window.innerWidth * 0.82;
+          const panelSize = rect.width >= 260 && rect.width <= window.innerWidth * 0.55 &&
+            rect.height >= 300 && rect.height <= window.innerHeight * 0.95;
+          const hasPrivateHeader = /私信/.test(text.slice(0, 80)) ||
+            /message|chat|conversation/i.test(String(el.getAttribute('aria-label') || ''));
+          if (!rightSide || !panelSize || style.visibility === 'hidden' ||
+              style.display === 'none' || style.opacity === '0') return null;
+          return {el, rect, text, score: (hasPrivateHeader ? 100 : 0) + rect.width - rect.height / 1000};
         })
-        .filter((item) => item.score >= 35)
-        .sort((a, b) => b.score - a.score || a.y - b.y);
-      const target = rows[0] && rows[0].el;
-      if (!target) return {clicked: false, detail: 'no unread or chat row found'};
-      target.click();
-      return {clicked: true, detail: rows[0].text.slice(0, 120)};
+        .filter(Boolean)
+        .sort((a, b) => b.score - a.score || a.rect.left - b.rect.left);
+      const headedPanels = panelCandidates.filter((item) => /私信/.test(item.text.slice(0, 160)));
+      const panel = headedPanels[0];
+      if (!panel) return {clicked: false, detail: 'private message panel not found'};
+
+      const panelRect = panel.rect;
+      const withinPanel = (el) => {
+        const rect = el.getBoundingClientRect();
+        return rect.left >= panelRect.left - 4 && rect.right <= panelRect.right + 4 &&
+          rect.top >= panelRect.top + 40 && rect.bottom <= panelRect.bottom + 4;
+      };
+      const badges = allVisible
+        .filter((el) => withinPanel(el))
+        .map((el) => {
+          const rect = el.getBoundingClientRect();
+          const text = normalize(el.innerText || el.textContent || '');
+          const compact = rect.width <= 42 && rect.height <= 42;
+          const numeric = /^[1-9][0-9]?$/.test(text);
+          return {el, rect, text, score: (numeric ? 60 : 0) + (compact ? 30 : 0)};
+        })
+        .filter((item) => item.score >= 60)
+        .sort((a, b) => b.score - a.score || a.rect.top - b.rect.top);
+
+      const rowForBadge = (badge) => {
+        let node = badge.el;
+        let best = null;
+        for (let depth = 0; node && depth < 8; depth += 1, node = node.parentElement) {
+          if (!withinPanel(node)) continue;
+          const rect = node.getBoundingClientRect();
+          const text = normalize(node.innerText || node.textContent || '');
+          if (rect.width >= panelRect.width * 0.68 && rect.height >= 44 && rect.height <= 150 &&
+              text.length >= 1 && text.length <= 320) {
+            const score = rect.width - Math.abs(rect.top - badge.rect.top) * 0.5;
+            if (!best || score > best.score) best = {node, rect, text, score};
+          }
+        }
+        return best;
+      };
+
+      const badgeRows = badges.map(rowForBadge).filter(Boolean);
+      const rows = badgeRows.length
+        ? badgeRows
+        : allVisible
+            .filter((el) => withinPanel(el))
+            .map((el) => {
+              const rect = el.getBoundingClientRect();
+              const text = normalize(el.innerText || el.textContent || '');
+              return {node: el, rect, text, score: rect.width - Math.abs(rect.height - 76)};
+            })
+            .filter((item) => item.rect.width >= panelRect.width * 0.68 &&
+              item.rect.height >= 44 && item.rect.height <= 150 &&
+              item.text.length >= 2 && item.text.length <= 320)
+            .sort((a, b) => b.score - a.score || a.rect.top - b.rect.top)
+            .slice(0, 1);
+
+      const row = rows[0];
+      if (!row) return {clicked: false, detail: 'no conversation row found in private message panel'};
+      row.node.click();
+      return {
+        clicked: true,
+        detail: row.text.slice(0, 120),
+        unread: badges.length > 0,
+        panel: {
+          x: Math.round(panelRect.left),
+          y: Math.round(panelRect.top),
+          width: Math.round(panelRect.width),
+          height: Math.round(panelRect.height),
+        },
+      };
     }
     """
     try:
@@ -9170,6 +9443,145 @@ def _dm_screenshot_failure(page: Any, options: Dict[str, Any], reason: str = "")
         return {}
 
 
+def _dm_collect_message_entry_candidates(page: Any) -> List[Dict[str, Any]]:
+    script = """
+    () => {
+      const asText = (value) => {
+        if (!value) return '';
+        if (typeof value === 'string') return value;
+        if (typeof value.baseVal === 'string') return value.baseVal;
+        return String(value);
+      };
+      const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+      const visible = (el) => {
+        if (!el || !el.getBoundingClientRect) return false;
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width >= 12 && rect.height >= 12 &&
+          rect.top >= 0 && rect.top < Math.max(220, window.innerHeight * 0.28) &&
+          rect.left > window.innerWidth * 0.55 &&
+          style.visibility !== 'hidden' &&
+          style.display !== 'none' &&
+          style.opacity !== '0';
+      };
+      const labelFor = (el) => normalize([
+        el.innerText,
+        el.textContent,
+        el.getAttribute('aria-label'),
+        el.getAttribute('title'),
+        el.getAttribute('alt'),
+      ].filter(Boolean).join(' '));
+      return Array.from(document.querySelectorAll('a, button, [role=button], [aria-label], [title], div, span, svg, path'))
+        .filter(visible)
+        .map((el) => {
+          const rect = el.getBoundingClientRect();
+          const target = el.closest('a, button, [role=button]') || el;
+          const text = labelFor(el);
+          const targetText = labelFor(target);
+          const attrs = normalize([
+            asText(el.id),
+            asText(el.className),
+            el.getAttribute('data-e2e'),
+            el.getAttribute('data-testid'),
+            target.getAttribute('aria-label'),
+            target.getAttribute('title'),
+            target.getAttribute('href'),
+          ].filter(Boolean).join(' '));
+          const combined = `${text} ${targetText} ${attrs}`;
+          let score = 0;
+          if (/消息|私信|聊天|会话|Message|Messages|Chat|IM/i.test(combined)) score += 100;
+          if (/notice|notify|notification|message|msg|chat|im|conversation/i.test(combined)) score += 50;
+          if (/\\b(icon|message|chat|notice|notify|im)\\b/i.test(attrs)) score += 12;
+          if (rect.width <= 160 && rect.height <= 120) score += 20;
+          if (text.length <= 12) score += 10;
+          if (/发布|登录|搜索|上传|充值|下载|菜单/.test(combined)) score -= 70;
+          return {
+            text: targetText || text,
+            attrs: attrs.slice(0, 180),
+            score,
+            x: Math.round(rect.left),
+            y: Math.round(rect.top),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+          };
+        })
+        .filter((item) => item.score >= 40)
+        .sort((a, b) => b.score - a.score || b.x - a.x || a.y - b.y)
+        .slice(0, 12);
+    }
+    """
+    try:
+        data = page.evaluate(script) or []
+    except Exception:
+        return []
+    return [item for item in data if isinstance(item, dict)]
+
+
+def _dm_detect_target_profile_unavailable(page: Any) -> Dict[str, Any]:
+    script = """
+    () => {
+      const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+      const visible = (el) => {
+        if (!el || !el.getBoundingClientRect) return false;
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width >= 24 && rect.height >= 14 &&
+          rect.right > 0 && rect.bottom > 0 &&
+          style.visibility !== 'hidden' &&
+          style.display !== 'none' &&
+          style.opacity !== '0';
+      };
+      const texts = Array.from(document.querySelectorAll('main, div, section, span, p'))
+        .filter(visible)
+        .map((el) => normalize(el.innerText || el.textContent || ''))
+        .filter(Boolean);
+      const joined = texts.slice(0, 120).join(' ');
+      const unavailable = /用户不存在|该用户不存在|账号不存在|主页不存在|暂时无法查看|内容不存在|页面不存在/.test(joined);
+      return {
+        unavailable,
+        sampleText: joined.slice(0, 240),
+        url: location.href,
+        title: document.title || '',
+      };
+    }
+    """
+    try:
+        data = page.evaluate(script) or {}
+    except Exception as exc:
+        data = {"unavailable": False, "sampleText": str(exc)}
+    if not isinstance(data, dict):
+        data = {}
+    return {
+        "unavailable": bool(data.get("unavailable")),
+        "sample_text": str(data.get("sampleText") or ""),
+        "url": str(data.get("url") or ""),
+        "title": str(data.get("title") or ""),
+    }
+
+
+def _dm_capture_conversation_monitor_diagnostic(page: Any, account_key: str, reason: str = "") -> Dict[str, Any]:
+    prefix_seed = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(account_key or "conversation"))[:48]
+    artifact = _dm_screenshot_failure(
+        page,
+        {
+            "screenshot_on_failure": True,
+            "screenshot_dir": str(DM_DEBUG_ARTIFACT_DIR),
+            "screenshot_prefix": f"conversation_{prefix_seed}",
+        },
+        reason,
+    )
+    try:
+        artifact["page_url"] = str(getattr(page, "url", "") or "")
+    except Exception:
+        artifact["page_url"] = ""
+    try:
+        artifact["page_title"] = str(page.title() or "")
+    except Exception:
+        artifact["page_title"] = ""
+    artifact["message_entry_candidates"] = _dm_collect_message_entry_candidates(page)
+    return artifact
+
+
 def _dm_click_first(page: Any, candidates: List[Any], step_name: str, timeout_ms: int = 8000) -> Dict[str, Any]:
     last_error = ""
     for locator in candidates:
@@ -9181,6 +9593,141 @@ def _dm_click_first(page: Any, candidates: List[Any], step_name: str, timeout_ms
         except Exception as exc:
             last_error = str(exc)
     raise RuntimeError(f"{step_name} not found: {last_error}")
+
+
+def _dm_click_private_message_entry(page: Any, timeout_ms: int = 12000) -> Dict[str, Any]:
+    script = """
+    () => {
+      const asText = (value) => {
+        if (!value) return '';
+        if (typeof value === 'string') return value;
+        if (typeof value.baseVal === 'string') return value.baseVal;
+        return String(value);
+      };
+      const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+      const visible = (el) => {
+        if (!el || !el.getBoundingClientRect) return false;
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width >= 16 && rect.height >= 12 &&
+          rect.right > 0 && rect.bottom > 0 &&
+          rect.left < window.innerWidth && rect.top < window.innerHeight &&
+          style.visibility !== 'hidden' &&
+          style.display !== 'none' &&
+          style.opacity !== '0' &&
+          style.pointerEvents !== 'none';
+      };
+      const labelFor = (el) => normalize([
+        el.innerText,
+        el.textContent,
+        el.getAttribute('aria-label'),
+        el.getAttribute('title'),
+        el.getAttribute('alt'),
+      ].filter(Boolean).join(' '));
+      const actionableFor = (el) => el.closest('button, a, [role=button], [tabindex]') || el;
+      const nodes = Array.from(document.querySelectorAll(
+        'button, a, [role=button], [aria-label], [title], [data-e2e], [data-testid], div, span'
+      ))
+        .filter(visible)
+        .map((el) => {
+          const target = actionableFor(el);
+          if (!visible(target)) return null;
+          const rect = target.getBoundingClientRect();
+          const text = labelFor(el);
+          const targetText = labelFor(target);
+          const attrs = normalize([
+            asText(el.id),
+            asText(el.className),
+            el.getAttribute('data-e2e'),
+            el.getAttribute('data-testid'),
+            el.getAttribute('href'),
+            target.getAttribute('aria-label'),
+            target.getAttribute('title'),
+            asText(target.id),
+            asText(target.className),
+            target.getAttribute('data-e2e'),
+            target.getAttribute('data-testid'),
+            target.getAttribute('href'),
+          ].filter(Boolean).join(' '));
+          const combined = `${targetText} ${text} ${attrs}`;
+          let score = 0;
+          if (/^(私信|发私信|聊天|Message|Chat)$/i.test(targetText || text)) score += 160;
+          if (/私信|发私信|聊天|Message|Chat|IM|会话/i.test(combined)) score += 110;
+          if (/message|msg|chat|im|conversation|letter/i.test(attrs)) score += 70;
+          if (/button|btn/i.test(attrs) || target.tagName === 'BUTTON' || target.getAttribute('role') === 'button') score += 30;
+          if (rect.width >= 36 && rect.width <= 220 && rect.height >= 24 && rect.height <= 90) score += 28;
+          if (rect.top > 80 && rect.top < window.innerHeight * 0.72) score += 18;
+          if (rect.left > window.innerWidth * 0.35) score += 10;
+          if (/发布|登录|搜索|上传|充值|下载|菜单|关注|粉丝|获赞|推荐|首页|商城|直播|分享/.test(combined)) score -= 90;
+          if ((targetText || text).length > 30) score -= 35;
+          return {el: target, text: targetText || text || attrs, attrs, score, x: rect.left, y: rect.top};
+        })
+        .filter(Boolean)
+        .filter((item) => item.score >= 100)
+        .sort((a, b) => b.score - a.score || a.y - b.y || b.x - a.x);
+      const best = nodes[0];
+      if (!best) {
+        return {
+          clicked: false,
+          detail: 'private message entry not found',
+          candidates: nodes.slice(0, 5).map((item) => ({text: item.text, score: item.score})),
+        };
+      }
+      best.el.scrollIntoView({block: 'center', inline: 'center'});
+      best.el.click();
+      return {
+        clicked: true,
+        detail: `${best.text}`.slice(0, 120),
+        score: best.score,
+      };
+    }
+    """
+    dom_detail = ""
+    try:
+        result = page.evaluate(script) or {}
+        if isinstance(result, dict):
+            dom_detail = str(result.get("detail") or "")
+            if result.get("clicked"):
+                try:
+                    page.wait_for_timeout(800)
+                except Exception:
+                    pass
+                score = result.get("score")
+                score_text = f", score={score}" if score is not None else ""
+                return {"name": "open_private_message", "ok": True, "detail": f"dom click: {dom_detail}{score_text}"}
+    except Exception as exc:
+        dom_detail = str(exc)
+
+    candidates = [
+        page.get_by_role("button", name=re.compile(r"私信|发私信|聊天|Message|Chat", re.I)),
+        page.get_by_role("link", name=re.compile(r"私信|发私信|聊天|Message|Chat", re.I)),
+        page.locator("button:has-text('私信')"),
+        page.locator("[role=button]:has-text('私信')"),
+        page.locator("a:has-text('私信')"),
+        page.locator("button:has-text('发私信')"),
+        page.locator("[role=button]:has-text('发私信')"),
+        page.locator("a:has-text('发私信')"),
+        page.locator("button:has-text('聊天')"),
+        page.locator("[role=button]:has-text('聊天')"),
+        page.locator("a:has-text('聊天')"),
+        page.locator("text=私信"),
+        page.locator("text=发私信"),
+        page.locator("text=聊天"),
+    ]
+    try:
+        return _dm_click_first(page, candidates, "open_private_message", timeout_ms=min(timeout_ms, 3000))
+    except Exception as exc:
+        candidate_text = ""
+        try:
+            compact = [
+                f"{item.get('text') or item.get('attrs') or ''}({item.get('score')})"
+                for item in _dm_collect_message_entry_candidates(page)[:5]
+            ]
+            candidate_text = "; candidates: " + ", ".join([item for item in compact if item])
+        except Exception:
+            candidate_text = ""
+        dom_text = f"dom: {dom_detail}; " if dom_detail else ""
+        raise RuntimeError(f"open_private_message not found: {dom_text}{exc}{candidate_text}")
 
 
 def _dm_handle_douyin_login_save_prompt(page: Any, timeout_ms: int = 2500) -> Optional[Dict[str, Any]]:
@@ -9217,17 +9764,18 @@ def _dm_append_optional_step(steps: List[Dict[str, Any]], step: Optional[Dict[st
 
 
 def _dm_fill_message_editor(page: Any, message: str, timeout_ms: int = 10000) -> Dict[str, Any]:
-    candidates = [
-        page.locator('[contenteditable="true"]'),
-        page.locator("textarea"),
-        page.locator(".public-DraftEditor-content"),
-        page.get_by_role("textbox"),
-    ]
     last_error = ""
-    for locator in candidates:
+    deadline = time.time() + max(1, int(timeout_ms or 0)) / 1000.0
+    while time.time() <= deadline:
         try:
-            target = locator.first
-            target.wait_for(state="visible", timeout=timeout_ms)
+            current_url = ""
+            try:
+                current_url = str(getattr(page, "url", "") or "").lower()
+            except Exception:
+                current_url = ""
+            if "/search/" in current_url:
+                raise RuntimeError("private chat editor not found: current page is Douyin search result page")
+            target = _dm_visible_message_editor(page, timeout_ms=min(timeout_ms, 1200))
             target.click(timeout=timeout_ms)
             try:
                 target.fill(message, timeout=timeout_ms)
@@ -9238,24 +9786,76 @@ def _dm_fill_message_editor(page: Any, message: str, timeout_ms: int = 10000) ->
             return {"name": "paste_message", "ok": True, "detail": "message inserted"}
         except Exception as exc:
             last_error = str(exc)
+            try:
+                page.wait_for_timeout(250)
+            except Exception:
+                pass
     raise RuntimeError(f"private chat editor not found: {last_error}")
 
 
 def _dm_visible_message_editor(page: Any, timeout_ms: int = 4000) -> Any:
-    candidates = [
-        page.locator('[contenteditable="true"]'),
-        page.locator("textarea"),
-        page.locator(".public-DraftEditor-content"),
-        page.get_by_role("textbox"),
-    ]
+    script = """
+    () => {
+      const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+      if (String(location.pathname || '').includes('/search/')) return null;
+      const visible = (el) => {
+        if (!el || !el.getBoundingClientRect) return false;
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width >= 40 && rect.height >= 20 &&
+          rect.right > 0 && rect.bottom > 0 &&
+          style.visibility !== 'hidden' &&
+          style.display !== 'none' &&
+          style.opacity !== '0';
+      };
+      const labelFor = (el) => normalize([
+        el.getAttribute('placeholder'),
+        el.getAttribute('aria-label'),
+        el.getAttribute('title'),
+        el.getAttribute('name'),
+        el.innerText,
+        el.textContent,
+      ].filter(Boolean).join(' '));
+      const candidates = Array.from(document.querySelectorAll('[contenteditable="true"], textarea, [role="textbox"]'))
+        .filter(visible)
+        .map((el) => {
+          const rect = el.getBoundingClientRect();
+          const label = labelFor(el);
+          const headerLike = el.closest('header, nav, [role=banner], [role=navigation]');
+          const containerText = normalize((el.closest('form, section, main, article, aside, div') || el.parentElement || el).innerText || '');
+          const combined = `${label} ${containerText}`;
+          let score = 0;
+          if (/私信|聊天|输入|回复|说点什么|请输入|发送消息|message/i.test(combined)) score += 70;
+          if (/搜索|search|查找|筛选|登录|评论|发布|标题|昵称|账号/i.test(combined)) score -= 140;
+          if (headerLike && rect.top < 240) score -= 240;
+          if (rect.top < 220 && /搜索|search|查找|筛选|账号|标题|昵称/.test(combined)) score -= 220;
+          if (rect.top > window.innerHeight * 0.25) score += 20;
+          if (rect.top > window.innerHeight * 0.45) score += 25;
+          if (rect.height >= 28 && rect.height <= 220) score += 15;
+          if (rect.width >= 220) score += 10;
+          if (rect.top < 180 && /搜索|search|查找/.test(combined)) score -= 80;
+          return {el, score};
+        })
+        .filter((item) => item.score >= 30)
+        .sort((a, b) => b.score - a.score);
+      return candidates.length ? candidates[0].el : null;
+    }
+    """
     last_error = ""
-    for locator in candidates:
+    deadline = time.time() + max(1, int(timeout_ms or 0)) / 1000.0
+    while time.time() <= deadline:
         try:
-            target = locator.first
-            target.wait_for(state="visible", timeout=timeout_ms)
-            return target
+            handle = page.evaluate_handle(script)
+            if handle:
+                element = handle.as_element()
+                if element:
+                    return element
         except Exception as exc:
             last_error = str(exc)
+        try:
+            page.wait_for_timeout(200)
+        except Exception:
+            pass
     raise RuntimeError(f"private chat editor not found: {last_error}")
 
 
@@ -9397,6 +9997,7 @@ class DouyinConversationMonitor:
         company_id: str,
         source_platform: str,
         auto_send: bool,
+        generate_reply: bool,
         poll_seconds: float,
         logic: Optional[SessionRAGChatLogic] = None,
         project_store: Optional[ProjectMaterialStore] = None,
@@ -9411,6 +10012,7 @@ class DouyinConversationMonitor:
         self.company_id = company_id
         self.source_platform = source_platform or "抖音"
         self.auto_send = bool(auto_send)
+        self.generate_reply = bool(generate_reply)
         self.poll_seconds = max(3.0, float(poll_seconds or 8))
         self.logic = logic
         self.project_store = project_store
@@ -9422,6 +10024,8 @@ class DouyinConversationMonitor:
         self.last_message = ""
         self.last_reply = ""
         self.last_seen_signature = ""
+        self.last_diagnostic: Dict[str, Any] = {}
+        self.last_diagnostic_at = 0.0
         self.started_at = ""
         self.updated_at = ""
         self.loop_count = 0
@@ -9473,11 +10077,17 @@ class DouyinConversationMonitor:
                 "status": self.status,
                 "alive": alive,
                 "auto_send": self.auto_send,
+                "generate_reply": self.generate_reply,
+                "account_cookie_loaded": bool(_dm_normalize_account_cookie_text(self.account_cookies)),
+                "account_cookie_count": len(_dm_parse_account_cookies(self.account_cookies)) if self.account_cookies else 0,
+                "profile_login_reused": _dm_account_browser_profile_exists(self.browser_name, self.account_key),
+                "user_data_dir": str(_dm_account_browser_user_data_dir(self.browser_name, self.account_key)),
                 "poll_seconds": self.poll_seconds,
                 "last_error": self.last_error,
                 "last_message": self.last_message,
                 "last_reply": self.last_reply,
                 "last_seen_signature": self.last_seen_signature,
+                "last_diagnostic": dict(self.last_diagnostic),
                 "started_at": self.started_at,
                 "updated_at": self.updated_at,
                 "loop_count": self.loop_count,
@@ -9509,11 +10119,6 @@ class DouyinConversationMonitor:
             if cookies:
                 context.add_cookies(cookies)
             page = _dm_reusable_context_page(context)
-            _dm_keep_playwright_session(self.account_key, context, browser, playwright, {
-                "browser": self.browser_name,
-                "user_data_dir": str(_dm_playwright_user_data_dir(self.browser_name, options)),
-                "monitor": True,
-            })
             page.goto("https://www.douyin.com/", wait_until="domcontentloaded", timeout=45000)
             self.log("已打开账号浏览器，开始监控新私信", "ok")
             with self.lock:
@@ -9533,6 +10138,7 @@ class DouyinConversationMonitor:
                 self.updated_at = _dm_now()
             self.log("监控异常：" + str(exc), "error")
         finally:
+            _dm_stop_playwright_context(context, browser, playwright)
             with self.lock:
                 if self.status != "error":
                     self.status = "stopped"
@@ -9541,9 +10147,22 @@ class DouyinConversationMonitor:
 
     def _tick(self, page: Any) -> None:
         steps = _dm_open_douyin_messages_surface(page)
+        login_required = False
+        login_detail = ""
         for step in steps:
             if not step.get("ok"):
-                self.log("打开消息入口未确认：" + str(step.get("detail") or ""), "warn", {"step": step.get("name")})
+                detail = str(step.get("detail") or "")
+                if "login_required" in detail:
+                    login_required = True
+                    login_detail = detail
+                    continue
+                self.log("打开消息入口未确认：" + detail, "warn", {"step": step.get("name")})
+        if login_required:
+            extra = self._maybe_capture_diagnostic(page, login_detail)
+            with self.lock:
+                self.last_error = login_detail
+            self.log("账号登录态不可用，需人工扫码/更新 cookie 后再监控：" + login_detail, "warn", extra)
+            return
         detect = _dm_detect_latest_douyin_message(page)
         if detect.get("error"):
             self.log("读取消息失败：" + detect["error"], "warn")
@@ -9551,7 +10170,9 @@ class DouyinConversationMonitor:
         if not detect.get("has_editor"):
             click_step = _dm_click_unread_or_latest_chat(page)
             if not click_step.get("ok"):
-                self.log("暂无可自动打开的新私信：" + str(click_step.get("detail") or ""), "info")
+                detail = str(click_step.get("detail") or "")
+                extra = self._maybe_capture_diagnostic(page, detail)
+                self.log("暂无可自动打开的新私信：" + detail, "info", extra)
                 return
             self.log("已打开疑似新会话：" + str(click_step.get("detail") or ""), "ok")
             time.sleep(1.2)
@@ -9568,6 +10189,11 @@ class DouyinConversationMonitor:
             self.last_message = message
             self.updated_at = _dm_now()
         self.log("识别到新消息：" + message[:120], "ok")
+        if not self.generate_reply:
+            with self.lock:
+                self.last_reply = ""
+            self.log("recorded new private message; reply generation disabled", "info")
+            return
         payload = {
             "question": message,
             "conversation_stage": "private_followup",
@@ -9594,6 +10220,30 @@ class DouyinConversationMonitor:
         with self.lock:
             self.reply_count += 1
         self.log("已自动回复：" + reply[:120], "ok", {"steps": send_steps})
+
+    def _maybe_capture_diagnostic(self, page: Any, reason: str) -> Dict[str, Any]:
+        now = time.time()
+        with self.lock:
+            if self.last_diagnostic and now - self.last_diagnostic_at < DM_CONVERSATION_MONITOR_DIAGNOSTIC_INTERVAL_SECONDS:
+                return {"diagnostic": dict(self.last_diagnostic)}
+        diagnostic = _dm_capture_conversation_monitor_diagnostic(page, self.account_key, reason)
+        compact = {
+            key: diagnostic.get(key)
+            for key in (
+                "failure_screenshot_path",
+                "failure_screenshot_name",
+                "failure_screenshot_url",
+                "failure_screenshot_exists",
+                "page_url",
+                "page_title",
+                "message_entry_candidates",
+            )
+            if key in diagnostic
+        }
+        with self.lock:
+            self.last_diagnostic = compact
+            self.last_diagnostic_at = now
+        return {"diagnostic": dict(compact)}
 
 
 def _dm_editor_send_click_point(page: Any) -> Optional[Dict[str, float]]:
@@ -9981,16 +10631,16 @@ def _douyin_private_message_playwright_executor(
             page.wait_for_load_state("networkidle", timeout=min(timeout_ms, 12000))
         except Exception:
             pass
+        unavailable_state = _dm_detect_target_profile_unavailable(page)
+        if unavailable_state.get("unavailable"):
+            steps.append({
+                "name": "open_profile",
+                "ok": False,
+                "detail": "target profile unavailable: " + str(unavailable_state.get("sample_text") or "user does not exist"),
+            })
+            raise RuntimeError("target profile unavailable")
         _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page))
-        steps.append(_dm_click_first(page, [
-            page.get_by_role("button", name=re.compile(r"私信|发私信|聊天|Message", re.I)),
-            page.locator("button:has-text('私信')"),
-            page.locator("[role=button]:has-text('私信')"),
-            page.locator("a:has-text('私信')"),
-            page.locator("text=私信"),
-            page.locator("text=发私信"),
-            page.locator("text=聊天"),
-        ], "open_private_message", timeout_ms=min(timeout_ms, 12000)))
+        steps.append(_dm_click_private_message_entry(page, timeout_ms=min(timeout_ms, 12000)))
         _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page, timeout_ms=1200))
         steps.append(_dm_fill_message_editor(page, message, timeout_ms=min(timeout_ms, 12000)))
         sent = False
@@ -10075,16 +10725,16 @@ def _douyin_private_message_account_pool_executor(
             page.wait_for_load_state("networkidle", timeout=min(timeout_ms, 12000))
         except Exception:
             pass
+        unavailable_state = _dm_detect_target_profile_unavailable(page)
+        if unavailable_state.get("unavailable"):
+            steps.append({
+                "name": "open_profile",
+                "ok": False,
+                "detail": "target profile unavailable: " + str(unavailable_state.get("sample_text") or "user does not exist"),
+            })
+            raise RuntimeError("target profile unavailable")
         _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page))
-        steps.append(_dm_click_first(page, [
-            page.get_by_role("button", name=re.compile(r"\u79c1\u4fe1|\u53d1\u79c1\u4fe1|\u804a\u5929|Message", re.I)),
-            page.locator("button:has-text('\u79c1\u4fe1')"),
-            page.locator("[role=button]:has-text('\u79c1\u4fe1')"),
-            page.locator("a:has-text('\u79c1\u4fe1')"),
-            page.locator("text=\u79c1\u4fe1"),
-            page.locator("text=\u53d1\u79c1\u4fe1"),
-            page.locator("text=\u804a\u5929"),
-        ], "open_private_message", timeout_ms=min(timeout_ms, 12000)))
+        steps.append(_dm_click_private_message_entry(page, timeout_ms=min(timeout_ms, 12000)))
         _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page, timeout_ms=1200))
         steps.append(_dm_fill_message_editor(page, message, timeout_ms=min(timeout_ms, 12000)))
         sent = False
@@ -10438,6 +11088,8 @@ def _dm_failure_from_demo_result(demo_result: Dict[str, Any]) -> Optional[Except
         return RuntimeError("verification required")
     if any(marker in text for marker in ["风控", "risk", "blocked", "限制", "permission"]):
         return RuntimeError("account risk")
+    if any(marker in text for marker in ["target profile unavailable", "user does not exist", "用户不存在", "该用户不存在", "账号不存在", "主页不存在", "暂时无法查看", "页面不存在", "内容不存在"]):
+        return RuntimeError("target profile unavailable")
     if any(marker in text for marker in ["browser has been closed", "page has been closed", "context has been closed", "target page, context or browser has been closed", "browser closed", "page closed"]):
         return RuntimeError("browser closed")
     if any(marker in text for marker in ["private message button not found", "private chat editor not found", "message editor not found"]):
@@ -10471,6 +11123,8 @@ def _dm_infer_failure_code(error_code: str, error_text: str, detail: Optional[An
         return "message_send_unconfirmed"
     if "no module named 'playwright'" in text or 'no module named "playwright"' in text or ("playwrightcontextmanager" in text and "_playwright" in text):
         return "playwright_missing"
+    if any(marker in text for marker in ["target profile unavailable", "user does not exist", "用户不存在", "该用户不存在", "账号不存在", "主页不存在", "暂时无法查看", "页面不存在", "内容不存在"]):
+        return "target_profile_unavailable"
     if any(marker in text for marker in ["browser has been closed", "page has been closed", "context has been closed", "target page, context or browser has been closed", "browser closed", "page closed"]):
         return "browser_closed"
     if "account browser pool full" in text:
@@ -10978,7 +11632,8 @@ def build_douyin_account_cookie_apply_response(
     if headless:
         use_cdp = False
     account_id = str(normalized.get("account_id") or normalized.get("account") or normalized.get("account_name") or "").strip()
-    account_key = _dm_account_key_from_values(raw_cookies, account_id)
+    requested_account_key = str(normalized.get("account_key") or "").strip()
+    account_key = requested_account_key or _dm_account_key_from_values(raw_cookies, account_id)
     open_url = str(normalized.get("open_url") or normalized.get("target_url") or normalized.get("url") or "").strip()
     keep_browser_open = _dm_bool_text(normalized.get("keep_browser_open", bool(open_url) and not headless))
     persistent_context = _dm_bool_text(normalized.get("persistent_context", keep_browser_open or normalized.get("user_data_dir")))
@@ -11043,21 +11698,29 @@ def build_douyin_account_cookie_apply_response(
 def _dm_controller_from_payload(payload: Dict[str, Any]) -> DouyinConversationMonitor:
     normalized = dict(payload or {})
     raw_cookies = _dm_normalize_account_cookie_text(_dm_pick_account_cookie_payload(normalized))
-    if not raw_cookies:
-        raise WebInputError("account_cookie is required")
     account_id = str(normalized.get("account_id") or normalized.get("account") or normalized.get("account_name") or "").strip()
-    account_key = _dm_account_key_from_values(raw_cookies, account_id)
+    browser_name = str(normalized.get("browser_name") or normalized.get("browser") or "edge").strip() or "edge"
+    requested_account_key = str(normalized.get("account_key") or "").strip()
+    if raw_cookies:
+        account_key = requested_account_key or _dm_account_key_from_values(raw_cookies, account_id)
+    else:
+        account_key = requested_account_key
+        if not account_key:
+            raise WebInputError("account_cookie or account_key is required")
+        if not _dm_account_browser_profile_exists(browser_name, account_key):
+            raise WebInputError(f"account profile not found for {browser_name}/{account_key}")
     return DouyinConversationMonitor(
         account_id=account_id or account_key,
         account_name=str(normalized.get("account_name") or account_id or account_key).strip(),
         account_key=account_key,
         account_cookies=raw_cookies,
-        browser_name=str(normalized.get("browser_name") or normalized.get("browser") or "edge").strip() or "edge",
+        browser_name=browser_name,
         headless=_dm_bool_text(normalized.get("headless")),
         project_id=str(normalized.get("project_id") or "").strip(),
         company_id=str(normalized.get("company_id") or "").strip(),
         source_platform=str(normalized.get("source_platform") or "抖音").strip() or "抖音",
         auto_send=_dm_bool_text(normalized.get("auto_send", True)),
+        generate_reply=_dm_bool_text(normalized.get("generate_reply", True)),
         poll_seconds=_payload_float(normalized, "poll_seconds", 8),
         logic=normalized.get("_logic"),
         project_store=normalized.get("_project_store"),
@@ -11463,6 +12126,11 @@ def process_douyin_dm_task_once(
             manual_required = False
         elif "profile_url must be a douyin.com user page" in lower or "invalid profile url" in lower or "target_profile_url" in lower and "douyin.com" not in str(task.get("target_profile_url") or "").lower():
             error_code = "invalid_profile_url"
+            failure_type = "final"
+            retryable = False
+            manual_required = False
+        elif any(marker in lower for marker in ["target profile unavailable", "user does not exist", "用户不存在", "该用户不存在", "账号不存在", "主页不存在", "暂时无法查看", "页面不存在", "内容不存在"]):
+            error_code = "target_profile_unavailable"
             failure_type = "final"
             retryable = False
             manual_required = False
