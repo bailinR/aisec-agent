@@ -46,6 +46,7 @@ HTML_FILE = STATIC_DIR / "session_rag_chat.html"
 FILE_PARSER_HTML_FILE = STATIC_DIR / "file_parser.html"
 PROJECT_MATERIALS_HTML_FILE = STATIC_DIR / "project_materials.html"
 ADMIN_VUE_HTML_FILE = STATIC_DIR / "admin_vue.html"
+WORKSPACE_HTML_FILE = STATIC_DIR / "workspace.html"
 ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 DEFAULT_COMPANY_NAME = "默认公司"
 
@@ -2008,6 +2009,10 @@ def _company_settings_path(store: ProjectMaterialStore, project_id: str) -> tupl
     return _admin_json_path(store, project_id, "companies.json")
 
 
+def _business_targets_path(store: ProjectMaterialStore, project_id: str) -> tuple[Path, Path]:
+    return _admin_json_path(store, project_id, "business_targets.json")
+
+
 def _account_settings_path(store: ProjectMaterialStore, project_id: str) -> tuple[Path, Path]:
     return _admin_json_path(store, project_id, "account_settings.json")
 
@@ -2190,6 +2195,279 @@ def _knowledge_base_summaries(data: Dict[str, Any]) -> List[Dict[str, Any]]:
             "document_count": count,
         })
     return summaries
+
+
+def _business_key(knowledge_base_name: str, domain_name: str, kb_id: str = "", domain_id: str = "") -> str:
+    resolved_kb_id = str(kb_id or _knowledge_base_id(knowledge_base_name)).strip()
+    resolved_domain_id = str(domain_id or _domain_id(domain_name)).strip()
+    return f"{resolved_kb_id}:{resolved_domain_id}"
+
+
+def _business_board_key(board_name: str, board_id: str = "") -> str:
+    resolved_board_id = str(board_id or _knowledge_base_id(board_name)).strip()
+    return resolved_board_id or _knowledge_base_id(board_name)
+
+
+WORKSPACE_INTERNAL_DOMAIN_NAMES = {"README与路由"}
+
+
+def _is_workspace_internal_document(doc: Dict[str, Any]) -> bool:
+    relative = str(doc.get("relative_path") or "").replace("\\", "/").strip().lower()
+    title = str(doc.get("title") or "").strip().lower()
+    source = str(doc.get("source_file_name") or "").strip().lower()
+    if relative.endswith("/readme.md") or relative.endswith("readme.md"):
+        return True
+    if "/prompts/" in relative or relative.endswith("/prompts"):
+        return True
+    if title in {"readme", "readme与路由", "readme与路由 readme"}:
+        return True
+    if source == "readme.md":
+        return True
+    return False
+
+
+def _flatten_knowledge_businesses(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    data = _normalize_description_structure(data)
+    businesses: List[Dict[str, Any]] = []
+    for base in data.get("knowledge_bases", []):
+        board_name = str(base.get("name") or DEFAULT_KNOWLEDGE_BASE_NAME).strip() or DEFAULT_KNOWLEDGE_BASE_NAME
+        board_id = str(base.get("kb_id") or _knowledge_base_id(board_name)).strip()
+        for domain in base.get("domains", []):
+            module_name = str(domain.get("name") or "默认业务模块").strip() or "默认业务模块"
+            if module_name in WORKSPACE_INTERNAL_DOMAIN_NAMES:
+                continue
+            module_id = str(domain.get("domain_id") or _domain_id(module_name)).strip()
+            documents = []
+            sections = []
+            for section in domain.get("sections", []):
+                section_name = str(section.get("name") or "具体资料").strip() or "具体资料"
+                section_docs = section.get("documents", []) if isinstance(section.get("documents"), list) else []
+                visible_docs = [doc for doc in section_docs if isinstance(doc, dict) and not _is_workspace_internal_document(doc)]
+                if not visible_docs:
+                    continue
+                section_id = str(section.get("section_id") or _section_id(module_name, section_name, board_name))
+                sections.append({
+                    "section_id": section_id,
+                    "name": section_name,
+                    "document_count": len(visible_docs),
+                })
+                for doc in visible_docs:
+                    documents.append({
+                        **doc,
+                        "knowledge_base": board_name,
+                        "kb_id": board_id,
+                        "business_board_id": board_id,
+                        "business_board_name": board_name,
+                        "domain": module_name,
+                        "domain_id": module_id,
+                        "business_module_id": module_id,
+                        "business_module_name": module_name,
+                        "section": section_name,
+                        "section_id": section_id,
+                    })
+            if not documents:
+                continue
+            businesses.append({
+                "business_key": _business_key(board_name, module_name, board_id, module_id),
+                "kb_id": board_id,
+                "knowledge_base": board_name,
+                "business_board_id": board_id,
+                "business_board_name": board_name,
+                "domain_id": module_id,
+                "business_module_id": module_id,
+                "business_module_name": module_name,
+                "name": module_name,
+                "description": str(domain.get("description") or "").strip(),
+                "sections": sections,
+                "documents": documents,
+                "document_count": len(documents),
+            })
+    return businesses
+
+
+def _workspace_business_boards(data: Dict[str, Any], businesses: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    data = _normalize_description_structure(data)
+    modules_by_board: Dict[str, List[Dict[str, Any]]] = {}
+    for business in businesses:
+        board_id = str(business.get("business_board_id") or business.get("kb_id") or "").strip()
+        if not board_id:
+            continue
+        modules_by_board.setdefault(board_id, []).append({
+            "business_key": business.get("business_key"),
+            "business_module_id": business.get("business_module_id") or business.get("domain_id"),
+            "business_module_name": business.get("business_module_name") or business.get("name"),
+            "name": business.get("name"),
+            "description": business.get("description") or "",
+            "document_count": business.get("document_count") or 0,
+        })
+
+    boards: List[Dict[str, Any]] = []
+    for base in data.get("knowledge_bases", []):
+        board_name = str(base.get("name") or DEFAULT_KNOWLEDGE_BASE_NAME).strip() or DEFAULT_KNOWLEDGE_BASE_NAME
+        board_id = _business_board_key(board_name, str(base.get("kb_id") or ""))
+        modules = modules_by_board.get(board_id, [])
+        if not modules:
+            continue
+        boards.append({
+            "business_board_id": board_id,
+            "business_board_name": board_name,
+            "name": board_name,
+            "description": str(base.get("description") or "").strip(),
+            "business_module_count": len(modules),
+            "document_count": sum(int(module.get("document_count") or 0) for module in modules),
+            "modules": modules,
+        })
+    return boards
+
+
+def _empty_business_targets(project_id: str) -> Dict[str, Any]:
+    return {
+        "version": 1,
+        "project_id": project_id,
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
+        "profiles": [],
+    }
+
+
+def _business_goal_type_label(goal_type: str) -> str:
+    return {
+        "wechat": "加微信",
+        "phone": "留电话",
+        "link": "打开链接",
+        "booking": "预约",
+        "material": "领取资料",
+        "ask_reply": "引导回复",
+        "other": "其他目标",
+    }.get(goal_type, "其他目标")
+
+
+def _normalize_business_goal(raw: Dict[str, Any], index: int = 0) -> Optional[Dict[str, Any]]:
+    if not isinstance(raw, dict):
+        return None
+    goal_type = str(raw.get("goal_type") or raw.get("type") or "wechat").strip() or "wechat"
+    if goal_type not in {"wechat", "phone", "link", "booking", "material", "ask_reply", "other"}:
+        goal_type = "other"
+    label = _clip_text(raw.get("label"), 60)
+    value = _clip_text(raw.get("goal_value") or raw.get("value"), 300)
+    note = _clip_text(raw.get("note"), 300)
+    if not label and not value and not note:
+        return None
+    try:
+        priority = int(raw.get("priority") or index + 1)
+    except (TypeError, ValueError):
+        priority = index + 1
+    goal_id = str(raw.get("goal_id") or raw.get("id") or "").strip() or "goal_" + uuid.uuid4().hex[:10]
+    return {
+        "goal_id": goal_id,
+        "goal_type": goal_type,
+        "label": label or _business_goal_type_label(goal_type),
+        "goal_value": value,
+        "note": note,
+        "priority": max(1, priority),
+        "enabled": bool(raw.get("enabled", True)),
+    }
+
+
+def _normalize_business_targets(
+    data: Dict[str, Any],
+    project_id: str,
+    businesses: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    if not isinstance(data, dict):
+        data = {}
+    businesses = businesses or []
+    business_by_key = {str(item.get("business_key") or ""): item for item in businesses}
+    now = datetime.now().isoformat(timespec="seconds")
+    profiles = []
+    seen = set()
+    raw_profiles = data.get("profiles") if isinstance(data.get("profiles"), list) else []
+    for raw in raw_profiles:
+        if not isinstance(raw, dict):
+            continue
+        business_key = str(raw.get("business_key") or "").strip()
+        if not business_key:
+            business_key = _business_key(
+                str(raw.get("knowledge_base") or ""),
+                str(raw.get("domain") or raw.get("name") or ""),
+                str(raw.get("kb_id") or ""),
+                str(raw.get("domain_id") or ""),
+            )
+        if not business_key or business_key in seen:
+            continue
+        seen.add(business_key)
+        business = business_by_key.get(business_key, {})
+        goals = []
+        for index, raw_goal in enumerate(raw.get("goals", []) if isinstance(raw.get("goals"), list) else []):
+            goal = _normalize_business_goal(raw_goal, index)
+            if goal:
+                goals.append(goal)
+        goals.sort(key=lambda item: item.get("priority", 999))
+        knowledge_base = str(raw.get("knowledge_base") or business.get("knowledge_base") or DEFAULT_KNOWLEDGE_BASE_NAME).strip()
+        domain = str(raw.get("domain") or raw.get("name") or business.get("name") or "默认领域").strip()
+        profiles.append({
+            "profile_id": str(raw.get("profile_id") or "").strip() or "bt_" + uuid.uuid5(uuid.NAMESPACE_URL, f"{project_id}:{business_key}").hex[:10],
+            "business_key": business_key,
+            "kb_id": str(raw.get("kb_id") or business.get("kb_id") or _knowledge_base_id(knowledge_base)).strip(),
+            "knowledge_base": knowledge_base,
+            "domain_id": str(raw.get("domain_id") or business.get("domain_id") or _domain_id(domain)).strip(),
+            "domain": domain,
+            "enabled": bool(raw.get("enabled", True)),
+            "goals": goals,
+            "notes": _clip_text(raw.get("notes"), 500),
+            "updated_at": raw.get("updated_at") or now,
+        })
+    return {
+        "version": data.get("version") or 1,
+        "project_id": project_id,
+        "updated_at": data.get("updated_at") or now,
+        "profiles": profiles,
+    }
+
+
+def _load_business_targets(
+    store: ProjectMaterialStore,
+    project_id: str,
+    businesses: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    project_dir, path = _business_targets_path(store, project_id)
+    data = _load_json_file(path, _empty_business_targets(project_dir.name))
+    return _normalize_business_targets(data, project_dir.name, businesses)
+
+
+def _save_business_targets(
+    store: ProjectMaterialStore,
+    project_id: str,
+    data: Dict[str, Any],
+    businesses: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    project_dir, path = _business_targets_path(store, project_id)
+    normalized = _normalize_business_targets(data, project_dir.name, businesses)
+    normalized["updated_at"] = datetime.now().isoformat(timespec="seconds")
+    for profile in normalized.get("profiles", []):
+        profile["updated_at"] = normalized["updated_at"]
+    _write_json_file(path, normalized)
+    return normalized
+
+
+def _merge_business_targets(
+    businesses: List[Dict[str, Any]],
+    business_targets: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    profiles = {
+        str(profile.get("business_key") or ""): profile
+        for profile in business_targets.get("profiles", [])
+        if isinstance(profile, dict)
+    }
+    merged = []
+    for business in businesses:
+        profile = profiles.get(str(business.get("business_key") or ""), {})
+        merged.append({
+            **business,
+            "target_profile": profile or None,
+            "goals": profile.get("goals", []) if profile else [],
+            "target_enabled": bool(profile.get("enabled", True)) if profile else True,
+        })
+    return merged
 
 
 def _filter_descriptions_by_kb_ids(data: Dict[str, Any], allowed_kb_ids: List[str]) -> Dict[str, Any]:
@@ -3266,6 +3544,57 @@ def build_admin_account_settings_save_response(
         raise WebInputError("account_settings is required")
     saved = _save_account_settings(store, project_id, settings)
     return {"account_settings": saved}
+
+
+def _strip_workspace_project_ids(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _strip_workspace_project_ids(item)
+            for key, item in value.items()
+            if key != "project_id"
+        }
+    if isinstance(value, list):
+        return [_strip_workspace_project_ids(item) for item in value]
+    return value
+
+
+def build_workspace_state_response(
+    project_store: Optional[ProjectMaterialStore] = None,
+) -> Dict[str, Any]:
+    store = _project_store(project_store)
+    project_dir, _ = _project_root_and_meta(store, "")
+    descriptions = _load_document_descriptions(store, project_dir.name)
+    businesses = _flatten_knowledge_businesses(descriptions)
+    business_targets = _load_business_targets(store, project_dir.name, businesses)
+    company_settings = _load_company_settings(store, project_dir.name, descriptions)
+    current_company = (company_settings.get("companies") or [_default_company()])[0]
+    return {
+        "company": _strip_workspace_project_ids(current_company),
+        "company_settings": _strip_workspace_project_ids(company_settings),
+        "document_descriptions": _strip_workspace_project_ids(descriptions),
+        "business_boards": _strip_workspace_project_ids(_workspace_business_boards(descriptions, businesses)),
+        "businesses": _strip_workspace_project_ids(_merge_business_targets(businesses, business_targets)),
+        "business_targets": _strip_workspace_project_ids(business_targets),
+    }
+
+
+def build_workspace_business_targets_save_response(
+    payload: Dict[str, Any],
+    project_store: Optional[ProjectMaterialStore] = None,
+) -> Dict[str, Any]:
+    store = _project_store(project_store)
+    settings = payload.get("business_targets")
+    if not isinstance(settings, dict):
+        settings = {"profiles": payload.get("profiles", [])}
+    project_dir, _ = _project_root_and_meta(store, "")
+    descriptions = _load_document_descriptions(store, project_dir.name)
+    businesses = _flatten_knowledge_businesses(descriptions)
+    saved = _save_business_targets(store, project_dir.name, settings, businesses)
+    return {
+        "business_targets": _strip_workspace_project_ids(saved),
+        "business_boards": _strip_workspace_project_ids(_workspace_business_boards(descriptions, businesses)),
+        "businesses": _strip_workspace_project_ids(_merge_business_targets(businesses, saved)),
+    }
 
 
 def build_admin_knowledge_save_response(
@@ -6652,6 +6981,8 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self._send_html()
         elif path == "/file-parser":
             self._send_html(FILE_PARSER_HTML_FILE)
+        elif path in {"/workspace", "/user-console"}:
+            self._send_html(WORKSPACE_HTML_FILE)
         elif path == "/project-materials":
             self.send_response(HTTPStatus.FOUND)
             self.send_header("Location", "/admin-vue")
@@ -6667,6 +6998,8 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self._handle_douyin_dm_task_list(parsed_url)
         elif path.startswith("/api/v1/douyin/private-message/tasks/") and not path.endswith("/clear"):
             self._handle_douyin_dm_task_status(parsed_url)
+        elif path == "/api/workspace/state":
+            self._handle_workspace_state(parsed_url)
         elif path == "/api/presets":
             projects = self.server.project_store.list_projects()
             default_project = projects[0] if projects else {}
@@ -6855,6 +7188,10 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self._handle_admin_account_settings_save()
             return
 
+        if path == "/api/workspace/business-targets/save":
+            self._handle_workspace_business_targets_save()
+            return
+
         if path == "/api/admin/open-file-location":
             self._handle_admin_open_file_location()
             return
@@ -6945,6 +7282,17 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             data = build_public_prompt_preview_response(
                 payload,
                 logic=self.server.logic,
+                project_store=self.server.project_store,
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_workspace_state(self, parsed_url):
+        try:
+            data = build_workspace_state_response(
                 project_store=self.server.project_store,
             )
             self._send_json({"ok": True, "data": data})
@@ -7239,6 +7587,19 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
         try:
             payload = self._read_json()
             data = build_admin_account_settings_save_response(
+                payload,
+                project_store=self.server.project_store,
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_workspace_business_targets_save(self):
+        try:
+            payload = self._read_json()
+            data = build_workspace_business_targets_save_response(
                 payload,
                 project_store=self.server.project_store,
             )
