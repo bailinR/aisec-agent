@@ -48,6 +48,7 @@ from aisec_agent.web.session_rag_chat import (
     DM_REDIS_PROCESSING_ZSET,
     build_douyin_account_cookie_apply_response,
     build_douyin_private_message_demo_response,
+    _douyin_account_profile,
     _dm_persistent_context_alive,
     _dm_collect_message_bubble_matches,
     _dm_should_retry_browser_closed,
@@ -1576,6 +1577,66 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertTrue(response["seen"]["options"]["screenshot_on_failure"])
         self.assertNotIn("SECRET_COOKIE", str(response))
         self.assertNotIn("ANOTHER_SECRET", str(response))
+
+    def test_douyin_account_profile_marks_blue_v(self):
+        profile = _douyin_account_profile({
+            "user": {
+                "nickname": "OpenAI官方账号",
+                "unique_id": "openai_cn",
+                "enterprise_verify_reason": "OpenAI 官方企业认证",
+            }
+        })
+
+        self.assertEqual(profile["account_type"], "blue_v")
+        self.assertEqual(profile["account_type_label"], "蓝V账号")
+        self.assertTrue(profile["is_blue_v"])
+        self.assertEqual(profile["unique_id"], "openai_cn")
+
+    def test_douyin_account_profile_marks_personal_when_no_enterprise_verify(self):
+        profile = _douyin_account_profile({
+            "user": {
+                "nickname": "普通创作者",
+                "unique_id": "creator_01",
+                "custom_verify": "摄影师",
+            }
+        })
+
+        self.assertEqual(profile["account_type"], "personal")
+        self.assertEqual(profile["account_type_label"], "普通账号")
+        self.assertFalse(profile["is_blue_v"])
+
+    def test_douyin_account_cookie_apply_exposes_account_type_fields(self):
+        def executor(raw_cookies, browser, options):
+            return {
+                "success": True,
+                "opened": True,
+                "resolved_browser": browser,
+                "engine": "playwright",
+                "account_cookie_loaded": True,
+                "account_cookie_count": 1,
+                "steps": [
+                    {"name": "apply_account_cookies", "ok": True, "detail": "1 cookies"},
+                    {"name": "detect_account_type", "ok": True, "detail": "蓝V账号"},
+                ],
+                "account_profile": {
+                    "nickname": "企业蓝V",
+                    "unique_id": "brand_01",
+                    "enterprise_verify_reason": "品牌官方账号",
+                },
+            }
+
+        response = build_douyin_account_cookie_apply_response(
+            {
+                "browser": "chrome",
+                "account_cookies": "sessionid=SECRET_COOKIE",
+            },
+            executor=executor,
+        )
+
+        self.assertEqual(response["account_type"], "blue_v")
+        self.assertEqual(response["account_type_label"], "蓝V账号")
+        self.assertTrue(response["is_blue_v"])
+        self.assertEqual(response["account_profile"]["unique_id"], "brand_01")
 
     def test_dm_persistent_context_alive_checks_browser_connection(self):
         class FakeBrowser:

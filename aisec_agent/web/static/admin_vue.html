@@ -261,6 +261,7 @@
     .side-sheet-title { font-weight: 900; }
     .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
     .field-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .field-grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .dm-demo-strip {
       display: grid;
       grid-template-columns: minmax(0, 1.35fr) minmax(150px, .65fr) minmax(160px, .7fr) auto;
@@ -1765,7 +1766,7 @@
       .prompt-restore-grid { grid-template-columns: 1fr; }
       .kb-editor-head { align-items: flex-start; flex-direction: column; }
       .kb-meta-grid { grid-template-columns: 1fr; }
-      .metric-grid, .field-grid, .field-grid.three, .dm-demo-strip { grid-template-columns: 1fr; }
+      .metric-grid, .field-grid, .field-grid.three, .field-grid.four, .dm-demo-strip { grid-template-columns: 1fr; }
       .prompt-compose-panel {
         margin: 0 12px 12px;
       }
@@ -1957,6 +1958,7 @@
                       <span class="account-card-meta">
                         <span>{{ account.platform || '抖音' }}</span>
                         <span>{{ managedAccountBrowserLabel(account.browser_name) }}</span>
+                        <span>{{ managedAccountTypeLabel(account) }}</span>
                         <span>{{ account.cookie_text ? '已保存 Cookie' : '未保存 Cookie' }}</span>
                       </span>
                       <span class="company-meta">用于托管私信回复，并复用该账号登录信息。</span>
@@ -1973,12 +1975,13 @@
                   </div>
                   <div class="panel-actions" v-if="selectedManagedAccount.id">
                     <button class="secondary mini" @click="applyManagedAccountCookie" :disabled="accountBrowserOpening || !selectedManagedAccount.cookie_text">应用 Cookie</button>
+                    <button class="secondary mini" @click="testManagedAccountType" :disabled="accountBrowserOpening || !selectedManagedAccount.cookie_text">测试账号类型</button>
                     <button class="secondary mini" @click="openManagedAccountInbox" :disabled="accountBrowserOpening">打开托管浏览器</button>
                     <button class="danger mini" @click="deleteManagedAccount" :disabled="accountBrowserOpening">删除</button>
                   </div>
                 </div>
                 <div class="panel-body" v-if="selectedManagedAccount.id">
-                  <div class="field-grid three">
+                  <div class="field-grid four">
                     <div>
                       <label>账号名称</label>
                       <input v-model.trim="selectedManagedAccount.name" @input="persistManagedAccounts" placeholder="例如：健康抖音号">
@@ -1995,6 +1998,14 @@
                         <option value="hosting">托管中</option>
                         <option value="paused">暂停</option>
                         <option value="risk">需人工处理</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label>账号类型</label>
+                      <select v-model="selectedManagedAccount.account_type" @change="onManagedAccountTypeChange(selectedManagedAccount)">
+                        <option value="">未检测</option>
+                        <option value="blue_v">蓝V账号</option>
+                        <option value="personal">普通账号</option>
                       </select>
                     </div>
                   </div>
@@ -2016,6 +2027,20 @@
                       <span>允许自动回复</span>
                     </label>
                   </div>
+                  <div class="field-grid three">
+                    <div>
+                      <label>最近检测</label>
+                      <input :value="managedAccountTypeTestedAt(selectedManagedAccount)" readonly>
+                    </div>
+                    <div>
+                      <label>抖音标识</label>
+                      <input :value="managedAccountProfileIdentity(selectedManagedAccount)" readonly>
+                    </div>
+                    <div>
+                      <label>认证说明</label>
+                      <input :value="managedAccountTypeReason(selectedManagedAccount)" readonly>
+                    </div>
+                  </div>
                   <div class="account-cookie-box">
                     <div class="dm-cookie-head">
                       <label class="dm-cookie-title">账号 Cookie / 登录信息</label>
@@ -2025,6 +2050,10 @@
                       </div>
                     </div>
                     <textarea v-model="selectedManagedAccount.cookie_text" @input="persistManagedAccounts" spellcheck="false" placeholder='粘贴 {"cookies":[...]}，或 name=value; name2=value2'></textarea>
+                  </div>
+                  <div class="tags" v-if="selectedManagedAccount.enterprise_verify_reason || selectedManagedAccount.custom_verify">
+                    <span class="tag blue" v-if="selectedManagedAccount.enterprise_verify_reason">{{ selectedManagedAccount.enterprise_verify_reason }}</span>
+                    <span class="tag" v-if="selectedManagedAccount.custom_verify">{{ selectedManagedAccount.custom_verify }}</span>
                   </div>
                   <div class="account-note">当前页面先完成账号配置和浏览器托管入口。真正“持续监控新私信、生成多轮回复直到达成引流目标”的 worker 能力，后续可以基于这些账号记录继续接入队列消费和会话状态机。</div>
                 </div>
@@ -4045,6 +4074,16 @@
               headless: false,
               auto_reply: true,
               cookie_text: "",
+              account_type: "",
+              account_type_label: "",
+              account_type_reason: "",
+              account_type_tested_at: "",
+              is_blue_v: false,
+              profile_nickname: "",
+              profile_unique_id: "",
+              profile_sec_uid: "",
+              enterprise_verify_reason: "",
+              custom_verify: "",
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
             };
@@ -4062,6 +4101,16 @@
               headless: item.headless === true,
               auto_reply: item.auto_reply !== false,
               cookie_text: String(item.cookie_text || item.account_cookie || item.account_cookies || ""),
+              account_type: String(item.account_type || ""),
+              account_type_label: String(item.account_type_label || ""),
+              account_type_reason: String(item.account_type_reason || item.reason || ""),
+              account_type_tested_at: String(item.account_type_tested_at || item.detected_at || ""),
+              is_blue_v: item.is_blue_v === true,
+              profile_nickname: String(item.profile_nickname || item.nickname || ""),
+              profile_unique_id: String(item.profile_unique_id || item.unique_id || ""),
+              profile_sec_uid: String(item.profile_sec_uid || item.sec_uid || ""),
+              enterprise_verify_reason: String(item.enterprise_verify_reason || ""),
+              custom_verify: String(item.custom_verify || ""),
               updated_at: String(item.updated_at || item.created_at || new Date().toISOString()),
             };
           },
@@ -4111,6 +4160,52 @@
           },
           managedAccountStatusLabel(status) {
             return {hosting: "托管中", paused: "暂停", risk: "需接管"}[status] || "托管中";
+          },
+          managedAccountTypeLabel(account) {
+            const item = account || {};
+            if (item.account_type === "blue_v") return "蓝V账号";
+            if (item.account_type === "personal") return "普通账号";
+            if (item.account_type_label) return String(item.account_type_label);
+            return "未检测";
+          },
+          managedAccountTypeTestedAt(account) {
+            const text = String(account && account.account_type_tested_at || "").trim();
+            if (!text) return "未检测";
+            const date = new Date(text);
+            return Number.isNaN(date.getTime()) ? text : date.toLocaleString();
+          },
+          managedAccountProfileIdentity(account) {
+            const item = account || {};
+            return String(item.profile_unique_id || item.profile_nickname || item.profile_sec_uid || "未记录");
+          },
+          managedAccountTypeReason(account) {
+            const item = account || {};
+            return String(item.account_type_reason || item.enterprise_verify_reason || item.custom_verify || "未记录");
+          },
+          onManagedAccountTypeChange(account) {
+            if (!account) return;
+            account.account_type_label = this.managedAccountTypeLabel(account);
+            account.is_blue_v = account.account_type === "blue_v";
+            if (account.account_type === "blue_v") {
+              account.account_type_reason = account.account_type_reason || account.enterprise_verify_reason || "manual";
+            } else if (account.account_type === "personal") {
+              account.account_type_reason = account.account_type_reason || account.custom_verify || "manual";
+            }
+            this.persistManagedAccounts(true);
+          },
+          applyManagedAccountProfile(account, data) {
+            if (!account || !account.id) return;
+            const profile = data && typeof data.account_profile === "object" ? data.account_profile : {};
+            account.account_type = String(data.account_type || profile.account_type || "");
+            account.account_type_label = String(data.account_type_label || profile.account_type_label || "");
+            account.account_type_reason = String(profile.reason || "");
+            account.account_type_tested_at = String(profile.detected_at || new Date().toISOString());
+            account.is_blue_v = data && data.is_blue_v === true || profile.is_blue_v === true;
+            account.profile_nickname = String(profile.nickname || "");
+            account.profile_unique_id = String(profile.unique_id || "");
+            account.profile_sec_uid = String(profile.sec_uid || "");
+            account.enterprise_verify_reason = String(profile.enterprise_verify_reason || "");
+            account.custom_verify = String(profile.custom_verify || "");
           },
           managedAccountBrowserLabel(browserName) {
             return {edge: "Edge", chrome: "Chrome", default: "默认浏览器"}[browserName] || "Edge";
@@ -4290,6 +4385,7 @@
               }),
             });
             account.status = data.success === false ? "risk" : "hosting";
+            this.applyManagedAccountProfile(account, data);
             this.persistManagedAccounts(true);
             return data;
           },
@@ -4304,6 +4400,37 @@
               account.status = "risk";
               this.persistManagedAccounts(true);
               this.setStatus(error.message || "应用账号 Cookie 失败", "error");
+            } finally {
+              this.accountBrowserOpening = false;
+            }
+          },
+          async testManagedAccountType() {
+            const account = this.selectedManagedAccount;
+            if (!account || !account.id) {
+              this.setStatus("请先选择一个托管账号", "error");
+              return;
+            }
+            if (!String(account.cookie_text || "").trim()) {
+              this.setStatus("请先为当前账号粘贴或导入 Cookie", "error");
+              return;
+            }
+            this.accountBrowserOpening = true;
+            this.setStatus("正在检测当前账号是蓝V还是普通账号...");
+            try {
+              const data = await this.applyManagedAccountCookieRequest(account, "https://www.douyin.com/");
+              const label = this.managedAccountTypeLabel(account);
+              if (data.account_type === "unknown") {
+                const tip = data.requires_login
+                  ? "未识别到登录态，浏览器已保留。请先在打开的抖音里完成登录，然后再点一次“测试账号类型”。"
+                  : "暂未识别出账号类型，浏览器已保留。请确认当前页面已登录并完成加载后，再点一次“测试账号类型”。";
+                this.setStatus(tip, "info");
+              } else {
+                this.setStatus("账号类型检测完成：" + label, data.success === false ? "error" : "ok");
+              }
+            } catch (error) {
+              account.status = "risk";
+              this.persistManagedAccounts(true);
+              this.setStatus(error.message || "检测账号类型失败", "error");
             } finally {
               this.accountBrowserOpening = false;
             }

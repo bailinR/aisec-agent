@@ -9156,6 +9156,292 @@ def _dm_send_and_confirm_current_message(page: Any, message: str, timeout_ms: in
     return steps
 
 
+DOUYIN_SELF_PROFILE_ENDPOINTS = [
+    "/aweme/v1/web/user/profile/self/?aid=6383&device_platform=webapp",
+    "/aweme/v1/web/user/profile/self/?aid=6383",
+]
+DOUYIN_BLUE_V_TEXT_MARKERS = ("企业", "公司", "官方", "品牌", "旗舰", "集团", "门店", "蓝v")
+
+
+def _douyin_iter_objects(value: Any) -> Iterator[Dict[str, Any]]:
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from _douyin_iter_objects(child)
+        return
+    if isinstance(value, list):
+        for child in value:
+            yield from _douyin_iter_objects(child)
+
+
+def _douyin_profile_score(item: Dict[str, Any]) -> int:
+    score = 0
+    for key in ("nickname", "uid", "sec_uid", "unique_id", "short_id"):
+        if str(item.get(key) or "").strip():
+            score += 2
+    for key in ("custom_verify", "enterprise_verify_reason", "enterprise_verify_reason_v2", "verify_info", "verification_type"):
+        value = item.get(key)
+        if value not in (None, "", []):
+            score += 3
+    if str(item.get("signature") or "").strip():
+        score += 1
+    return score
+
+
+def _douyin_pick_profile_dict(payload: Any) -> Dict[str, Any]:
+    if not isinstance(payload, (dict, list)):
+        return {}
+
+    candidates: List[tuple[int, Dict[str, Any]]] = []
+    if isinstance(payload, dict):
+        for key in ("user", "user_info", "account_info", "author", "profile"):
+            child = payload.get(key)
+            if isinstance(child, dict):
+                candidates.append((_douyin_profile_score(child) + 5, child))
+
+    for item in _douyin_iter_objects(payload):
+        score = _douyin_profile_score(item)
+        if score > 0:
+            candidates.append((score, item))
+    if not candidates:
+        return {}
+    candidates.sort(key=lambda pair: pair[0], reverse=True)
+    return candidates[0][1]
+
+
+def _douyin_truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    return str(value or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _douyin_first_text(*values: Any) -> str:
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _douyin_blue_v_text(value: Any) -> bool:
+    text = str(value or "").strip().lower()
+    return bool(text) and any(marker in text for marker in DOUYIN_BLUE_V_TEXT_MARKERS)
+
+
+def _douyin_account_profile(payload: Any, source: str = "", error: str = "") -> Dict[str, Any]:
+    profile = _douyin_pick_profile_dict(payload)
+    detected_at = datetime.now().isoformat(timespec="seconds")
+    if not profile:
+        return {
+            "account_type": "unknown",
+            "account_type_label": "未识别",
+            "is_blue_v": False,
+            "reason": error or "profile_unavailable",
+            "nickname": "",
+            "uid": "",
+            "sec_uid": "",
+            "unique_id": "",
+            "short_id": "",
+            "signature": "",
+            "custom_verify": "",
+            "enterprise_verify_reason": "",
+            "verification_type": None,
+            "source": source or "",
+            "detected_at": detected_at,
+        }
+
+    enterprise_verify_reason = _douyin_first_text(
+        profile.get("enterprise_verify_reason"),
+        profile.get("enterprise_verify_reason_v2"),
+        profile.get("enterprise_verify"),
+    )
+    custom_verify = _douyin_first_text(
+        profile.get("custom_verify"),
+        profile.get("verify_info"),
+        profile.get("official_verify_info"),
+        profile.get("verify_detail"),
+    )
+    is_blue_v = any([
+        bool(enterprise_verify_reason),
+        _douyin_blue_v_text(custom_verify),
+        _douyin_truthy(profile.get("is_enterprise_v")),
+        _douyin_truthy(profile.get("is_enterprise_account")),
+        _douyin_truthy(profile.get("has_e_account_role")),
+        _douyin_truthy(profile.get("with_e_account")),
+    ])
+    verification_type = profile.get("verification_type")
+    if verification_type in ("", []):
+        verification_type = None
+    return {
+        "account_type": "blue_v" if is_blue_v else "personal",
+        "account_type_label": "蓝V账号" if is_blue_v else "普通账号",
+        "is_blue_v": is_blue_v,
+        "reason": "enterprise_verify_reason" if enterprise_verify_reason else ("enterprise_flag" if is_blue_v else "self_profile_no_enterprise_verify"),
+        "nickname": _douyin_first_text(profile.get("nickname"), profile.get("name")),
+        "uid": _douyin_first_text(profile.get("uid"), profile.get("user_id")),
+        "sec_uid": _douyin_first_text(profile.get("sec_uid")),
+        "unique_id": _douyin_first_text(profile.get("unique_id")),
+        "short_id": _douyin_first_text(profile.get("short_id")),
+        "signature": _douyin_first_text(profile.get("signature")),
+        "custom_verify": custom_verify,
+        "enterprise_verify_reason": enterprise_verify_reason,
+        "verification_type": verification_type,
+        "source": source or "",
+        "detected_at": detected_at,
+    }
+
+
+def _douyin_detect_account_profile(page: Any) -> Dict[str, Any]:
+    payload = page.evaluate(
+        """
+        async ({ endpoints }) => {
+          const slimProfile = (raw) => {
+            if (!raw || typeof raw !== "object") return null;
+            return {
+              nickname: raw.nickname || raw.name || "",
+              uid: raw.uid || raw.user_id || "",
+              sec_uid: raw.sec_uid || "",
+              unique_id: raw.unique_id || "",
+              short_id: raw.short_id || "",
+              signature: raw.signature || "",
+              custom_verify: raw.custom_verify || raw.verify_info || raw.official_verify_info || raw.verify_detail || "",
+              enterprise_verify_reason: raw.enterprise_verify_reason || raw.enterprise_verify_reason_v2 || raw.enterprise_verify || "",
+              verification_type: raw.verification_type ?? null,
+              is_enterprise_v: raw.is_enterprise_v ?? raw.is_enterprise_account ?? null,
+              has_e_account_role: raw.has_e_account_role ?? raw.with_e_account ?? null
+            };
+          };
+          const scoreProfile = (raw) => {
+            if (!raw || typeof raw !== "object") return 0;
+            let score = 0;
+            for (const key of ["nickname", "uid", "sec_uid", "unique_id", "short_id"]) {
+              if (raw[key]) score += 2;
+            }
+            for (const key of ["custom_verify", "enterprise_verify_reason", "enterprise_verify_reason_v2", "verify_info", "verification_type"]) {
+              if (raw[key] !== undefined && raw[key] !== null && raw[key] !== "") score += 3;
+            }
+            if (raw.signature) score += 1;
+            return score;
+          };
+          const seen = new WeakSet();
+          const walk = (value, depth = 0) => {
+            if (!value || typeof value !== "object" || depth > 6 || seen.has(value)) return null;
+            seen.add(value);
+            if (Array.isArray(value)) {
+              for (const item of value.slice(0, 30)) {
+                const found = walk(item, depth + 1);
+                if (found) return found;
+              }
+              return null;
+            }
+            for (const key of ["user", "user_info", "account_info", "author", "profile"]) {
+              const child = value[key];
+              if (child && typeof child === "object") {
+                const found = walk(child, depth + 1);
+                if (found) return found;
+              }
+            }
+            if (scoreProfile(value) >= 4) return slimProfile(value);
+            for (const key of Object.keys(value).slice(0, 40)) {
+              const found = walk(value[key], depth + 1);
+              if (found) return found;
+            }
+            return null;
+          };
+
+          let lastError = "";
+          for (const endpoint of endpoints) {
+            try {
+              const response = await fetch(endpoint, {
+                credentials: "include",
+                headers: {accept: "application/json, text/plain, */*"},
+              });
+              const text = await response.text();
+              let payload = null;
+              try { payload = text ? JSON.parse(text) : null; } catch (_) {}
+              const profile = walk(payload);
+              if (profile) return {source: endpoint, profile};
+              lastError = `no profile from ${endpoint} (${response.status})`;
+            } catch (error) {
+              lastError = String(error && error.message || error || "");
+            }
+          }
+
+          for (const candidate of [
+            window.__INITIAL_STATE__,
+            window.__UNIVERSAL_DATA_FOR_REHYDRATION__,
+            window.__NEXT_DATA__,
+            window.__ROUTER_DATA__,
+          ]) {
+            const profile = walk(candidate);
+            if (profile) return {source: "window", profile};
+          }
+          return {source: "", error: lastError || "profile unavailable"};
+        }
+        """,
+        {"endpoints": DOUYIN_SELF_PROFILE_ENDPOINTS},
+    )
+    if not isinstance(payload, dict):
+        return _douyin_account_profile({}, error="profile_unavailable")
+    return _douyin_account_profile(
+        payload.get("profile") or {},
+        source=str(payload.get("source") or ""),
+        error=str(payload.get("error") or ""),
+    )
+
+
+def _douyin_detect_login_requirement(page: Any) -> Dict[str, Any]:
+    payload = page.evaluate(
+        """
+        () => {
+          const bodyText = String(document.body && document.body.innerText || "").slice(0, 4000);
+          const hasLoginPanel = !!document.querySelector(
+            '.login-full-panel, [class*="login-panel"], [class*="verify"], input[placeholder*="手机号"], input[placeholder*="验证码"]'
+          );
+          const requiresLoginText = /登录|手机号|验证码|扫码登录|二次验证|安全验证/.test(bodyText);
+          return {
+            requires_login: hasLoginPanel || requiresLoginText,
+            body_text: bodyText.slice(0, 200),
+          };
+        }
+        """
+    )
+    if not isinstance(payload, dict):
+        return {"requires_login": False, "body_text": ""}
+    return {
+        "requires_login": bool(payload.get("requires_login")),
+        "body_text": str(payload.get("body_text") or ""),
+    }
+
+
+def _douyin_open_profile_surface(page: Any) -> Dict[str, Any]:
+    script = """
+    () => {
+      const candidates = Array.from(document.querySelectorAll('a,button,[role="button"]'));
+      const labels = [/^我$/, /^主页$/, /^个人主页$/, /^Profile$/i, /^Me$/i, /^我的$/];
+      const pick = candidates.find(el => {
+        const text = String((el.innerText || el.textContent || '')).trim().replace(/\\s+/g, ' ');
+        if (!text || text.length > 20) return false;
+        return labels.some(re => re.test(text));
+      });
+      if (pick) {
+        pick.click();
+        return {clicked: true, label: String((pick.innerText || pick.textContent || '')).trim()};
+      }
+      return {clicked: false, label: ''};
+    }
+    """
+    payload = page.evaluate(script)
+    if not isinstance(payload, dict):
+        return {"clicked": False, "label": ""}
+    return {
+        "clicked": bool(payload.get("clicked")),
+        "label": str(payload.get("label") or ""),
+    }
+
+
 def _douyin_private_message_playwright_executor(
     profile_url: str,
     message: str,
@@ -9271,42 +9557,81 @@ def _douyin_account_cookie_playwright_executor(raw_cookies: str, browser_name: s
     steps: List[Dict[str, Any]] = []
     page = None
     browser = None
+    context = None
+    playwright = None
+    keep_browser_open = False
     cookies = _dm_parse_account_cookies(raw_cookies)
     try:
-        with sync_playwright() as pw:
-            browser = _dm_launch_playwright_browser(pw, browser_name, options)
-            context = browser.new_context(
-                viewport={
-                    "width": int(options.get("viewport_width") or DM_DEFAULT_VIEWPORT_WIDTH),
-                    "height": int(options.get("viewport_height") or DM_DEFAULT_VIEWPORT_HEIGHT),
-                },
-                device_scale_factor=float(options.get("device_scale_factor") or 1.0),
-            )
-            if cookies:
-                context.add_cookies(cookies)
+        playwright, context, browser, keep_browser_open = _dm_get_playwright_context(sync_playwright, browser_name, options)
+        if context is None:
+            raise RuntimeError("playwright context unavailable")
+        target_url = str(options.get("open_url") or "https://www.douyin.com/").strip() or "https://www.douyin.com/"
+        timeout_ms = int(options.get("timeout_ms") or 45000)
+        if keep_browser_open and getattr(context, "pages", None):
+            page = context.pages[0]
+        else:
             page = context.new_page()
-            page.goto("https://www.douyin.com/", wait_until="domcontentloaded", timeout=int(options.get("timeout_ms") or 45000))
-            steps.append({"name": "apply_account_cookies", "ok": True, "detail": f"{len(cookies)} cookies"})
-            context.close()
-            browser.close()
-            return {
-                "success": True,
-                "opened": True,
-                "resolved_browser": browser_name,
-                "engine": "playwright",
-                "account_cookie_loaded": bool(cookies),
-                "account_cookie_count": len(cookies),
-                "steps": steps,
-            }
+        if cookies:
+            try:
+                context.add_cookies(cookies)
+            except Exception:
+                if keep_browser_open and page:
+                    try:
+                        page.context.add_cookies(cookies)
+                    except Exception:
+                        raise
+                else:
+                    raise
+        steps.append({"name": "apply_account_cookies", "ok": True, "detail": f"{len(cookies)} cookies"})
+        page.goto(target_url, wait_until="domcontentloaded", timeout=timeout_ms)
+        steps.append({"name": "open_homepage", "ok": True, "detail": target_url})
+        try:
+            page.wait_for_load_state("networkidle", timeout=min(timeout_ms, 12000))
+        except Exception:
+            pass
+        _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page))
+        profile_surface = _douyin_open_profile_surface(page)
+        if profile_surface.get("clicked"):
+            steps.append({
+                "name": "open_profile_surface",
+                "ok": True,
+                "detail": profile_surface.get("label") or "clicked profile surface",
+            })
+            try:
+                page.wait_for_load_state("networkidle", timeout=min(timeout_ms, 10000))
+            except Exception:
+                pass
+        account_profile = _douyin_detect_account_profile(page)
+        login_state = _douyin_detect_login_requirement(page)
+        detected = account_profile.get("account_type") in {"blue_v", "personal"}
+        steps.append({
+            "name": "detect_account_type",
+            "ok": detected,
+            "detail": account_profile.get("account_type_label") if detected else (account_profile.get("reason") or "未识别"),
+        })
+        if not detected and login_state.get("requires_login"):
+            steps.append({"name": "login_required", "ok": False, "detail": "login required before account type detection"})
+        if not keep_browser_open:
+            _dm_stop_playwright_context(context, browser, playwright)
+        return {
+            "success": True,
+            "opened": True,
+            "resolved_browser": browser_name,
+            "engine": "playwright",
+            "account_cookie_loaded": bool(cookies),
+            "account_cookie_count": len(cookies),
+            "steps": steps,
+            "account_profile": account_profile,
+            "requires_login": bool(login_state.get("requires_login")) and not detected,
+            "keep_browser_open": keep_browser_open,
+            "user_data_dir": str(_dm_playwright_user_data_dir(browser_name, options)) if _dm_bool_text(options.get("persistent_context", keep_browser_open or options.get("user_data_dir"))) else "",
+        }
     except Exception as exc:
         detail = str(exc)
         steps.append({"name": "apply_account_cookies", "ok": False, "detail": detail})
         failure = _dm_screenshot_failure(page, options, detail)
-        try:
-            if browser:
-                browser.close()
-        except Exception:
-            pass
+        if not _dm_should_keep_browser_open_on_failure(detail, keep_browser_open):
+            _dm_stop_playwright_context(context, browser, playwright)
         return {
             "success": False,
             "opened": False,
@@ -9316,6 +9641,7 @@ def _douyin_account_cookie_playwright_executor(raw_cookies: str, browser_name: s
             "account_cookie_count": len(cookies),
             "steps": steps,
             "error": detail,
+            "keep_browser_open": keep_browser_open,
             **failure,
         }
 
@@ -10109,6 +10435,14 @@ def build_douyin_account_cookie_apply_response(
     result.setdefault("failure_screenshot_url", "")
     result.setdefault("failure_screenshot_exists", False)
     result["seen"] = dict(result.get("seen") or {})
+    profile_payload = result.get("account_profile") if isinstance(result.get("account_profile"), dict) else {}
+    result["account_profile"] = _douyin_account_profile(
+        profile_payload,
+        source=str(profile_payload.get("source") or ""),
+    )
+    result["account_type"] = result["account_profile"].get("account_type", "unknown")
+    result["account_type_label"] = result["account_profile"].get("account_type_label", "未识别")
+    result["is_blue_v"] = bool(result["account_profile"].get("is_blue_v"))
     return _dm_enrich_failure_response(result)
 
 
