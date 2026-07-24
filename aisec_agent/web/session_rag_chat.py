@@ -2306,13 +2306,15 @@ def _workspace_business_boards(data: Dict[str, Any], businesses: List[Dict[str, 
         board_name = str(base.get("name") or DEFAULT_KNOWLEDGE_BASE_NAME).strip() or DEFAULT_KNOWLEDGE_BASE_NAME
         board_id = _business_board_key(board_name, str(base.get("kb_id") or ""))
         modules = modules_by_board.get(board_id, [])
-        if not modules:
+        allow_empty_placeholder = bool(base.get("allow_empty_placeholder"))
+        if not modules and not allow_empty_placeholder:
             continue
         boards.append({
             "business_board_id": board_id,
             "business_board_name": board_name,
             "name": board_name,
             "description": str(base.get("description") or "").strip(),
+            "allow_empty_placeholder": allow_empty_placeholder,
             "business_module_count": len(modules),
             "document_count": sum(int(module.get("document_count") or 0) for module in modules),
             "modules": modules,
@@ -3498,6 +3500,7 @@ def build_admin_state_response(
     store = _project_store(project_store)
     project_dir, project_meta = _project_root_and_meta(store, project_id)
     descriptions = _load_document_descriptions(store, project_dir.name)
+    businesses = _flatten_knowledge_businesses(descriptions)
     templates = _load_scene_templates(store, project_dir.name)
     activities = _load_activity_settings(store, project_dir.name)
     identities = _load_identity_settings(store, project_dir.name)
@@ -3511,6 +3514,8 @@ def build_admin_state_response(
             "path": str(project_dir),
         },
         "document_descriptions": descriptions,
+        "business_boards": _strip_workspace_project_ids(_workspace_business_boards(descriptions, businesses)),
+        "businesses": _strip_workspace_project_ids(businesses),
         "scene_templates": templates,
         "activity_settings": activities,
         "identity_settings": identities,
@@ -3643,10 +3648,10 @@ def _remove_empty_sections_and_domains(descriptions: Dict[str, Any]) -> bool:
                 if section.get("documents"):
                     kept_sections.append(section)
             domain["sections"] = kept_sections
-            if kept_sections:
+            if kept_sections or domain.get("allow_empty_placeholder"):
                 kept_domains.append(domain)
         base["domains"] = kept_domains
-        if kept_domains:
+        if kept_domains or base.get("allow_empty_placeholder"):
             kept_bases.append(base)
     descriptions["knowledge_bases"] = kept_bases
     if kept_bases:
@@ -3854,6 +3859,66 @@ def build_admin_knowledge_base_update_response(
             "old_name": old_name,
             "new_name": new_name,
             "folder_moved": moved,
+        },
+    }
+
+
+def build_admin_knowledge_base_create_response(
+    payload: Dict[str, Any],
+    project_store: Optional[ProjectMaterialStore] = None,
+) -> Dict[str, Any]:
+    store = _project_store(project_store)
+    project_id = str(payload.get("project_id") or "").strip()
+    name = str(payload.get("name") or "").strip()
+    description = str(payload.get("description") or "").strip()
+    if not name:
+        raise WebInputError("name is required")
+
+    project_dir, _ = _project_root_and_meta(store, project_id)
+    descriptions = _load_document_descriptions(store, project_dir.name)
+    bases = descriptions.get("knowledge_bases") or []
+    if any(str(item.get("name") or "").strip() == name for item in bases):
+        raise WebInputError("knowledge base name already exists")
+
+    placeholder_base = {
+        "kb_id": _knowledge_base_id(name),
+        "name": name,
+        "description": description,
+        "document_count": 0,
+        "allow_empty_placeholder": True,
+        "domains": [],
+    }
+    bases.append(placeholder_base)
+    descriptions["knowledge_bases"] = bases
+    _knowledge_folder_path(project_dir, name).mkdir(parents=True, exist_ok=True)
+    descriptions = _save_document_descriptions(store, project_dir.name, descriptions)
+
+    company_settings = _load_company_settings(store, project_dir.name, descriptions)
+    default_company_id = _default_company_id(company_settings)
+    relations = company_settings.setdefault("company_knowledge_bases", [])
+    now = datetime.now().isoformat(timespec="seconds")
+    if not any(item.get("company_id") == default_company_id and item.get("kb_id") == placeholder_base["kb_id"] for item in relations):
+        relations.append({
+            "company_id": default_company_id,
+            "kb_id": placeholder_base["kb_id"],
+            "role": "owner",
+            "enabled": True,
+            "created_at": now,
+            "updated_at": now,
+        })
+        company_settings = _save_company_settings(store, project_dir.name, company_settings, descriptions)
+
+    businesses = _flatten_knowledge_businesses(descriptions)
+    return {
+        "document_descriptions": descriptions,
+        "company_settings": company_settings,
+        "business_boards": _strip_workspace_project_ids(_workspace_business_boards(descriptions, businesses)),
+        "businesses": _strip_workspace_project_ids(businesses),
+        "created": {
+            "type": "knowledge_base",
+            "name": name,
+            "description": description,
+            "allow_empty_placeholder": True,
         },
     }
 
@@ -7164,6 +7229,10 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self._handle_admin_knowledge_delete()
             return
 
+        if path == "/api/admin/knowledge/base/create":
+            self._handle_admin_knowledge_base_create()
+            return
+
         if path == "/api/admin/knowledge/base/update":
             self._handle_admin_knowledge_base_update()
             return
@@ -7522,6 +7591,19 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
         try:
             payload = self._read_json()
             data = build_admin_knowledge_base_update_response(
+                payload,
+                project_store=self.server.project_store,
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_admin_knowledge_base_create(self):
+        try:
+            payload = self._read_json()
+            data = build_admin_knowledge_base_create_response(
                 payload,
                 project_store=self.server.project_store,
             )

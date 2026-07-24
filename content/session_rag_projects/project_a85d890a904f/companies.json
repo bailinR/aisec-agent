@@ -1,7 +1,7 @@
 {
   "version": 1,
   "project_id": "project_a85d890a904f",
-  "updated_at": "2026-07-17T18:49:38",
+  "updated_at": "2026-07-23T14:43:57",
   "companies": [
     {
       "company_id": "company_cf97f621f6",
@@ -57,6 +57,14 @@
       "enabled": true,
       "created_at": "2026-07-17T18:48:35",
       "updated_at": "2026-07-17T18:48:35"
+    },
+    {
+      "company_id": "company_cf97f621f6",
+      "kb_id": "kb_bf41b01f15",
+      "role": "owner",
+      "enabled": true,
+      "created_at": "2026-07-23T14:28:06",
+      "updated_at": "2026-07-23T14:28:06"
     }
   ],
   "knowledge_bases": [
@@ -64,7 +72,7 @@
       "kb_id": "kb_5bede326e3",
       "name": "AI技术与私信自动化业务板块",
       "description": "面向自动私信、评论采集、AI内容生产、智能硬件和自动化运营的业务资料。",
-      "document_count": 4
+      "document_count": 6
     },
     {
       "kb_id": "kb_b85ac31bf1",
@@ -89,6 +97,12 @@
       "name": "跨境电商与综合服务板块",
       "description": "面向跨境开店、Temu运营、店铺托管和资源对接的业务资料。",
       "document_count": 2
+    },
+    {
+      "kb_id": "kb_bf41b01f15",
+      "name": "烘干设备业务板块",
+      "description": "面向农产品烘干、烘干房、整机品类、热泵烘干机结构和通用烘干方案的业务资料。",
+      "document_count": 5
     }
   ]
 }

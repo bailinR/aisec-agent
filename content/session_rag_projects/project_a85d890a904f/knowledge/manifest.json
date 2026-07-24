@@ -199,8 +199,8 @@
     {
       "doc_id": "doc_fa46b265bfe6",
       "title": "公司定位与业务总览",
-      "kb_id": "kb_10e926c244",
-      "knowledge_base": "公司基础资料板块",
+      "kb_id": "kb_12e7d5bbbc",
+      "knowledge_base": "AI技术与私信自动化业务板块",
       "domain": "公司定位与对外口径",
       "section": "具体资料",
       "category": "公司定位与对外口径",
@@ -219,8 +219,8 @@
     {
       "doc_id": "doc_f06e0c93f71e",
       "title": "通用承接边界与目标优先级",
-      "kb_id": "kb_10e926c244",
-      "knowledge_base": "公司基础资料板块",
+      "kb_id": "kb_12e7d5bbbc",
+      "knowledge_base": "AI技术与私信自动化业务板块",
       "domain": "公司定位与对外口径",
       "section": "具体资料",
       "category": "公司定位与对外口径",
@@ -435,6 +435,106 @@
       "source_file_name": "跨境电商托管服务说明.md",
       "imported_at": "2026-07-17T18:48:35",
       "content_chars": 317
+    },
+    {
+      "doc_id": "doc_4b46d518233c",
+      "title": "干燥设备细分资料待补充",
+      "kb_id": "kb_61d072dd76",
+      "knowledge_base": "烘干设备业务板块",
+      "domain": "干燥设备细分",
+      "section": "具体资料",
+      "category": "干燥设备细分",
+      "sender_identity": "烘干设备顾问",
+      "relative_path": "knowledge/files/烘干设备业务板块/干燥设备细分/干燥设备细分资料待补充.md",
+      "description": "用于整理不同干燥设备路线、适用场景、核心参数和选型差异。 当前为初始化占位资料，后续可继续补充。",
+      "keywords": [
+        "烘干设备业务板块",
+        "干燥设备细分",
+        "干燥设备细分资料待补充"
+      ],
+      "source_file_name": "干燥设备细分资料待补充.md",
+      "imported_at": "2026-07-23T14:43:57",
+      "content_chars": 101
+    },
+    {
+      "doc_id": "doc_83cba3c2321f",
+      "title": "烘干房品类资料待补充",
+      "kb_id": "kb_61d072dd76",
+      "knowledge_base": "烘干设备业务板块",
+      "domain": "烘干房品类",
+      "section": "具体资料",
+      "category": "烘干房品类",
+      "sender_identity": "烘干设备顾问",
+      "relative_path": "knowledge/files/烘干设备业务板块/烘干房品类/烘干房品类资料待补充.md",
+      "description": "用于整理不同烘干房方案、结构配置、适用品类和交付方式。 当前为初始化占位资料，后续可继续补充。",
+      "keywords": [
+        "烘干设备业务板块",
+        "烘干房品类",
+        "烘干房品类资料待补充"
+      ],
+      "source_file_name": "烘干房品类资料待补充.md",
+      "imported_at": "2026-07-23T14:43:57",
+      "content_chars": 92
+    },
+    {
+      "doc_id": "doc_f9447c2864d0",
+      "title": "烘干机整机品类资料待补充",
+      "kb_id": "kb_61d072dd76",
+      "knowledge_base": "烘干设备业务板块",
+      "domain": "烘干机整机品类",
+      "section": "具体资料",
+      "category": "烘干机整机品类",
+      "sender_identity": "烘干设备顾问",
+      "relative_path": "knowledge/files/烘干设备业务板块/烘干机整机品类/烘干机整机品类资料待补充.md",
+      "description": "用于整理整机型号、规格参数、适用物料和报价说明。 当前为初始化占位资料，后续可继续补充。",
+      "keywords": [
+        "烘干设备业务板块",
+        "烘干机整机品类",
+        "烘干机整机品类资料待补充"
+      ],
+      "source_file_name": "烘干机整机品类资料待补充.md",
+      "imported_at": "2026-07-23T14:43:57",
+      "content_chars": 93
+    },
+    {
+      "doc_id": "doc_68ed2d300d7b",
+      "title": "热泵烘干机结构资料待补充",
+      "kb_id": "kb_61d072dd76",
+      "knowledge_base": "烘干设备业务板块",
+      "domain": "热泵烘干机结构",
+      "section": "具体资料",
+      "category": "热泵烘干机结构",
+      "sender_identity": "烘干设备顾问",
+      "relative_path": "knowledge/files/烘干设备业务板块/热泵烘干机结构/热泵烘干机结构资料待补充.md",
+      "description": "用于整理热泵烘干机核心结构、部件组成、工作原理和卖点说明。 当前为初始化占位资料，后续可继续补充。",
+      "keywords": [
+        "烘干设备业务板块",
+        "热泵烘干机结构",
+        "热泵烘干机结构资料待补充"
+      ],
+      "source_file_name": "热泵烘干机结构资料待补充.md",
+      "imported_at": "2026-07-23T14:43:57",
+      "content_chars": 94
+    },
+    {
+      "doc_id": "doc_39f0bf15893e",
+      "title": "通用烘干大类资料待补充",
+      "kb_id": "kb_61d072dd76",
+      "knowledge_base": "烘干设备业务板块",
+      "domain": "通用烘干大类",
+      "section": "具体资料",
+      "category": "通用烘干大类",
+      "sender_identity": "烘干设备顾问",
+      "relative_path": "knowledge/files/烘干设备业务板块/通用烘干大类/通用烘干大类资料待补充.md",
+      "description": "用于整理通用烘干场景、行业分类、基础术语和标准话术。 当前为初始化占位资料，后续可继续补充。",
+      "keywords": [
+        "烘干设备业务板块",
+        "通用烘干大类",
+        "通用烘干大类资料待补充"
+      ],
+      "source_file_name": "通用烘干大类资料待补充.md",
+      "imported_at": "2026-07-23T14:43:57",
+      "content_chars": 97
     }
   ]
 }

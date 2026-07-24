@@ -412,8 +412,123 @@
       gap: 10px;
     }
     .knowledge-hub {
+      display: block;
+      min-height: calc(100vh - 170px);
+    }
+    .knowledge-hub > :not(.knowledge-workbench) {
+      display: none !important;
+    }
+    .knowledge-workbench {
       display: grid;
-      gap: 16px;
+      grid-template-columns: 360px minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+    }
+    .knowledge-tree-list {
+      display: grid;
+      gap: 10px;
+    }
+    .knowledge-tree-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfdff;
+      overflow: hidden;
+    }
+    .knowledge-tree-item.active {
+      border-color: rgba(13,135,152,.25);
+      background: #f5fbfb;
+    }
+    .knowledge-tree-row {
+      width: 100%;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      padding: 12px;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      text-align: left;
+      box-shadow: none;
+    }
+    .knowledge-tree-row:hover {
+      background: rgba(13, 135, 152, .04);
+      box-shadow: none;
+      transform: none;
+    }
+    .tree-folder {
+      width: 18px;
+      height: 18px;
+      color: var(--brand);
+      flex: 0 0 auto;
+    }
+    .knowledge-tree-title { font-weight: 800; line-height: 1.4; }
+    .knowledge-tree-meta { color: var(--muted); font-size: 12px; line-height: 1.4; margin-top: 2px; }
+    .knowledge-tree-badge { color: var(--muted); font-size: 12px; }
+    .knowledge-tree-children {
+      border-top: 1px solid var(--line);
+      padding: 8px 12px 12px 34px;
+      display: grid;
+      gap: 8px;
+    }
+    .knowledge-tree-child {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--ink);
+      padding: 10px 12px;
+      text-align: left;
+      display: grid;
+      gap: 2px;
+      box-shadow: none;
+    }
+    .knowledge-tree-child:hover {
+      background: var(--surface-2);
+      box-shadow: none;
+      transform: none;
+    }
+    .knowledge-tree-child.active {
+      border-color: rgba(13,135,152,.28);
+      background: var(--brand-soft);
+    }
+    .knowledge-tree-child-title { font-weight: 700; line-height: 1.4; }
+    .knowledge-tree-child-meta { color: var(--muted); font-size: 12px; line-height: 1.4; }
+    .knowledge-preview-panel .panel-body {
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+    }
+    .knowledge-preview-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 18px 18px 16px;
+      display: grid;
+      gap: 14px;
+    }
+    .knowledge-preview-title {
+      font-size: 28px;
+      line-height: 1.25;
+      font-weight: 900;
+      letter-spacing: 0;
+      color: var(--ink);
+    }
+    .knowledge-preview-content {
+      white-space: pre-wrap;
+      line-height: 1.75;
+      color: var(--ink);
+      font-size: 14px;
+      margin: 0;
+      word-break: break-word;
+    }
+    .knowledge-preview-empty {
+      border: 1px dashed var(--line-strong);
+      border-radius: 8px;
+      background: #fff;
+      padding: 22px;
+      color: var(--muted);
+      line-height: 1.6;
     }
     .company-board {
       display: grid;
@@ -1731,6 +1846,7 @@
       .layout { grid-template-columns: 1fr; }
       .sidebar { position: static; height: auto; }
       .workspace, .split-editor { grid-template-columns: 1fr; }
+      .knowledge-workbench { grid-template-columns: 1fr; }
       .dm-flow { grid-template-columns: 1fr; }
       .account-workspace { grid-template-columns: 1fr; }
       .account-queue-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1748,6 +1864,7 @@
       .topbar { align-items: flex-start; flex-direction: column; }
       .topbar-right { align-items: flex-start; min-width: 0; }
       .content { padding: 14px; }
+      .knowledge-workbench { grid-template-columns: 1fr; }
       .kb-command { grid-template-columns: 1fr; border-radius: 18px; }
       .kb-cards { grid-template-columns: 1fr; }
       .prompt-board-toolbar { align-items: flex-start; flex-direction: column; }
@@ -2188,6 +2305,94 @@
           </section>
 
           <section v-if="activeMenu === 'knowledge'" class="knowledge-hub">
+            <div class="knowledge-workbench">
+              <section class="panel knowledge-tree-panel">
+                <div class="panel-head">
+                  <div class="panel-title">知识库文件树</div>
+                  <div class="panel-actions">
+                    <button class="secondary" @click="reloadAll">刷新</button>
+                  </div>
+                </div>
+                <div class="panel-body">
+                  <input v-model.trim="knowledgeSearch" placeholder="搜索业务板块、业务模块或资料">
+                  <div class="knowledge-tree-list">
+                    <div
+                      v-for="base in filteredKnowledgeTree"
+                      :key="base.name"
+                      class="knowledge-tree-item"
+                      :class="{active: selectedKnowledgeBaseName === base.name}"
+                    >
+                      <button class="knowledge-tree-row" type="button" @click="openKnowledgeBase(base)">
+                        <svg class="tree-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                          <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2.5h6.5A2.5 2.5 0 0 1 21 10v7.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-10Z" stroke-linejoin="round"></path>
+                          <path d="M3 10h18" stroke-linecap="round"></path>
+                        </svg>
+                        <div>
+                          <div class="knowledge-tree-title">{{ base.name }}</div>
+                          <div class="knowledge-tree-meta">{{ base.domains.length }} 个模块 · {{ base.count }} 份资料</div>
+                        </div>
+                        <div class="knowledge-tree-badge">{{ base.routeCount ? base.routeCount + ' 路线' : ' ' }}</div>
+                      </button>
+                      <div class="knowledge-tree-children" v-if="selectedKnowledgeBaseName === base.name">
+                        <button
+                          v-for="domain in base.domains"
+                          :key="base.name + domain.name"
+                          class="knowledge-tree-child"
+                          :class="{active: selectedKnowledgeDomainName === domain.name}"
+                          type="button"
+                          @click.stop="openKnowledgeDomain(domain)"
+                        >
+                          <div class="knowledge-tree-child-title">{{ domain.name }}</div>
+                          <div class="knowledge-tree-child-meta">{{ domain.documents.length }} 份资料</div>
+                        </button>
+                        <button
+                          v-for="doc in (selectedKnowledgeDomain && selectedKnowledgeDomain.documents) || []"
+                          :key="doc.relative_path"
+                          class="knowledge-tree-child"
+                          :class="{active: selectedDocDraft.relative_path === doc.relative_path}"
+                          type="button"
+                          @click.stop="selectDoc(doc)"
+                        >
+                          <div class="knowledge-tree-child-title">{{ doc.title || doc.source_file_name || doc.relative_path }}</div>
+                          <div class="knowledge-tree-child-meta">{{ doc.relative_path }}</div>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="panel knowledge-preview-panel">
+                <div class="panel-head">
+                  <div class="panel-title-stack">
+                    <div class="panel-title">{{ selectedDocDraft.title || selectedKnowledgeDomainName || selectedKnowledgeBaseName || '选择具体资料' }}</div>
+                    <div class="subtitle">{{ selectedDocDraft.relative_path || '点击左侧业务模块或资料查看内容' }}</div>
+                  </div>
+                  <span class="badge ok">当前资料</span>
+                </div>
+                <div class="panel-body">
+                  <div v-if="selectedDocDraft.relative_path" class="knowledge-preview-card">
+                    <div class="kb-card-tags">
+                      <span class="tag accent">{{ selectedDocDraft.knowledge_base || '知识库' }}</span>
+                      <span class="tag">{{ selectedDocDraft.domain || '业务模块' }}</span>
+                      <span class="tag">{{ selectedDocDraft.section || '具体资料' }}</span>
+                    </div>
+                    <div class="knowledge-preview-title">{{ selectedDocDraft.title || '未命名资料' }}</div>
+                    <div class="subtitle" v-if="selectedDocDraft.routeReason">
+                      依据：{{ selectedDocDraft.routeReason }}
+                      <span v-if="selectedDocDraft.routeConfidence"> · 置信度 {{ Math.round((selectedDocDraft.routeConfidence || 0) * 100) }}%</span>
+                    </div>
+                    <div class="knowledge-preview-content">{{ selectedDocDraft.content || '暂无内容' }}</div>
+                  </div>
+                  <div v-else class="knowledge-preview-empty">
+                    先在左侧选择业务板块、业务模块或具体资料。这里会显示同样的资料预览排版。
+                  </div>
+                </div>
+              </section>
+            </div>
+            <div class="knowledge-embed">
+              <iframe class="knowledge-frame" src="/workspace?embedded=knowledge" title="企业工作台知识库页面"></iframe>
+            </div>
             <div class="kb-command">
               <div class="kb-search">
                 <span class="kb-search-icon">⌕</span>
@@ -2198,6 +2403,7 @@
                 <option v-for="name in knowledgeBaseOptions" :key="name" :value="name">{{ name }}</option>
               </select>
               <button class="secondary" @click="reloadAll">刷新</button>
+              <button class="secondary" @click="createEmptyKnowledgeBase">+ 空业务板块</button>
               <button @click="toggleKnowledgeUpload">+ 新建/上传</button>
             </div>
 
@@ -2977,6 +3183,9 @@
             project: {},
             projects: [],
             documentDescriptions: {knowledge_bases: [], domains: []},
+            workspaceState: {company: {}, company_settings: {companies: [], company_knowledge_bases: [], knowledge_bases: []}, document_descriptions: {knowledge_bases: [], domains: []}, business_boards: [], businesses: [], business_targets: {}},
+            businessBoards: [],
+            businesses: [],
             companySettings: {companies: [], company_knowledge_bases: [], knowledge_bases: []},
             selectedCompanyId: "",
             managedAccounts: [],
@@ -3101,10 +3310,32 @@
               item.text || "",
             ].filter(Boolean).join(" ")).join("\n");
           },
+          knowledgeState() {
+            const workspace = this.workspaceState || {};
+            const workspaceDocs = workspace.document_descriptions || {};
+            const hasWorkspaceKnowledge = (workspace.business_boards || []).length || (workspace.businesses || []).length || (workspaceDocs.knowledge_bases || []).length;
+            if (hasWorkspaceKnowledge) return workspace;
+            return {
+              company: this.selectedCompany || {},
+              company_settings: this.companySettings || {companies: [], company_knowledge_bases: [], knowledge_bases: []},
+              document_descriptions: this.documentDescriptions || {knowledge_bases: [], domains: []},
+              business_boards: this.businessBoards || [],
+              businesses: this.businesses || [],
+            };
+          },
+          knowledgeCompanyId() {
+            const knowledge = this.knowledgeState || {};
+            const company = knowledge.company || {};
+            const companySettings = knowledge.company_settings || {};
+            const companies = companySettings.companies || [];
+            return company.company_id || (companies[0] && companies[0].company_id) || this.currentCompanyId || "";
+          },
           allKnowledgeBases() {
-            const fromSettings = this.companySettings && this.companySettings.knowledge_bases || [];
+            const knowledge = this.knowledgeState || {};
+            const fromSettings = knowledge.company_settings && knowledge.company_settings.knowledge_bases || [];
             if (fromSettings.length) return fromSettings;
-            return (this.documentDescriptions.knowledge_bases || []).map(base => ({
+            const descriptions = knowledge.document_descriptions || this.documentDescriptions || {};
+            return (descriptions.knowledge_bases || []).map(base => ({
               kb_id: base.kb_id || "",
               name: base.name || "默认知识库",
               description: base.description || "",
@@ -3114,9 +3345,12 @@
             }));
           },
           authorizedKnowledgeBaseIds() {
-            if (!this.currentCompanyId) return [];
-            return (this.companySettings.company_knowledge_bases || [])
-              .filter(item => item.company_id === this.currentCompanyId && item.enabled !== false)
+            const knowledge = this.knowledgeState || {};
+            const companySettings = knowledge.company_settings || this.companySettings || {};
+            const companyId = this.knowledgeCompanyId;
+            if (!companyId) return [];
+            return (companySettings.company_knowledge_bases || [])
+              .filter(item => item.company_id === companyId && item.enabled !== false)
               .map(item => item.kb_id);
           },
           batchStats() {
@@ -3237,12 +3471,90 @@
             return docs;
           },
           knowledgeTree() {
-            const descriptions = this.documentDescriptions || {};
+            const knowledge = this.knowledgeState || {};
+            const descriptions = knowledge.document_descriptions || this.documentDescriptions || {};
+            const businessBoards = knowledge.business_boards || this.businessBoards || [];
+            const businesses = knowledge.businesses || this.businesses || [];
+            const allowed = new Set(this.authorizedKnowledgeBaseIds);
+            if ((businessBoards || []).length) {
+              const routeDocsByBase = new Map();
+              const sourceBases = descriptions.knowledge_bases && descriptions.knowledge_bases.length
+                ? descriptions.knowledge_bases
+                : [{name: "默认知识库", domains: descriptions.domains || []}];
+              sourceBases.forEach(base => {
+                const baseName = base.name || "默认知识库";
+                const bucket = [];
+                for (const domain of base.domains || []) {
+                  for (const section of domain.sections || []) {
+                    for (const rawDoc of section.documents || []) {
+                      const doc = {
+                        ...rawDoc,
+                        knowledge_base: rawDoc.knowledge_base || baseName,
+                        domain: rawDoc.domain || domain.name,
+                        section: rawDoc.section || section.name,
+                      };
+                      if (this.isRouteDocument(doc)) bucket.push(doc);
+                    }
+                  }
+                }
+                routeDocsByBase.set(baseName, bucket);
+              });
+              return businessBoards
+                .filter(base => !this.knowledgeCompanyId || allowed.has(base.business_board_id || base.kb_id || ""))
+                .map(base => {
+                  const boardName = base.business_board_name || base.name || "业务板块";
+                  const boardId = base.business_board_id || base.kb_id || "";
+                  const domains = (businesses || [])
+                    .filter(item => {
+                      const itemBoardId = item.business_board_id || item.kb_id || "";
+                      const itemBoardName = item.business_board_name || item.knowledge_base || "";
+                      return (boardId && itemBoardId === boardId) || (!boardId && itemBoardName === boardName);
+                    })
+                    .map(item => {
+                      const documents = (item.documents || []).map(doc => ({
+                        ...doc,
+                        knowledge_base: doc.knowledge_base || boardName,
+                        domain: doc.domain || item.name,
+                        section: doc.section || "具体资料",
+                      }));
+                      const sectionMap = new Map();
+                      documents.forEach(doc => {
+                        const sectionName = doc.section || "具体资料";
+                        if (!sectionMap.has(sectionName)) {
+                          sectionMap.set(sectionName, {
+                            section_id: doc.section_id || "",
+                            name: sectionName,
+                          });
+                        }
+                      });
+                      return {
+                        domain_id: item.business_module_id || item.domain_id || "",
+                        name: item.business_module_name || item.name || "未分类业务",
+                        description: item.description || "",
+                        documents,
+                        routeDocuments: [],
+                        sections: Array.from(sectionMap.values()),
+                      };
+                    });
+                  const routeDocuments = routeDocsByBase.get(boardName) || [];
+                  const count = domains.reduce((sum, domain) => sum + domain.documents.length, 0);
+                  return {
+                    kb_id: boardId,
+                    name: boardName,
+                    description: base.description || "",
+                    allow_empty_placeholder: !!base.allow_empty_placeholder,
+                    domains,
+                    routeDocuments,
+                    count,
+                    routeCount: routeDocuments.length,
+                  };
+                })
+                .filter(base => base.count || base.routeCount || base.allow_empty_placeholder);
+            }
             const sourceBases = descriptions.knowledge_bases && descriptions.knowledge_bases.length
               ? descriptions.knowledge_bases
               : [{name: "默认知识库", domains: descriptions.domains || []}];
-            const allowed = new Set(this.authorizedKnowledgeBaseIds);
-            return sourceBases.filter(base => !this.currentCompanyId || allowed.has(base.kb_id || "")).map(base => {
+            return sourceBases.filter(base => !this.knowledgeCompanyId || allowed.has(base.kb_id || "")).map(base => {
               const domains = (base.domains || []).map(domain => {
                 const documents = [];
                 const routeDocuments = [];
@@ -3276,12 +3588,13 @@
                 kb_id: base.kb_id || "",
                 name: base.name || "默认知识库",
                 description: base.description || "",
+                allow_empty_placeholder: !!base.allow_empty_placeholder,
                 domains: visibleDomains,
                 routeDocuments,
                 count,
                 routeCount: routeDocuments.length,
               };
-            }).filter(base => base.count || base.routeCount);
+            }).filter(base => base.count || base.routeCount || base.allow_empty_placeholder);
           },
           materialByPath() {
             const map = {};
@@ -3553,6 +3866,16 @@
           normalizedPath(value) {
             return String(value || "").replace(/\\/g, "/").replace(/^\/+/, "");
           },
+          findKnowledgeDoc(doc) {
+            if (!doc) return null;
+            const docId = String(doc.doc_id || "").trim();
+            const relativePath = this.normalizedPath(doc.relative_path || "");
+            return (this.flatDocuments || []).find(item => {
+              const itemId = String(item.doc_id || "").trim();
+              const itemPath = this.normalizedPath(item.relative_path || "");
+              return (docId && itemId === docId) || (relativePath && itemPath === relativePath);
+            }) || null;
+          },
           stripFileExtension(value) {
             return String(value || "").replace(/\.[^.\\/]+$/, "");
           },
@@ -3702,6 +4025,7 @@
           },
           knowledgeBaseDescription(base) {
             if (base.description) return base.description;
+            if (base.allow_empty_placeholder) return "当前为空业务板块占位，可先创建结构，后续再补充具体资料。";
             const domains = (base.domains || []).map(domain => domain.name).filter(Boolean);
             const firstDoc = (base.domains || []).flatMap(domain => domain.documents || []).find(doc => doc.description || doc.summary);
             if (firstDoc) return firstDoc.description || firstDoc.summary;
@@ -3790,15 +4114,62 @@
             this.selectedKnowledgeBaseName = base.name;
             this.selectedKnowledgeDomainName = "";
             this.selectedDocKey = "";
-            this.selectedDocDraft = {};
-            this.knowledgeLevel = "domains";
+            const firstDomain = (base.domains || [])[0] || null;
+            const firstDoc = firstDomain && (firstDomain.documents || [])[0] || null;
+            if (firstDoc) {
+              this.selectDoc(firstDoc);
+            } else {
+              this.selectedDocDraft = {};
+            }
+            this.knowledgeLevel = firstDoc ? "editor" : "domains";
           },
           openKnowledgeDomain(domain) {
             if (!domain) return;
             this.selectedKnowledgeDomainName = domain.name;
             this.selectedDocKey = "";
-            this.selectedDocDraft = {};
-            this.knowledgeLevel = "files";
+            const firstDoc = (domain.documents || [])[0] || null;
+            if (firstDoc) {
+              this.selectDoc(firstDoc);
+            } else {
+              this.selectedDocDraft = {};
+            }
+            this.knowledgeLevel = firstDoc ? "editor" : "files";
+          },
+          async createEmptyKnowledgeBase() {
+            const nextName = window.prompt("请输入新的业务板块名称");
+            if (nextName == null) return;
+            const cleanName = nextName.trim();
+            if (!cleanName) {
+              this.setStatus("业务板块名称不能为空", "error");
+              return;
+            }
+            const nextDescription = window.prompt("请输入业务板块说明（可选）", "");
+            if (nextDescription == null) return;
+            const cleanDescription = nextDescription.trim();
+            try {
+              const data = await this.fetchJson("/api/admin/knowledge/base/create", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                  project_id: this.projectId,
+                  name: cleanName,
+                  description: cleanDescription
+                })
+              });
+              this.documentDescriptions = data.document_descriptions || this.documentDescriptions;
+              this.companySettings = data.company_settings || this.companySettings;
+              this.businessBoards = data.business_boards || this.businessBoards;
+              this.businesses = data.businesses || this.businesses;
+              await this.loadState();
+              this.selectedKnowledgeBaseName = cleanName;
+              this.selectedKnowledgeDomainName = "";
+              this.selectedDocKey = "";
+              this.selectedDocDraft = {};
+              this.knowledgeLevel = "domains";
+              this.setStatus("空业务板块已创建：" + cleanName, "ok");
+            } catch (error) {
+              this.setStatus(error.message || "创建空业务板块失败", "error");
+            }
           },
           async renameKnowledgeBase(base) {
             if (!base || !base.name) return;
@@ -3818,8 +4189,8 @@
                 })
               });
               this.documentDescriptions = data.document_descriptions || this.documentDescriptions;
+              await this.loadState();
               this.selectedKnowledgeBaseName = cleanName;
-              await this.loadProjectMaterials();
               this.setStatus("知识库已修改：" + cleanName, "ok");
             } catch (error) {
               this.setStatus(error.message || "修改知识库失败", "error");
@@ -3844,8 +4215,8 @@
                 })
               });
               this.documentDescriptions = data.document_descriptions || this.documentDescriptions;
+              await this.loadState();
               this.selectedKnowledgeDomainName = cleanName;
-              await this.loadProjectMaterials();
               this.setStatus("业务文件夹已修改：" + cleanName, "ok");
             } catch (error) {
               this.setStatus(error.message || "修改业务文件夹失败", "error");
@@ -3863,7 +4234,7 @@
               });
               this.documentDescriptions = data.document_descriptions || this.documentDescriptions;
               this.companySettings = data.company_settings || this.companySettings;
-              await this.loadProjectMaterials();
+              await this.loadState();
               this.selectedKnowledgeBaseName = "";
               this.selectedKnowledgeDomainName = "";
               this.selectedDocKey = "";
@@ -3885,7 +4256,7 @@
                 body: JSON.stringify({project_id: this.projectId, knowledge_base: this.selectedKnowledgeBaseName, name: domain.name})
               });
               this.documentDescriptions = data.document_descriptions || this.documentDescriptions;
-              await this.loadProjectMaterials();
+              await this.loadState();
               this.selectedKnowledgeDomainName = "";
               this.selectedDocKey = "";
               this.selectedDocDraft = {};
@@ -5185,12 +5556,19 @@
               this.project = state.project || {};
               this.projectId = this.project.project_id || this.projectId || (this.projects[0] && this.projects[0].project_id) || "";
               this.documentDescriptions = state.document_descriptions || {knowledge_bases: [], domains: []};
+              this.businessBoards = state.business_boards || [];
+              this.businesses = state.businesses || [];
               this.companySettings = state.company_settings || {companies: [], company_knowledge_bases: [], knowledge_bases: []};
               if (!this.selectedCompanyId || !this.companies.some(item => item.company_id === this.selectedCompanyId)) {
                 this.selectedCompanyId = this.companies[0] && this.companies[0].company_id || "";
               }
               this.sceneTemplates = state.scene_templates || {templates: []};
               this.activitySettings = state.activity_settings || {activities: []};
+              try {
+                this.workspaceState = await this.fetchJson("/api/workspace/state");
+              } catch (_) {
+                this.workspaceState = {company: {}, company_settings: {companies: [], company_knowledge_bases: [], knowledge_bases: []}, document_descriptions: {knowledge_bases: [], domains: []}, business_boards: [], businesses: [], business_targets: {}};
+              }
               await this.loadProjectMaterials();
               this.ensureInitialSelections();
               this.setStatus("已加载：" + ((this.project && this.project.name) || this.projectId), "ok");
@@ -5233,13 +5611,13 @@
               const data = await this.fetchJson("/api/admin/knowledge/upload", {method: "POST", body: form});
               this.documentDescriptions = data.document_descriptions || this.documentDescriptions;
               this.companySettings = data.company_settings || this.companySettings;
-              await this.loadProjectMaterials();
               this.uploadResult = data.document ? {
                 ...data.document,
                 route: data.route || data.document.route || null,
               } : null;
+              await this.loadState();
               if (data.document) {
-                this.selectDoc(data.document);
+                this.selectDoc(this.findKnowledgeDoc(data.document) || data.document);
                 this.knowledgeLevel = "editor";
                 this.showKnowledgeUpload = false;
               }
@@ -5323,8 +5701,9 @@
               });
               this.documentDescriptions = data.document_descriptions || this.documentDescriptions;
               this.companySettings = data.company_settings || this.companySettings;
-              await this.loadProjectMaterials();
-              this.selectDoc(data.document || this.selectedDocDraft);
+              await this.loadState();
+              const matchedDoc = this.findKnowledgeDoc(data.document || this.selectedDocDraft);
+              if (matchedDoc) this.selectDoc(matchedDoc);
               this.setStatus("路由已保存：" + (data.route && [data.route.knowledge_base, data.route.domain, data.route.section].filter(Boolean).join("/")), "ok");
             } catch (error) {
               this.setStatus(error.message || "保存路由失败", "error");
@@ -5375,8 +5754,9 @@
                 body: JSON.stringify({project_id: this.projectId, document_descriptions: this.documentDescriptions})
               });
               this.documentDescriptions = saved.document_descriptions || this.documentDescriptions;
-              await this.loadProjectMaterials();
-              this.selectDoc(this.selectedDocDraft);
+              await this.loadState();
+              const matchedDoc = this.findKnowledgeDoc(this.selectedDocDraft);
+              if (matchedDoc) this.selectDoc(matchedDoc);
               this.setStatus(routeDocument ? "路线 README 已保存" : "知识库文件已保存", "ok");
             } catch (error) {
               this.setStatus(error.message || "保存失败", "error");
@@ -5416,7 +5796,7 @@
                 body: JSON.stringify({project_id: this.projectId, doc_id: doc.doc_id || "", relative_path: doc.relative_path || ""})
               });
               this.documentDescriptions = data.document_descriptions || this.documentDescriptions;
-              await this.loadProjectMaterials();
+              await this.loadState();
               this.selectedDocKey = "";
               this.selectedDocDraft = {};
               this.knowledgeLevel = this.selectedKnowledgeDomainName ? "files" : (this.selectedKnowledgeBaseName ? "domains" : "bases");

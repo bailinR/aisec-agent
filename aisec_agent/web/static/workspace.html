@@ -201,6 +201,29 @@
     .status.ok { color: var(--ok); }
     .status.error { color: var(--danger); }
     .content { min-width: 0; padding: 20px 24px 28px; overflow: visible; }
+    .embedded-knowledge .app { grid-template-columns: 1fr; }
+    .embedded-knowledge .sidebar,
+    .embedded-knowledge .topbar,
+    .embedded-knowledge .targets-layout,
+    .embedded-knowledge .upload-dialog,
+    .embedded-knowledge .status {
+      display: none !important;
+    }
+    .embedded-knowledge .shell {
+      grid-template-rows: 1fr;
+      overflow: hidden;
+    }
+    .embedded-knowledge .content {
+      height: 100%;
+      padding: 0;
+      overflow: hidden;
+    }
+    .embedded-knowledge #knowledgeView {
+      height: 100%;
+    }
+    .embedded-knowledge .workspace-grid {
+      height: 100%;
+    }
     .workspace-grid {
       display: grid;
       grid-template-columns: var(--tree-width) minmax(640px, 1fr);
@@ -423,6 +446,11 @@
   </style>
 </head>
 <body>
+  <script>
+    if (new URLSearchParams(location.search).get("embedded") === "knowledge") {
+      document.body.classList.add("embedded-knowledge");
+    }
+  </script>
   <div id="appShell" class="app">
     <aside class="sidebar">
       <div class="sidebar-head">
