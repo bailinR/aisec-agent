@@ -8400,6 +8400,12 @@ def _dm_task_submit_runtime_fields(item: Dict[str, Any]) -> Dict[str, str]:
     auto_process = _dm_bool_text(normalized.get("auto_process", False))
     headless = _dm_bool_text(normalized.get("headless", False))
     force_resend = _dm_bool_text(normalized.get("force_resend", False))
+    followup_message = str(
+        normalized.get("followup_message")
+        or normalized.get("followup_url")
+        or normalized.get("post_send_message")
+        or ""
+    ).strip()
     if not debug_mode:
         run_mode = "send"
         auto_send = True
@@ -8430,6 +8436,7 @@ def _dm_task_submit_runtime_fields(item: Dict[str, Any]) -> Dict[str, str]:
         "auto_send": "true" if auto_send else "false",
         "auto_process": "true" if auto_process else "false",
         "force_resend": "true" if force_resend else "false",
+        "followup_message": followup_message,
     }
 
 
@@ -10090,6 +10097,10 @@ def _dm_task_result(task: Dict[str, Any]) -> Dict[str, Any]:
         "first_private_message": _dm_bool_text(task.get("first_private_message")),
         "first_private_message_status": task.get("first_private_message_status") or "",
         "first_private_message_detail": task.get("first_private_message_detail") or "",
+        "followup_message": task.get("followup_message") or "",
+        "followup_private_message": _dm_bool_text(task.get("followup_private_message")),
+        "followup_private_message_status": task.get("followup_private_message_status") or "",
+        "followup_private_message_detail": task.get("followup_private_message_detail") or "",
         "error_code": task.get("error_code") or "",
         "failure_code": task.get("failure_code") or str(failure_meta.get("failure_code") or ""),
         "failure_type": task.get("failure_type") or "",
@@ -10580,8 +10591,12 @@ def build_douyin_dm_task_submit_response(
             "auto_send": runtime_fields["auto_send"],
             "auto_process": runtime_fields["auto_process"],
             "force_resend": runtime_fields["force_resend"],
+            "followup_message": str(merged.get("followup_message") or runtime_fields.get("followup_message") or ""),
             "reply": "",
             "sent": "false",
+            "followup_private_message": "false",
+            "followup_private_message_status": "pending",
+            "followup_private_message_detail": "",
             "error": "",
             "error_code": "",
             "failure_code": "",
@@ -10788,6 +10803,10 @@ def process_douyin_dm_task_once(
         first_private_message = False
         first_private_message_status = "generated_only"
         first_private_message_detail = "message generated but not sent"
+        followup_message = str(task.get("followup_message") or "").strip()
+        followup_private_message = False
+        followup_private_message_status = "skipped"
+        followup_private_message_detail = ""
         if run_mode == "prefill":
             first_private_message_status = "prefilled_only"
             first_private_message_detail = "message prefilled but not sent"
@@ -10804,6 +10823,34 @@ def process_douyin_dm_task_once(
                 redis_conn.expire(sent_key, DM_REDIS_TASK_TTL_SECONDS)
             except Exception:
                 pass
+        if sent and followup_message:
+            followup_private_message_status = "attempted"
+            try:
+                followup_result = build_douyin_private_message_demo_response({
+                    "task_id": f"{task_id}:followup",
+                    "profile_url": task.get("target_profile_url") or "",
+                    "message": followup_message,
+                    "browser": task.get("browser") or "edge",
+                    "headless": _dm_bool_text(task.get("headless", True)),
+                    "use_cdp": _dm_bool_text(task.get("use_cdp")),
+                    "keep_browser_open": _dm_bool_text(task.get("keep_browser_open", not _dm_bool_text(task.get("headless", True)))),
+                    "persistent_context": _dm_bool_text(task.get("persistent_context", (not _dm_bool_text(task.get("headless", True))) or task.get("user_data_dir"))),
+                    "user_data_dir": task.get("user_data_dir") or "",
+                    "auto_send": True,
+                    "account_cookies": task_account_cookies,
+                    "screenshot_prefix": f"{task_id}_followup",
+                }, executor=_douyin_private_message_playwright_executor)
+                followup_private_message = bool(followup_result.get("sent"))
+                followup_private_message_status = "sent" if followup_private_message else "failed_ignored"
+                followup_private_message_detail = "followup private message sent" if followup_private_message else str(
+                    followup_result.get("error")
+                    or followup_result.get("failure_summary")
+                    or followup_result.get("failure_reason")
+                    or "followup send was not confirmed"
+                )
+            except Exception as followup_exc:
+                followup_private_message_status = "failed_ignored"
+                followup_private_message_detail = str(followup_exc)
 
         finished = _dm_now()
         _dm_redis_hash_set(redis_conn, key, {
@@ -10834,6 +10881,9 @@ def process_douyin_dm_task_once(
             "first_private_message": "true" if first_private_message else "false",
             "first_private_message_status": first_private_message_status,
             "first_private_message_detail": first_private_message_detail,
+            "followup_private_message": "true" if followup_private_message else "false",
+            "followup_private_message_status": followup_private_message_status,
+            "followup_private_message_detail": followup_private_message_detail,
             "updated_at": finished,
             "finished_at": finished,
         })
@@ -10845,6 +10895,9 @@ def process_douyin_dm_task_once(
             "first_private_message": first_private_message,
             "first_private_message_status": first_private_message_status,
             "first_private_message_detail": first_private_message_detail,
+            "followup_private_message": followup_private_message,
+            "followup_private_message_status": followup_private_message_status,
+            "followup_private_message_detail": followup_private_message_detail,
             "task_cleared": True,
             "queue_status": "done",
         })
