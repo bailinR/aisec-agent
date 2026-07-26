@@ -201,11 +201,14 @@
     .status.ok { color: var(--ok); }
     .status.error { color: var(--danger); }
     .content { min-width: 0; padding: 20px 24px 28px; overflow: visible; }
+    .embedded-knowledge {
+      --app-min-width: 0px;
+      min-width: 0;
+    }
     .embedded-knowledge .app { grid-template-columns: 1fr; }
     .embedded-knowledge .sidebar,
     .embedded-knowledge .topbar,
     .embedded-knowledge .targets-layout,
-    .embedded-knowledge .upload-dialog,
     .embedded-knowledge .status {
       display: none !important;
     }
@@ -223,6 +226,9 @@
     }
     .embedded-knowledge .workspace-grid {
       height: 100%;
+    }
+    .embedded-knowledge .knowledge-tree-panel {
+      top: 0;
     }
     .workspace-grid {
       display: grid;
@@ -441,6 +447,17 @@
       .knowledge-tree-panel {
         position: static;
         max-height: 420px;
+      }
+      .embedded-knowledge .shell { overflow-y: auto; }
+      .embedded-knowledge .content {
+        height: auto;
+        min-height: 100%;
+        overflow: visible;
+      }
+      .embedded-knowledge #knowledgeView,
+      .embedded-knowledge .workspace-grid {
+        height: auto;
+        min-height: 100%;
       }
     }
   </style>
