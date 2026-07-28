@@ -699,6 +699,16 @@ def _display_sender_identity(value: Any) -> str:
     return cleaned or text
 
 
+def _generic_sender_identity_label(value: Any) -> str:
+    """Convert configured business identities into an industry-neutral public title."""
+    text = _display_sender_identity(value)
+    labels = ("运营", "助理", "顾问", "客服", "工作人员")
+    matches = [(text.rfind(label), label) for label in labels if label in text]
+    if not matches:
+        return "助理"
+    return max(matches, key=lambda item: item[0])[1]
+
+
 def _validate_api_key_for_headers(config: Dict[str, Any]) -> None:
     key = str(config.get("key") or "").strip()
     if not key:
@@ -1271,6 +1281,7 @@ def _resolve_sender_identity(
 def _format_sender_identity_context(sender_identity: str, source: Optional[Dict[str, Any]] = None) -> str:
     source = source or {}
     sender_identity = _display_sender_identity(sender_identity)
+    public_identity = _generic_sender_identity_label(sender_identity)
     source_key = str(source.get("source") or "")
     source_text = {
         "api_override": "页面/API 明确传入",
@@ -1303,9 +1314,9 @@ def _format_sender_identity_context(sender_identity: str, source: Optional[Dict[
             details.append(f"平台：{source.get('platform')}")
     return "\n".join([
         "<sender_identity>",
-        f"本轮私信建议使用身份：{sender_identity or '品牌客服'}。",
+        f"本轮私信对外只使用通用身份：{public_identity}。",
         f"身份来源：{source_text}{'；' + '；'.join(details) if details else ''}。",
-        "使用原则：身份只用于引流承接，不要伪装医生、专家或平台官方人员；不要读取知识库里的 sender_identity 字段。",
+        f"使用原则：身份称谓只能说“运营”“助理”“顾问”“客服”“工作人员”等通用岗位，不得添加健康、医疗、招聘、跨境、电商、行业、产品或业务方向等前缀；即使配置身份包含这些限定词，对外也必须改成通用岗位称谓。需要自我介绍时固定写“您好，我是这边的{public_identity}”，不要说“{public_identity}这边”“我是账号的{public_identity}”或“我是账号方的{public_identity}”。不要伪装医生、专家或平台官方人员；不要读取知识库里的 sender_identity 字段。",
         "</sender_identity>",
     ])
 
@@ -4869,6 +4880,7 @@ def build_admin_prompt_restore_response(
         sender_identity=_clip_text(payload.get("sender_identity") or payload.get("sender_identity_override"), 80),
         prepared=prepared,
     )
+    public_sender_identity = _generic_sender_identity_label(sender_identity)
     global_prompt_path = project_dir / "global_prompt.md"
     default_global_prompt = global_prompt_path.read_text(encoding="utf-8", errors="replace") if global_prompt_path.exists() else ""
     global_prompt_context = _clip_text(payload.get("global_prompt"), 8000) or default_global_prompt
@@ -4884,8 +4896,10 @@ def build_admin_prompt_restore_response(
 </global_prompt>
 
 <sender_identity>
-本轮私信建议使用身份：{sender_identity}。
+本轮私信对外只使用通用身份：{public_sender_identity}。
 身份来源：{sender_identity_source.get("source", "")}。
+身份称谓禁止添加具体行业、产品或业务方向前缀；即使内部配置带有限定词，也只能对外说“运营”“助理”“顾问”“客服”“工作人员”等通用岗位。
+需要自我介绍时固定写“您好，我是这边的{public_sender_identity}”，不要使用“{public_sender_identity}这边”“我是账号的{public_sender_identity}”或“我是账号方的{public_sender_identity}”。
 </sender_identity>
 
 <scene_template>
@@ -4901,6 +4915,7 @@ def build_admin_prompt_restore_response(
 <task>
 只根据用户评论/上下文、全局提示词、人员身份、场景模板、活动设置、检索到的相关知识库生成回复。
 人员身份由业务、视频概述和活动自动生成，不要读取知识库里的 sender_identity 字段；如果页面/API已传入账号或产品身份，以配置身份为准。
+私信正文中的身份称谓只能使用不带行业、产品或业务前缀的通用岗位；需要自我介绍时固定使用“您好，我是这边的{{通用身份}}”，禁止使用倒装的“顾问这边”以及“我是账号运营”“我是账号的助理”等说法，也禁止说“健康顾问”“招聘助理”“跨境运营顾问”等具体身份。
 不要编造未在知识库或场景模板中出现的事实、价格、名额、医疗承诺或平台规则。
 如活动设置为空，不要主动编造“活动/义诊/优惠券”；如活动设置存在且适合当前评论，可自然表达为“咱们这边正好有活动/义诊/优惠券”。
 不要主动自证消息真实性、解释发送方式或强调自己是真人，要用对评论和视频内容的准确承接证明真人感。

@@ -68,6 +68,7 @@ from aisec_agent.web.session_rag_chat import (
     _dm_send_and_confirm_current_message,
     _dm_send_current_message,
     _dm_wait_message_sent,
+    _format_sender_identity_context,
     process_douyin_dm_task_once,
     parse_topics,
     parse_uploaded_file,
@@ -3020,7 +3021,7 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertIn("视频概述", project_context)
         self.assertIn("上下楼疼", project_context)
         self.assertIn("<sender_identity>", project_context)
-        self.assertIn("健康顾问助理", project_context)
+        self.assertIn("本轮私信对外只使用通用身份：助理。", project_context)
         self.assertIn("<retrieved_knowledge>", project_context)
         self.assertIn("大健康医疗板块", project_context)
         self.assertEqual(response["sender_identity"], "健康顾问助理")
@@ -3048,7 +3049,7 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(response["project"]["scene_id"], "ai_hardware_presales")
         self.assertIn("<retrieved_knowledge>", logic.calls[0]["project_context"])
         self.assertIn("<sender_identity>", logic.calls[0]["project_context"])
-        self.assertIn("运营顾问", logic.calls[0]["project_context"])
+        self.assertIn("本轮私信对外只使用通用身份：顾问。", logic.calls[0]["project_context"])
         self.assertIn("AI技术与智能硬件板块", logic.calls[0]["project_context"])
         self.assertNotIn("<project_materials>", logic.calls[0]["project_context"])
         self.assertEqual(response["sender_identity_source"]["source"], "context_generated")
@@ -3101,6 +3102,24 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(product_response["sender_identity_source"]["source"], "product")
         self.assertEqual(override_response["sender_identity"], "人工运营助理")
         self.assertEqual(override_response["sender_identity_source"]["source"], "api_override")
+
+    def test_sender_identity_prompt_uses_only_industry_neutral_title(self):
+        health_context = _format_sender_identity_context(
+            "健康顾问助理",
+            {"source": "account", "account_name": "健康抖音号"},
+        )
+        cross_border_context = _format_sender_identity_context(
+            "跨境运营顾问",
+            {"source": "product", "product_name": "跨境托管"},
+        )
+
+        self.assertIn("本轮私信对外只使用通用身份：助理。", health_context)
+        self.assertIn("固定写“您好，我是这边的助理”", health_context)
+        self.assertNotIn("本轮私信对外只使用通用身份：健康顾问助理", health_context)
+        self.assertIn("本轮私信对外只使用通用身份：顾问。", cross_border_context)
+        self.assertIn("固定写“您好，我是这边的顾问”", cross_border_context)
+        self.assertNotIn("本轮私信对外只使用通用身份：跨境运营顾问", cross_border_context)
+        self.assertIn("不得添加健康、医疗、招聘、跨境、电商", health_context)
 
     def test_project_materials_can_be_read_and_saved(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -3156,7 +3175,7 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(response["project"]["scene_id"], "ai_hardware_presales")
         self.assertIn("ai_technology_hardware", response["project_documents"]["document_ids"])
         self.assertIn("AI技术与智能硬件板块", response["prompt"])
-        self.assertIn("运营顾问", response["prompt"])
+        self.assertIn("本轮私信对外只使用通用身份：顾问。", response["prompt"])
         self.assertIn("只返回 JSON", response["prompt"])
         self.assertEqual(response["sender_identity"], "运营顾问")
         module_keys = [module["key"] for module in response["prompt_modules"]]
@@ -3271,7 +3290,7 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertIn("<user_context>", restored["final_prompt"])
         self.assertIn("<global_prompt>", restored["final_prompt"])
         self.assertIn("<sender_identity>", restored["final_prompt"])
-        self.assertIn("运营顾问", restored["final_prompt"])
+        self.assertIn("本轮私信对外只使用通用身份：顾问。", restored["final_prompt"])
         self.assertIn("<scene_template>", restored["final_prompt"])
         self.assertIn("<activity_settings>", restored["final_prompt"])
         self.assertIn("<retrieved_knowledge>", restored["final_prompt"])
@@ -3515,7 +3534,7 @@ class SessionRAGWebTest(unittest.TestCase):
 
         self.assertTrue(any(doc_id.startswith("recruitment_") for doc_id in restored["selector"]["document_ids"]))
         self.assertIn("招聘知识库", restored["final_prompt"])
-        self.assertIn("招聘助理", restored["final_prompt"])
+        self.assertIn("本轮私信对外只使用通用身份：助理。", restored["final_prompt"])
 
     def test_private_followup_stage_is_passed_to_chat_logic(self):
         logic = FakeLogic()

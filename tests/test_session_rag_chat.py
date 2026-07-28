@@ -182,8 +182,45 @@ class SessionRAGChatLogicTest(unittest.TestCase):
         self.assertIn("一句话明显过长时请主动换行", prompt)
         self.assertIn("行与行之间空一行", prompt)
         self.assertIn("不要在私信正文里明说“视频里讲的是/视频介绍的是/看到这个视频”", prompt)
+        self.assertIn("身份称谓只能使用“运营”“助理”“顾问”“客服”“工作人员”", prompt)
+        self.assertIn("需要自我介绍时固定使用“您好，我是这边的{通用身份}”", prompt)
+        self.assertIn("禁止说“顾问这边”“我是账号运营”“我是账号的助理”", prompt)
+        self.assertIn("禁止说“健康顾问”“招聘助理”“跨境运营顾问”", prompt)
         self.assertNotIn("You are a Douyin", prompt)
         self.assertNotIn("公司", prompt)
+
+    def test_identity_introduction_is_normalized_to_natural_word_order(self):
+        advisor_context = "本轮私信对外只使用通用身份：顾问。"
+        assistant_context = "本轮私信对外只使用通用身份：助理。"
+
+        self.assertEqual(
+            SessionRAGChatLogic._normalize_identity_introduction(
+                "顾问这边，看到您留言问为什么不放店铺。",
+                advisor_context,
+            ),
+            "您好，我是这边的顾问，看到您留言问为什么不放店铺。",
+        )
+        self.assertEqual(
+            SessionRAGChatLogic._normalize_identity_introduction(
+                "你好呀，我是账号的助理～看到您评论了。",
+                assistant_context,
+            ),
+            "您好，我是这边的助理，看到您评论了。",
+        )
+        self.assertEqual(
+            SessionRAGChatLogic._normalize_identity_introduction(
+                "您好，我是健康顾问助理，看到您在评论区留言。",
+                assistant_context,
+            ),
+            "您好，我是这边的助理，看到您在评论区留言。",
+        )
+        self.assertEqual(
+            SessionRAGChatLogic._normalize_identity_introduction(
+                "看到您留言问为什么不放店铺。",
+                advisor_context,
+            ),
+            "看到您留言问为什么不放店铺。",
+        )
 
     def test_private_followup_prompt_keeps_conversation_stage_metadata(self):
         prompt = SessionRAGChatLogic._build_prompt(
