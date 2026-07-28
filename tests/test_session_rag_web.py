@@ -49,6 +49,10 @@ from aisec_agent.web.session_rag_chat import (
     build_douyin_account_cookie_apply_response,
     build_douyin_private_message_demo_response,
     _douyin_account_profile,
+    _DM_PLAYWRIGHT_SESSIONS,
+    _dm_cleanup_closed_playwright_sessions,
+    _dm_get_playwright_context,
+    _dm_message_page,
     _dm_persistent_context_alive,
     _dm_collect_message_bubble_matches,
     _dm_should_retry_browser_closed,
@@ -801,6 +805,55 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(stored["auto_send"], "true")
         self.assertEqual(stored["auto_process"], "true")
 
+    def test_douyin_dm_process_sends_followup_in_same_browser_execution(self):
+        redis = FakeRedis()
+        task_id = "dm_same_page_followup_001"
+        followup_message = "https://v.douyin.com/group/623049833691"
+        build_douyin_dm_task_submit_response(
+            {
+                "task_id": task_id,
+                "video_info": "video",
+                "account_cookie": "sessionid=test",
+                "comment_info": "comment",
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "project_name": "test project",
+                "followup_message": followup_message,
+            },
+            redis_client=redis,
+        )
+        demo_calls = []
+
+        def fake_demo_response(payload, executor=None):
+            demo_calls.append(payload)
+            return {
+                "success": True,
+                "opened": True,
+                "prefilled": True,
+                "sent": True,
+                "followup_private_message": True,
+                "followup_private_message_status": "sent",
+                "followup_private_message_detail": "followup private message sent",
+            }
+
+        with patch(
+            "aisec_agent.web.session_rag_chat.build_public_private_message_response",
+            return_value={"reply": "hello"},
+        ), patch(
+            "aisec_agent.web.session_rag_chat.build_douyin_private_message_demo_response",
+            side_effect=fake_demo_response,
+        ):
+            processed = process_douyin_dm_task_once(redis_client=redis, mode="send", block_timeout=1)
+
+        self.assertEqual(len(demo_calls), 1)
+        self.assertEqual(demo_calls[0]["message"], "hello")
+        self.assertEqual(demo_calls[0]["followup_message"], followup_message)
+        self.assertTrue(processed["sent"])
+        self.assertTrue(processed["followup_private_message"])
+        self.assertEqual(processed["followup_private_message_status"], "sent")
+        stored = redis.hgetall(f"dm:task:{task_id}")
+        self.assertEqual(stored["followup_private_message"], "true")
+        self.assertEqual(stored["followup_private_message_status"], "sent")
+
     def test_douyin_dm_success_result_does_not_report_unknown_failure(self):
         redis = FakeRedis()
         build_douyin_dm_task_submit_response(
@@ -1312,6 +1365,55 @@ class SessionRAGWebTest(unittest.TestCase):
             "send_message",
         ])
 
+    def test_douyin_dm_send_and_confirm_retries_enter_for_link_preview(self):
+        class DummyKeyboard:
+            def __init__(self):
+                self.pressed = []
+
+            def press(self, key):
+                self.pressed.append(key)
+
+        class DummyPage:
+            def __init__(self):
+                self.keyboard = DummyKeyboard()
+
+        page = DummyPage()
+        wait_calls = []
+
+        def fake_wait(_page, _message, timeout_ms=8000, baseline=None):
+            wait_calls.append(list(baseline or []))
+            if len(wait_calls) == 1:
+                raise RuntimeError("link preview opened; send was not confirmed")
+            return {"name": "send_message", "ok": True, "detail": "confirmed"}
+
+        with patch(
+            "aisec_agent.web.session_rag_chat._dm_collect_message_bubble_matches",
+            return_value=[],
+        ), patch(
+            "aisec_agent.web.session_rag_chat._dm_wait_message_sent",
+            side_effect=fake_wait,
+        ), patch(
+            "aisec_agent.web.session_rag_chat._dm_message_editor_text",
+            return_value="",
+        ), patch(
+            "aisec_agent.web.session_rag_chat._dm_send_current_message",
+        ) as click_send:
+            steps = _dm_send_and_confirm_current_message(
+                page,
+                "https://v.douyin.com/group/623049833691",
+                timeout_ms=500,
+                retry_enter_before_click=True,
+            )
+
+        self.assertEqual(page.keyboard.pressed, ["Enter", "Enter"])
+        click_send.assert_not_called()
+        self.assertEqual([step["name"] for step in steps], [
+            "press_enter_send",
+            "press_enter_unconfirmed",
+            "press_enter_retry_send",
+            "send_message",
+        ])
+
     def test_douyin_dm_failure_reason_keeps_demo_step_trace(self):
         redis = FakeRedis()
         build_douyin_dm_task_submit_response(
@@ -1475,6 +1577,90 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(response["seen"]["options"]["viewport_height"], 900)
         self.assertTrue(response["seen"]["options"]["screenshot_on_failure"])
         self.assertIn("douyin_dm_artifacts", response["seen"]["options"]["screenshot_dir"])
+
+    def test_douyin_private_message_demo_can_disable_persistent_context_for_web_send(self):
+        response = build_douyin_private_message_demo_response(
+            {
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "reply": "hello",
+                "auto_send": True,
+                "headless": False,
+                "keep_browser_open": False,
+                "persistent_context": False,
+            },
+            executor=fake_douyin_demo_executor,
+        )
+
+        self.assertTrue(response["sent"])
+        self.assertFalse(response["seen"]["options"]["keep_browser_open"])
+        self.assertFalse(response["seen"]["options"]["persistent_context"])
+
+    def test_douyin_private_message_demo_sends_followup_in_same_execution(self):
+        calls = []
+
+        def executor(profile_url, message, browser, auto_send, options):
+            calls.append({
+                "profile_url": profile_url,
+                "message": message,
+                "browser": browser,
+                "auto_send": auto_send,
+                "options": options,
+            })
+            return {
+                "success": True,
+                "opened": True,
+                "prefilled": True,
+                "sent": True,
+                "followup_private_message": True,
+                "followup_private_message_status": "sent",
+                "followup_private_message_detail": "followup private message sent",
+            }
+
+        response = build_douyin_private_message_demo_response(
+            {
+                "profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "message": "hello",
+                "followup_message": "https://v.douyin.com/group/623049833691",
+                "browser": "edge",
+                "auto_send": True,
+            },
+            executor=executor,
+        )
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["options"]["_followup_message"], "https://v.douyin.com/group/623049833691")
+        self.assertTrue(response["sent"])
+        self.assertTrue(response["followup_private_message"])
+        self.assertEqual(response["followup_private_message_status"], "sent")
+        self.assertEqual(response["followup_message_chars"], 39)
+
+    def test_douyin_private_message_demo_keeps_primary_success_when_followup_fails(self):
+        def executor(profile_url, message, browser, auto_send, options):
+            return {
+                "success": True,
+                "opened": True,
+                "prefilled": True,
+                "sent": True,
+                "followup_private_message": False,
+                "followup_private_message_status": "failed_ignored",
+                "followup_private_message_detail": "send button not found",
+            }
+
+        response = build_douyin_private_message_demo_response(
+            {
+                "profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "message": "hello",
+                "followup_message": "https://v.douyin.com/group/623049833691",
+                "auto_send": True,
+            },
+            executor=executor,
+        )
+
+        self.assertTrue(response["success"])
+        self.assertTrue(response["sent"])
+        self.assertFalse(response["followup_private_message"])
+        self.assertEqual(response["followup_private_message_status"], "failed_ignored")
+        self.assertEqual(response["followup_private_message_detail"], "send button not found")
 
     def test_douyin_account_cookie_apply_exposes_failure_metadata(self):
         def failing_executor(raw_cookies, browser, options):
@@ -1651,6 +1837,102 @@ class SessionRAGWebTest(unittest.TestCase):
                 return []
 
         self.assertFalse(_dm_persistent_context_alive(FakeContext()))
+
+    def test_dm_persistent_context_alive_requires_an_open_page(self):
+        class FakeBrowser:
+            def is_connected(self):
+                return True
+
+        class FakeContext:
+            browser = FakeBrowser()
+            pages = []
+
+        self.assertFalse(_dm_persistent_context_alive(FakeContext()))
+
+    def test_dm_message_page_reuses_initial_blank_page(self):
+        class FakePage:
+            url = "about:blank"
+
+        class FakeContext:
+            def __init__(self):
+                self.pages = [FakePage()]
+                self.new_page_calls = 0
+
+            def new_page(self):
+                self.new_page_calls += 1
+                return FakePage()
+
+        context = FakeContext()
+        page = _dm_message_page(context, "https://www.douyin.com/user/test-sec-uid")
+
+        self.assertIs(page, context.pages[0])
+        self.assertEqual(context.new_page_calls, 0)
+
+    def test_dm_cleanup_closed_playwright_sessions_stops_stale_runtime(self):
+        class FakeContext:
+            browser = None
+            pages = []
+
+            def __init__(self):
+                self.close_calls = 0
+
+            def close(self):
+                self.close_calls += 1
+
+        class FakePlaywright:
+            def __init__(self):
+                self.stop_calls = 0
+
+            def stop(self):
+                self.stop_calls += 1
+
+        context = FakeContext()
+        playwright = FakePlaywright()
+        with patch.dict(_DM_PLAYWRIGHT_SESSIONS, {
+            "edge|closed": {
+                "context": context,
+                "playwright": playwright,
+            },
+        }, clear=True):
+            cleaned = _dm_cleanup_closed_playwright_sessions()
+            self.assertEqual(_DM_PLAYWRIGHT_SESSIONS, {})
+
+        self.assertEqual(cleaned, 1)
+        self.assertEqual(context.close_calls, 1)
+        self.assertEqual(playwright.stop_calls, 1)
+
+    def test_dm_persistent_launch_failure_stops_playwright_runtime(self):
+        class FakePlaywright:
+            def __init__(self):
+                self.stop_calls = 0
+
+            def stop(self):
+                self.stop_calls += 1
+
+        class FakeManager:
+            def __init__(self, playwright):
+                self.playwright = playwright
+
+            def start(self):
+                return self.playwright
+
+        playwright = FakePlaywright()
+        with patch.dict(_DM_PLAYWRIGHT_SESSIONS, {}, clear=True), patch(
+            "aisec_agent.web.session_rag_chat._dm_launch_persistent_playwright_context",
+            side_effect=RuntimeError("browser launch failed"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "browser launch failed"):
+                _dm_get_playwright_context(
+                    lambda: FakeManager(playwright),
+                    "edge",
+                    {
+                        "persistent_context": True,
+                        "keep_browser_open": True,
+                        "user_data_dir": "D:\\tmp\\closed-browser-test",
+                    },
+                )
+
+        self.assertEqual(playwright.stop_calls, 1)
 
     def test_dm_should_retry_browser_closed_only_before_send_stage(self):
         self.assertTrue(_dm_should_retry_browser_closed(

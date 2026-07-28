@@ -8552,10 +8552,45 @@ def _dm_persistent_context_alive(context: Any) -> bool:
         is_closed = getattr(context, "is_closed", None)
         if callable(is_closed) and bool(is_closed()):
             return False
-        _ = context.pages
-        return True
+        return bool(context.pages)
     except Exception:
         return False
+
+
+def _dm_message_page(context: Any, profile_url: str) -> Any:
+    pages = list(getattr(context, "pages", None) or [])
+    target = _dm_normalized_target(profile_url)
+    for page in reversed(pages):
+        try:
+            if target and _dm_normalized_target(page.url) == target:
+                return page
+        except Exception:
+            continue
+    for page in pages:
+        try:
+            if str(page.url or "").strip().lower() in {"", "about:blank", "edge://newtab/", "chrome://newtab/"}:
+                return page
+        except Exception:
+            continue
+    return context.new_page()
+
+
+def _dm_cleanup_closed_playwright_sessions() -> int:
+    stale_sessions = []
+    for key, session in list(_DM_PLAYWRIGHT_SESSIONS.items()):
+        if _dm_persistent_context_alive(session.get("context")):
+            continue
+        removed = _DM_PLAYWRIGHT_SESSIONS.pop(key, None)
+        if removed is session:
+            stale_sessions.append(session)
+
+    for session in stale_sessions:
+        _dm_stop_playwright_context(
+            session.get("context"),
+            session.get("browser"),
+            session.get("playwright"),
+        )
+    return len(stale_sessions)
 
 
 def _dm_step_name_looks_like_send_stage(name: Any) -> bool:
@@ -8614,6 +8649,7 @@ def _dm_get_playwright_context(sync_playwright_factory: Any, browser_name: str, 
     keep_browser_open = _dm_bool_text(options.get("keep_browser_open", not headless))
     use_persistent_context = _dm_bool_text(options.get("persistent_context", keep_browser_open or options.get("user_data_dir")))
     if use_persistent_context:
+        _dm_cleanup_closed_playwright_sessions()
         user_data_dir = _dm_playwright_user_data_dir(browser_name, options)
         key = f"{str(browser_name or 'edge').lower()}|{user_data_dir.resolve()}"
         session = _DM_PLAYWRIGHT_SESSIONS.get(key)
@@ -8623,8 +8659,14 @@ def _dm_get_playwright_context(sync_playwright_factory: Any, browser_name: str, 
             _DM_PLAYWRIGHT_SESSIONS.pop(key, None)
             _dm_stop_playwright_context(session.get("context"), None, session.get("playwright"))
         manager = sync_playwright_factory()
-        playwright = manager.start()
-        context = _dm_launch_persistent_playwright_context(playwright, browser_name, options)
+        playwright = None
+        context = None
+        try:
+            playwright = manager.start()
+            context = _dm_launch_persistent_playwright_context(playwright, browser_name, options)
+        except Exception:
+            _dm_stop_playwright_context(context, None, playwright)
+            raise
         _DM_PLAYWRIGHT_SESSIONS[key] = {
             "manager": manager,
             "playwright": playwright,
@@ -8634,31 +8676,38 @@ def _dm_get_playwright_context(sync_playwright_factory: Any, browser_name: str, 
         return playwright, context, None, keep_browser_open
 
     manager = sync_playwright_factory()
-    playwright = manager.start()
-    browser = _dm_launch_playwright_browser(playwright, browser_name, options)
-    context = browser.new_context(
-        viewport={
-            "width": int(options.get("viewport_width") or DM_DEFAULT_VIEWPORT_WIDTH),
-            "height": int(options.get("viewport_height") or DM_DEFAULT_VIEWPORT_HEIGHT),
-        },
-        device_scale_factor=float(options.get("device_scale_factor") or 1.0),
-    )
+    playwright = None
+    browser = None
+    context = None
+    try:
+        playwright = manager.start()
+        browser = _dm_launch_playwright_browser(playwright, browser_name, options)
+        context = browser.new_context(
+            viewport={
+                "width": int(options.get("viewport_width") or DM_DEFAULT_VIEWPORT_WIDTH),
+                "height": int(options.get("viewport_height") or DM_DEFAULT_VIEWPORT_HEIGHT),
+            },
+            device_scale_factor=float(options.get("device_scale_factor") or 1.0),
+        )
+    except Exception:
+        _dm_stop_playwright_context(context, browser, playwright)
+        raise
     return playwright, context, browser, False
 
 
 def _dm_stop_playwright_context(context: Any, browser: Any, playwright: Any) -> None:
     try:
-        if context:
+        if context is not None:
             context.close()
     except Exception:
         pass
     try:
-        if browser:
+        if browser is not None:
             browser.close()
     except Exception:
         pass
     try:
-        if playwright:
+        if playwright is not None:
             playwright.stop()
     except Exception:
         pass
@@ -9219,7 +9268,12 @@ def _dm_send_current_message(page: Any, timeout_ms: int = 8000) -> Dict[str, Any
     raise RuntimeError(f"send button not found: {last_error}")
 
 
-def _dm_send_and_confirm_current_message(page: Any, message: str, timeout_ms: int = 8000) -> List[Dict[str, Any]]:
+def _dm_send_and_confirm_current_message(
+    page: Any,
+    message: str,
+    timeout_ms: int = 8000,
+    retry_enter_before_click: bool = False,
+) -> List[Dict[str, Any]]:
     baseline_matches = _dm_collect_message_bubble_matches(page, message)
     baseline = [match.get("signature") for match in baseline_matches]
     steps: List[Dict[str, Any]] = []
@@ -9235,9 +9289,21 @@ def _dm_send_and_confirm_current_message(page: Any, message: str, timeout_ms: in
         return steps
     except RuntimeError as exc:
         last_text = _dm_message_editor_text(page)
-        if not last_text:
+        if not last_text and not retry_enter_before_click:
             raise
         steps.append({"name": "press_enter_unconfirmed", "ok": False, "detail": str(exc)})
+
+    if retry_enter_before_click:
+        try:
+            page.keyboard.press("Enter")
+            steps.append({"name": "press_enter_retry_send", "ok": True, "detail": "pressed Enter again for link preview"})
+            try:
+                steps.append(_dm_wait_message_sent(page, message, timeout_ms=timeout_ms, baseline=baseline))
+                return steps
+            except RuntimeError as exc:
+                steps.append({"name": "press_enter_retry_unconfirmed", "ok": False, "detail": str(exc)})
+        except Exception as exc:
+            steps.append({"name": "press_enter_retry_send", "ok": False, "detail": str(exc)})
 
     click_step = _dm_send_current_message(page, timeout_ms=timeout_ms)
     steps.append(click_step)
@@ -9543,6 +9609,7 @@ def _douyin_private_message_playwright_executor(
     combined_steps: List[Dict[str, Any]] = []
     keep_browser_open = False
     raw_cookies = str(options.get("_raw_account_cookies") or "")
+    followup_message = str(options.get("_followup_message") or "").strip()
     timeout_ms = int(options.get("timeout_ms") or 45000)
 
     for attempt in range(2):
@@ -9558,7 +9625,7 @@ def _douyin_private_message_playwright_executor(
             if cookies:
                 context.add_cookies(cookies)
                 steps.append({"name": "apply_account_cookies", "ok": True, "detail": f"{len(cookies)} cookies"})
-            page = context.new_page()
+            page = _dm_message_page(context, profile_url)
             page.goto(profile_url, wait_until="domcontentloaded", timeout=timeout_ms)
             steps.append({"name": "open_profile", "ok": True, "detail": "opened"})
             try:
@@ -9581,10 +9648,43 @@ def _douyin_private_message_playwright_executor(
             _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page, timeout_ms=1200))
             steps.append(_dm_fill_message_editor(page, message, timeout_ms=min(timeout_ms, 12000)))
             sent = False
+            followup_private_message = False
+            followup_private_message_status = "skipped"
+            followup_private_message_detail = ""
             if auto_send:
                 _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page, timeout_ms=1200))
                 steps.extend(_dm_send_and_confirm_current_message(page, message, timeout_ms=min(timeout_ms, 10000)))
                 sent = True
+                if followup_message:
+                    followup_private_message_status = "attempted"
+                    try:
+                        followup_fill_step = _dm_fill_message_editor(
+                            page,
+                            followup_message,
+                            timeout_ms=min(timeout_ms, 12000),
+                        )
+                        followup_fill_step["name"] = "paste_followup_message"
+                        steps.append(followup_fill_step)
+                        followup_steps = _dm_send_and_confirm_current_message(
+                            page,
+                            followup_message,
+                            timeout_ms=min(timeout_ms, 10000),
+                            retry_enter_before_click=True,
+                        )
+                        for followup_step in followup_steps:
+                            followup_step["name"] = f"followup_{followup_step.get('name') or 'send'}"
+                        steps.extend(followup_steps)
+                        followup_private_message = True
+                        followup_private_message_status = "sent"
+                        followup_private_message_detail = "followup private message sent"
+                    except Exception as followup_exc:
+                        followup_private_message_status = "failed_ignored"
+                        followup_private_message_detail = str(followup_exc)
+                        steps.append({
+                            "name": "followup_send_error",
+                            "ok": False,
+                            "detail": followup_private_message_detail,
+                        })
             if not keep_browser_open:
                 _dm_stop_playwright_context(context, browser, playwright)
             return {
@@ -9597,6 +9697,9 @@ def _douyin_private_message_playwright_executor(
                 "steps": combined_steps + steps,
                 "account_cookie_loaded": bool(cookies),
                 "account_cookie_count": len(cookies),
+                "followup_private_message": followup_private_message,
+                "followup_private_message_status": followup_private_message_status,
+                "followup_private_message_detail": followup_private_message_detail,
                 "keep_browser_open": keep_browser_open,
                 "user_data_dir": str(_dm_playwright_user_data_dir(browser_name, options)) if _dm_bool_text(options.get("persistent_context", keep_browser_open or options.get("user_data_dir"))) else "",
             }
@@ -10434,6 +10537,9 @@ def build_douyin_private_message_demo_response(
         "persistent_context": _dm_bool_text(normalized.get("persistent_context", (not headless) or normalized.get("user_data_dir"))),
         "user_data_dir": str(normalized.get("user_data_dir") or "").strip(),
     }
+    followup_message = str(normalized.get("followup_message") or "").strip()
+    if followup_message:
+        options["_followup_message"] = followup_message
     if options.get("input_ratio_x") is None:
         options.pop("input_ratio_x", None)
     raw_cookie_text = _dm_cookie_text(normalized.get("account_cookies") or normalized.get("account_cookie") or "")
@@ -10465,6 +10571,23 @@ def build_douyin_private_message_demo_response(
     result["browser"] = browser
     result["auto_send"] = bool(auto_send)
     result["message_chars"] = len(message)
+    result["followup_message_chars"] = len(followup_message)
+    followup_requested = bool(auto_send and result.get("sent") and followup_message)
+    if followup_requested:
+        followup_sent = bool(result.get("followup_private_message"))
+        result["followup_private_message"] = followup_sent
+        result.setdefault(
+            "followup_private_message_status",
+            "sent" if followup_sent else "failed_ignored",
+        )
+        result.setdefault(
+            "followup_private_message_detail",
+            "followup private message sent" if followup_sent else "followup send was not confirmed",
+        )
+    else:
+        result["followup_private_message"] = False
+        result["followup_private_message_status"] = "skipped"
+        result["followup_private_message_detail"] = ""
     result["account_cookie_loaded"] = bool(result.get("account_cookie_loaded") or account_cookie_count)
     result["account_cookie_count"] = max(int(result.get("account_cookie_count") or 0), account_cookie_count)
     result.setdefault("failure_screenshot_path", "")
@@ -10673,6 +10796,7 @@ def process_douyin_dm_task_once(
     queue_name: str = "",
     block_timeout: int = 1,
 ) -> Optional[Dict[str, Any]]:
+    _dm_cleanup_closed_playwright_sessions()
     redis_conn = _redis_conn(redis_client)
     requested_account_key = str(account_key or "").strip()
     account_selector_provided = bool(requested_account_key or str(account_cookie or "").strip() or str(account_id or "").strip())
@@ -10768,6 +10892,7 @@ def process_douyin_dm_task_once(
             "run_mode": run_mode,
             "generation": generation,
         }
+        followup_message = str(task.get("followup_message") or "").strip()
 
         if run_mode in {"prefill", "send"}:
             auto_send = run_mode == "send" or _dm_bool_text(task.get("auto_send"))
@@ -10783,6 +10908,7 @@ def process_douyin_dm_task_once(
                 "persistent_context": _dm_bool_text(task.get("persistent_context", (not _dm_bool_text(task.get("headless", True))) or task.get("user_data_dir"))),
                 "user_data_dir": task.get("user_data_dir") or "",
                 "auto_send": auto_send,
+                "followup_message": followup_message,
                 "account_cookies": task_account_cookies,
                 "screenshot_prefix": task_id,
             }, executor=_douyin_private_message_playwright_executor)
@@ -10803,7 +10929,6 @@ def process_douyin_dm_task_once(
         first_private_message = False
         first_private_message_status = "generated_only"
         first_private_message_detail = "message generated but not sent"
-        followup_message = str(task.get("followup_message") or "").strip()
         followup_private_message = False
         followup_private_message_status = "skipped"
         followup_private_message_detail = ""
@@ -10824,33 +10949,16 @@ def process_douyin_dm_task_once(
             except Exception:
                 pass
         if sent and followup_message:
-            followup_private_message_status = "attempted"
-            try:
-                followup_result = build_douyin_private_message_demo_response({
-                    "task_id": f"{task_id}:followup",
-                    "profile_url": task.get("target_profile_url") or "",
-                    "message": followup_message,
-                    "browser": task.get("browser") or "edge",
-                    "headless": _dm_bool_text(task.get("headless", True)),
-                    "use_cdp": _dm_bool_text(task.get("use_cdp")),
-                    "keep_browser_open": _dm_bool_text(task.get("keep_browser_open", not _dm_bool_text(task.get("headless", True)))),
-                    "persistent_context": _dm_bool_text(task.get("persistent_context", (not _dm_bool_text(task.get("headless", True))) or task.get("user_data_dir"))),
-                    "user_data_dir": task.get("user_data_dir") or "",
-                    "auto_send": True,
-                    "account_cookies": task_account_cookies,
-                    "screenshot_prefix": f"{task_id}_followup",
-                }, executor=_douyin_private_message_playwright_executor)
-                followup_private_message = bool(followup_result.get("sent"))
-                followup_private_message_status = "sent" if followup_private_message else "failed_ignored"
-                followup_private_message_detail = "followup private message sent" if followup_private_message else str(
-                    followup_result.get("error")
-                    or followup_result.get("failure_summary")
-                    or followup_result.get("failure_reason")
-                    or "followup send was not confirmed"
-                )
-            except Exception as followup_exc:
-                followup_private_message_status = "failed_ignored"
-                followup_private_message_detail = str(followup_exc)
+            demo_result = result.get("demo") if isinstance(result.get("demo"), dict) else {}
+            followup_private_message = bool(demo_result.get("followup_private_message"))
+            followup_private_message_status = str(
+                demo_result.get("followup_private_message_status")
+                or ("sent" if followup_private_message else "failed_ignored")
+            )
+            followup_private_message_detail = str(
+                demo_result.get("followup_private_message_detail")
+                or ("followup private message sent" if followup_private_message else "followup send was not confirmed")
+            )
 
         finished = _dm_now()
         _dm_redis_hash_set(redis_conn, key, {

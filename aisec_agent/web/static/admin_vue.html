@@ -269,6 +269,10 @@
       align-items: end;
     }
     .dm-demo-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .dm-followup-field {
+      display: grid;
+      gap: 6px;
+    }
     .dm-cookie-panel {
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -3071,6 +3075,20 @@
                   </label>
                 </div>
               </div>
+                <div class="dm-followup-field">
+                  <label>抖音群链接（可选）</label>
+                  <input
+                    v-model.trim="dmForm.douyin_group_link"
+                    placeholder="https://v.douyin.com/..."
+                    inputmode="url"
+                    autocomplete="off"
+                  >
+                  <label class="actions">
+                    <input class="inline-check" type="checkbox" v-model="dmForm.send_followup_group_link">
+                    <span>首条私信成功后，紧接着发送群链接</span>
+                  </label>
+                  <div class="panel-meta">未勾选时只发送首条私信；预填模式不会发送群链接。</div>
+                </div>
                 <div class="dm-cookie-panel">
                   <div class="dm-cookie-head">
                     <label class="dm-cookie-title">账号 Cookie / 登录信息</label>
@@ -3255,6 +3273,8 @@
               session_id: this.uuid(),
               source_platform: "抖音",
               target_profile_url: "https://www.douyin.com/user/MS4wLjABAAAA0VPGcVLBTV9KuvOPi18HdpZGEDnltASrLJOsMDqs5cY?from_tab_name=main",
+              douyin_group_link: "",
+              send_followup_group_link: true,
               browser_name: "edge",
               demo_mode: "prefill",
               headless: false,
@@ -3760,7 +3780,7 @@
                 key: "capture",
                 title: "接收评论与目标",
                 desc: "读取 question、video_overview、conversation_stage、source_platform、conversion_target 和 target_note，先判断是首次评论承接还是后续私信。",
-                files: ["dmForm.question", "dmForm.video_overview", "dmForm.conversation_stage", "dmForm.source_platform", "dmForm.target_profile_url", "dmForm.browser_name"],
+                files: ["dmForm.question", "dmForm.video_overview", "dmForm.conversation_stage", "dmForm.source_platform", "dmForm.target_profile_url", "dmForm.douyin_group_link", "dmForm.send_followup_group_link", "dmForm.browser_name"],
               },
               {
                 key: "lookup",
@@ -3814,6 +3834,8 @@
           this.dmForm.session_id = savedDmForm.session_id || this.dmForm.session_id;
           this.dmForm.source_platform = savedDmForm.source_platform || saved.sourcePlatform || this.dmForm.source_platform;
           this.dmForm.target_profile_url = savedDmForm.target_profile_url || saved.targetProfileUrl || this.dmForm.target_profile_url;
+          this.dmForm.douyin_group_link = savedDmForm.douyin_group_link || "";
+          this.dmForm.send_followup_group_link = savedDmForm.send_followup_group_link !== false;
           this.dmForm.browser_name = savedDmForm.browser_name || saved.browserName || this.dmForm.browser_name;
           this.dmForm.demo_mode = savedDmForm.demo_mode || this.dmForm.demo_mode;
           this.dmForm.headless = savedDmForm.headless === true;
@@ -4372,6 +4394,8 @@
                 session_id: String(this.dmForm.session_id || ""),
                 source_platform: String(this.dmForm.source_platform || "抖音"),
                 target_profile_url: String(this.dmForm.target_profile_url || ""),
+                douyin_group_link: String(this.dmForm.douyin_group_link || ""),
+                send_followup_group_link: this.dmForm.send_followup_group_link === true,
                 browser_name: String(this.dmForm.browser_name || "edge"),
                 demo_mode: String(this.dmForm.demo_mode || "prefill"),
                 headless: this.dmForm.headless === true,
@@ -5432,7 +5456,9 @@
           async runDouyinDmDemo(forceSend = false) {
             const url = String(this.dmForm.target_profile_url || "").trim();
             const reply = String(this.dmAnswer || "").trim();
+            const groupLink = String(this.dmForm.douyin_group_link || "").trim();
             const shouldSend = !!forceSend || this.dmForm.demo_mode === "send";
+            const shouldSendGroupLink = shouldSend && this.dmForm.send_followup_group_link === true && !!groupLink;
             if (!url) {
               this.setStatus("请先填写抖音主页链接", "error");
               return null;
@@ -5441,21 +5467,35 @@
               this.setStatus("请先生成私信", "error");
               return null;
             }
-            if (shouldSend && !window.confirm("确定要把当前私信发送给这个测试账号吗？\n\n" + url)) {
+            if (shouldSendGroupLink && !/^https?:\/\/([a-z0-9-]+\.)*douyin\.com(?:\/|$)/i.test(groupLink)) {
+              this.setStatus("请输入有效的抖音群链接，例如 https://v.douyin.com/...", "error");
+              return null;
+            }
+            const confirmMessage = shouldSendGroupLink
+              ? "确定要发送当前私信，并在成功后继续发送抖音群链接吗？\n\n" + url
+              : "确定要把当前私信发送给这个测试账号吗？\n\n" + url;
+            if (shouldSend && !window.confirm(confirmMessage)) {
               this.setStatus("已取消发送", "error");
               return null;
             }
-            this.setStatus(shouldSend ? "正在打开抖音并发送私信..." : "正在打开抖音并预填私信...");
+            this.setStatus(
+              shouldSendGroupLink
+                ? "正在打开抖音并发送私信，成功后将继续发送群链接..."
+                : (shouldSend ? "正在打开抖音并发送私信..." : "正在打开抖音并预填私信...")
+            );
             const controller = this.startDmAction(shouldSend ? "发送私信" : "预填私信");
             if (!controller) return null;
             try {
               const payload = {
                 profile_url: url,
                 message: reply,
+                followup_message: shouldSendGroupLink ? groupLink : "",
                 browser: this.dmForm.browser_name || "default",
                 auto_send: shouldSend,
                 headless: this.dmForm.headless === true,
                 use_cdp: !this.dmForm.headless,
+                keep_browser_open: !shouldSend && this.dmForm.headless !== true,
+                persistent_context: !shouldSend && this.dmForm.headless !== true,
                 ...this.douyinAccountCookiePayload()
               };
               const data = await this.fetchJson("/api/v1/douyin/private-message/demo", {
@@ -5466,6 +5506,18 @@
               });
               const lastStep = ((data.steps || []).slice(-1)[0] || {});
               if (shouldSend && data.sent) {
+                if (shouldSendGroupLink) {
+                  if (data.followup_private_message || data.followup_private_message_status === "sent") {
+                    this.setStatus("私信和抖音群链接均已发送", "ok");
+                  } else {
+                    this.setStatus(
+                      "私信已发送，但群链接未确认发送成功："
+                        + (data.followup_private_message_detail || lastStep.detail || "请查看抖音窗口状态"),
+                      "error"
+                    );
+                  }
+                  return data;
+                }
                 this.setStatus("私信已发送", "ok");
               } else if (shouldSend) {
                 this.setStatus("未确认发送成功：" + (lastStep.detail || "请查看抖音窗口状态"), "error");
