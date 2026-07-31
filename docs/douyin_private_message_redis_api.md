@@ -23,10 +23,13 @@ Base URL: `http://127.0.0.1:7860`
   "video_info": "视频讲膝盖疼、上下楼疼、骨积液和干细胞评估方向。",
   "account_cookie": "sessionid=xxx; sid_guard=xxx",
   "comment_info": "我二舅膝盖上下楼疼，这个适合吗",
+  "message": "您好，看到您刚才的留言了。我先把相关资料发您看看，您也可以告诉我具体是自己还是家人需要。",
   "target_profile_url": "https://www.douyin.com/user/xxxx",
   "project_name": "大健康AI跨境综合企业服务平台"
 }
 ```
+
+`message` 为可选字段：传入非空内容时，worker 会跳过模型生成，直接使用该内容执行发送；此时 `video_info`、`comment_info`、`project_name` 可以省略。不传或传空字符串时，继续按评论和视频内容生成私信，并沿用原有必填字段校验。正式任务默认 `run_mode=send`，因此非空 `message` 会直接发送。
 
 账号管理说明：`account_id` 可以由调用方自己维护，例如 `douyin_health_01`，但不是必须字段。若不传 `account_id`，服务端会优先从完整 Cookie 里的 `uid_tt` / `uid_tt_ss` 生成匿名稳定账号标识；因此同一个账号刷新 Cookie 后仍可复用原账号浏览器。若 Cookie 只有 `sessionid` / `sid_guard`，无法稳定识别账号，建议显式传 `account_id`。
 
@@ -124,6 +127,7 @@ python -m aisec_agent.worker.douyin_dm_worker --mode send --account-browser-pool
 | `failure_screenshot_exists` | 失败截图文件是否存在 |
 | `manual_takeover` | 人工接管提示、浏览器和目标 URL |
 | `first_private_message_status` | 首条私信状态 |
+| `message_source` | `provided` 表示使用调用方传入的 `message`，`generated` 表示由模型生成 |
 
 ## 3. 任务列表
 

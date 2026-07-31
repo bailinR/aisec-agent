@@ -10207,6 +10207,7 @@ def _dm_task_result(task: Dict[str, Any]) -> Dict[str, Any]:
         "success": success,
         "sent": sent,
         "reply": task.get("reply") or "",
+        "message_source": task.get("message_source") or ("provided" if task.get("message") else "generated"),
         "error": error_text,
         "queue_status": task.get("queue_status") or "",
         "task_cleared": _dm_bool_text(task.get("task_cleared")),
@@ -10692,7 +10693,10 @@ def build_douyin_dm_task_submit_response(
         if not isinstance(item, dict):
             raise WebInputError("task must be an object")
         merged = {**defaults, **item}
-        required_fields = ["video_info", "comment_info", "target_profile_url", "project_name"]
+        provided_message = str(merged.get("message") or "").strip()
+        required_fields = ["target_profile_url"] if provided_message else [
+            "video_info", "comment_info", "target_profile_url", "project_name"
+        ]
         missing = [field for field in required_fields if not str(merged.get(field) or "").strip()]
         runtime_fields = _dm_task_submit_runtime_fields(merged)
         account_cookie = runtime_fields["account_cookie"]
@@ -10718,6 +10722,7 @@ def build_douyin_dm_task_submit_response(
             "target_key": runtime_fields["target_key"],
             "project_name": str(merged.get("project_name") or ""),
             "project_id": str(merged.get("project_id") or ""),
+            "message": provided_message,
             "run_mode": runtime_fields["run_mode"],
             "debug_mode": runtime_fields["debug_mode"],
             "browser": runtime_fields["browser"],
@@ -10731,6 +10736,7 @@ def build_douyin_dm_task_submit_response(
             "force_resend": runtime_fields["force_resend"],
             "followup_message": str(merged.get("followup_message") or runtime_fields.get("followup_message") or ""),
             "reply": "",
+            "message_source": "provided" if provided_message else "generated",
             "sent": "false",
             "followup_private_message": "false",
             "followup_private_message_status": "pending",
@@ -10878,7 +10884,11 @@ def process_douyin_dm_task_once(
         pass
 
     try:
-        if run_mode == "dry_run":
+        provided_message = str(task.get("message") or "").strip()
+        if provided_message:
+            reply = provided_message
+            generation = {"reply": reply, "provided_message": True, "generated": False}
+        elif run_mode == "dry_run":
             reply = f"测试私信：已读取评论。{task.get('comment_info', '')}"
             generation = {"reply": reply, "dry_run": True}
         else:
@@ -10903,6 +10913,7 @@ def process_douyin_dm_task_once(
             "task_id": task_id,
             "status": "generated",
             "reply": reply,
+            "message_source": "provided" if provided_message else "generated",
             "sent": False,
             "run_mode": run_mode,
             "generation": generation,
@@ -10980,6 +10991,7 @@ def process_douyin_dm_task_once(
             "status": result["status"],
             "queue_status": "done",
             "reply": reply,
+            "message_source": "provided" if provided_message else "generated",
             "sent": "true" if sent else "false",
             "error": "",
             "error_code": "",

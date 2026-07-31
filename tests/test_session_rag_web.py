@@ -806,6 +806,45 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(stored["auto_send"], "true")
         self.assertEqual(stored["auto_process"], "true")
 
+    def test_douyin_dm_task_uses_provided_message_without_model_generation(self):
+        redis = FakeRedis()
+        task_id = "dm_provided_message_001"
+        provided_message = "您好，这是一条调用方指定的私信内容。"
+        submit = build_douyin_dm_task_submit_response(
+            {
+                "task_id": task_id,
+                "account_cookie": "sessionid=test",
+                "message": provided_message,
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+            },
+            redis_client=redis,
+        )
+
+        demo_calls = []
+
+        def fake_demo_response(payload, executor=None):
+            demo_calls.append(payload)
+            return {"success": True, "opened": True, "prefilled": True, "sent": True, "steps": []}
+
+        with patch(
+            "aisec_agent.web.session_rag_chat.build_public_private_message_response",
+            side_effect=AssertionError("model generation must be skipped"),
+        ), patch(
+            "aisec_agent.web.session_rag_chat.build_douyin_private_message_demo_response",
+            side_effect=fake_demo_response,
+        ):
+            processed = process_douyin_dm_task_once(redis_client=redis, mode="send", block_timeout=1)
+
+        self.assertEqual(submit["tasks"][0]["message"], provided_message)
+        self.assertEqual(len(demo_calls), 1)
+        self.assertEqual(demo_calls[0]["message"], provided_message)
+        self.assertEqual(processed["reply"], provided_message)
+        self.assertEqual(processed["message_source"], "provided")
+        self.assertTrue(processed["sent"])
+        stored = redis.hgetall(f"dm:task:{task_id}")
+        self.assertEqual(stored["message"], provided_message)
+        self.assertEqual(stored["message_source"], "provided")
+
     def test_douyin_dm_process_sends_followup_in_same_browser_execution(self):
         redis = FakeRedis()
         task_id = "dm_same_page_followup_001"

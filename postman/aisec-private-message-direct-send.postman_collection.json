@@ -1,0 +1,134 @@
+{
+  "info": {
+    "_postman_id": "6b9c9a18-0b68-4b52-8d0b-6e7d5c8d6f11",
+    "name": "AISec 私信任务 - 指定内容直发",
+    "description": "验证 POST /api/v1/douyin/private-message/tasks 在传入非空 message 时跳过模型生成并直接发送。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:7860" },
+    { "key": "task_id", "value": "" },
+    { "key": "account_cookie", "value": "REPLACE_WITH_DOUYIN_COOKIE" },
+    { "key": "target_profile_url", "value": "https://www.douyin.com/user/REPLACE_WITH_USER_ID" },
+    { "key": "message", "value": "您好，看到您的留言了，我先把相关资料发您看看。" }
+  ],
+  "item": [
+    {
+      "name": "1. 健康检查",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{base_url}}/api/health"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 状态为 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('健康检查成功', function () {",
+              "    pm.expect(body.ok).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. 提交指定内容直发任务",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (!pm.collectionVariables.get('task_id')) {",
+              "    pm.collectionVariables.set('task_id', 'postman_direct_' + Date.now());",
+              "}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 状态为 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('接口返回成功', function () {",
+              "    pm.expect(body.ok).to.eql(true);",
+              "});",
+              "pm.test('任务已入队', function () {",
+              "    pm.expect(body.data.accepted).to.eql(1);",
+              "});",
+              "pm.test('返回 task_id', function () {",
+              "    pm.expect(body.data.task_ids).to.include(pm.collectionVariables.get('task_id'));",
+              "});",
+              "pm.test('提交内容来源为 provided', function () {",
+              "    pm.expect(body.data.tasks[0].message_source).to.eql('provided');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"task_id\": \"{{task_id}}\",\n  \"account_cookie\": \"{{account_cookie}}\",\n  \"target_profile_url\": \"{{target_profile_url}}\",\n  \"message\": \"{{message}}\"\n}"
+        },
+        "url": "{{base_url}}/api/v1/douyin/private-message/tasks"
+      }
+    },
+    {
+      "name": "3. 查询任务发送结果",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{base_url}}/api/v1/douyin/private-message/tasks/{{task_id}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 状态为 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "const body = pm.response.json();",
+              "const task = body.data.task || {};",
+              "const result = body.data.result || {};",
+              "pm.test('任务查询成功', function () {",
+              "    pm.expect(body.ok).to.eql(true);",
+              "});",
+              "pm.test('任务使用指定内容', function () {",
+              "    pm.expect(task.message_source || result.message_source).to.eql('provided');",
+              "});",
+              "pm.test('任务状态可识别', function () {",
+              "    pm.expect(['pending', 'running', 'success', 'failed', 'retry_wait', 'manual_required', 'generated', 'prefilled']).to.include(result.status);",
+              "});",
+              "if (result.status === 'success') {",
+              "    pm.test('私信发送成功', function () {",
+              "        pm.expect(result.sent).to.eql(true);",
+              "        pm.expect(result.queue_status).to.eql('done');",
+              "    });",
+              "} else {",
+              "    console.warn('任务尚未完成，请稍后再次执行本请求。当前状态：' + result.status);",
+              "}"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
