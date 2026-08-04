@@ -237,6 +237,26 @@
       "content_chars": 406
     },
     {
+      "doc_id": "admin_f4a15f1f983e",
+      "title": "空气热泵烘干设备产品介绍文档",
+      "kb_id": "kb_10e926c244",
+      "knowledge_base": "公司基础资料板块",
+      "domain": "AI技术与智能硬件",
+      "section": "默认板块",
+      "category": "AI技术与智能硬件",
+      "sender_identity": "运营顾问",
+      "relative_path": "knowledge/files/公司基础资料板块/AI技术与智能硬件/默认板块/空气热泵烘干设备产品介绍文档.md",
+      "description": "当用户问题涉及AI技术与智能硬件相关内容时读取。",
+      "keywords": [
+        "AI",
+        "优惠",
+        "空气热泵烘干设备产品介绍文档"
+      ],
+      "source_file_name": "空气热泵烘干设备产品介绍文档.docx",
+      "imported_at": "2026-07-27T02:31:24",
+      "content_chars": 2537
+    },
+    {
       "doc_id": "doc_9c4549f8c7c3",
       "title": "睡眠初评服务说明",
       "kb_id": "kb_6b79c533ba",
@@ -535,6 +555,26 @@
       "source_file_name": "通用烘干大类资料待补充.md",
       "imported_at": "2026-07-23T14:43:57",
       "content_chars": 97
+    },
+    {
+      "doc_id": "admin_1731fa107838",
+      "title": "空气热泵烘干设备产品介绍文档",
+      "kb_id": "kb_9f2d412527",
+      "knowledge_base": "空气能热泵烘干机",
+      "domain": "产品资料",
+      "section": "默认板块",
+      "category": "产品资料",
+      "sender_identity": "运营顾问",
+      "relative_path": "knowledge/files/空气能热泵烘干机/产品资料/默认板块/空气热泵烘干设备产品介绍文档.md",
+      "description": "当用户问题涉及AI技术与智能硬件相关内容时读取。",
+      "keywords": [
+        "AI",
+        "优惠",
+        "空气热泵烘干设备产品介绍文档"
+      ],
+      "source_file_name": "空气热泵烘干设备产品介绍文档.docx",
+      "imported_at": "2026-07-27T09:45:32",
+      "content_chars": 2532
     }
   ]
 }

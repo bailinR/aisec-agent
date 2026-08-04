@@ -195,11 +195,27 @@
     .title { font-size: 20px; font-weight: 900; line-height: 1.2; }
     .subtitle { margin-top: 4px; color: var(--muted); font-size: 12px; }
     .top-actions { display: flex; align-items: center; gap: 8px; }
-    .status { color: var(--muted); font-size: 12px; min-height: 18px; }
+    .status {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      z-index: 80;
+      min-height: 38px;
+      max-width: min(520px, calc(100vw - 32px));
+      transform: translateX(-50%);
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      padding: 9px 14px;
+      background: #fff;
+      box-shadow: 0 10px 32px rgba(23, 32, 27, .16);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 18px;
+      text-align: center;
+    }
     .status:empty { display: none; }
-    .status:not(:empty) { margin-top: 12px; }
-    .status.ok { color: var(--ok); }
-    .status.error { color: var(--danger); }
+    .status.ok { color: var(--ok); border-color: #b9dac9; background: #f1fbf5; }
+    .status.error { color: var(--danger); border-color: #edb8b8; background: #fff5f5; }
     .content { min-width: 0; padding: 20px 24px 28px; overflow: visible; }
     .embedded-knowledge {
       --app-min-width: 0px;
@@ -208,8 +224,7 @@
     .embedded-knowledge .app { grid-template-columns: 1fr; }
     .embedded-knowledge .sidebar,
     .embedded-knowledge .topbar,
-    .embedded-knowledge .targets-layout,
-    .embedded-knowledge .status {
+    .embedded-knowledge .targets-layout {
       display: none !important;
     }
     .embedded-knowledge .shell {
@@ -226,9 +241,17 @@
     }
     .embedded-knowledge .workspace-grid {
       height: 100%;
+      min-height: 0;
+      align-items: stretch;
     }
     .embedded-knowledge .knowledge-tree-panel {
       top: 0;
+    }
+    .embedded-knowledge .knowledge-tree-panel,
+    .embedded-knowledge .knowledge-detail-panel {
+      height: 100%;
+      max-height: none;
+      min-height: 0;
     }
     .workspace-grid {
       display: grid;
@@ -268,6 +291,16 @@
     }
     .icon-button:hover { background: var(--brand-soft); border-color: rgba(21, 115, 107, .3); color: var(--brand-strong); box-shadow: none; }
     .icon-button svg { width: 17px; height: 17px; }
+    .compact-action {
+      min-height: 32px;
+      padding: 0 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: none;
+    }
+    .compact-action:hover { box-shadow: none; }
+    .compact-action svg { width: 16px; height: 16px; }
     .panel-body { padding: 14px; }
     .knowledge-tree-panel {
       position: sticky;
@@ -287,6 +320,38 @@
       width: 0;
       height: 0;
     }
+    .knowledge-create {
+      margin-bottom: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface-2);
+      padding: 10px;
+      display: grid;
+      gap: 9px;
+    }
+    .create-kind {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 4px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      padding: 3px;
+    }
+    .create-kind button {
+      min-height: 30px;
+      border-color: transparent;
+      background: transparent;
+      color: var(--muted);
+      padding: 0 8px;
+      box-shadow: none;
+    }
+    .create-kind button:hover { background: var(--surface-2); color: var(--ink); box-shadow: none; transform: none; }
+    .create-kind button.active { background: var(--brand-soft); color: var(--brand-strong); font-weight: 800; }
+    .create-field label { margin-bottom: 4px; }
+    .create-description { min-height: 58px; }
+    .create-actions { display: flex; justify-content: flex-end; gap: 7px; }
+    .create-actions button { min-height: 32px; }
     .business-list { display: grid; gap: 4px; min-width: 0; }
     .tree-node { margin: 2px 0; }
     .tree-node summary { list-style: none; cursor: pointer; border-radius: var(--radius); }
@@ -307,6 +372,7 @@
       min-width: 0;
     }
     .tree-row:hover, .tree-doc:hover { background: var(--surface-2); box-shadow: none; transform: none; }
+    .tree-row.active { border-color: rgba(21, 115, 107, .3); background: var(--brand-soft); color: var(--brand-strong); font-weight: 800; }
     .tree-doc.active { border-color: rgba(21, 115, 107, .35); background: var(--brand-soft); color: var(--brand-strong); font-weight: 800; }
     .tree-caret { width: 12px; height: 12px; flex: 0 0 12px; color: var(--muted); transition: transform .14s ease; }
     .tree-node[open] > summary .tree-caret { transform: rotate(90deg); }
@@ -340,6 +406,29 @@
       line-height: 1.78;
       font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
       font-size: 14px;
+    }
+    .knowledge-detail-panel {
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .knowledge-detail-panel > .panel-body {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .knowledge-detail-panel .doc-list,
+    .knowledge-detail-panel .doc-view {
+      height: 100%;
+      min-height: 0;
+    }
+    .knowledge-detail-panel .doc-content {
+      height: 100%;
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
     }
     .doc-content > :first-child { margin-top: 0; }
     .doc-content > :last-child { margin-bottom: 0; }
@@ -446,18 +535,26 @@
       .workspace-grid, .targets-layout { grid-template-columns: 1fr; }
       .knowledge-tree-panel {
         position: static;
-        max-height: 420px;
+        max-height: none;
       }
-      .embedded-knowledge .shell { overflow-y: auto; }
+      .embedded-knowledge .shell { overflow: hidden; }
       .embedded-knowledge .content {
-        height: auto;
-        min-height: 100%;
-        overflow: visible;
+        height: 100%;
+        min-height: 0;
+        overflow: hidden;
       }
       .embedded-knowledge #knowledgeView,
       .embedded-knowledge .workspace-grid {
-        height: auto;
-        min-height: 100%;
+        height: 100%;
+        min-height: 0;
+      }
+      .embedded-knowledge .knowledge-tree-panel,
+      .embedded-knowledge .knowledge-detail-panel {
+        height: 100%;
+        max-height: none;
+      }
+      .embedded-knowledge .knowledge-detail-panel > .panel-body {
+        overflow: hidden;
       }
     }
   </style>
@@ -528,6 +625,10 @@
             <div class="panel-head">
               <div class="panel-title">知识库文件树</div>
               <div class="panel-actions">
+                <button id="structureOpenBtn" class="compact-action" type="button" aria-expanded="false" aria-controls="knowledgeCreatePanel">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>
+                  <span>新增</span>
+                </button>
                 <button id="uploadOpenBtn" class="icon-button" type="button" aria-label="上传知识库文件" title="上传知识库文件">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M12 16V4" stroke-linecap="round"/><path d="m7 9 5-5 5 5" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 16.5V18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-1.5" stroke-linecap="round"/></svg>
                 </button>
@@ -536,11 +637,33 @@
             <div class="panel-body">
               <input id="businessSearch" placeholder="搜索业务板块、业务模块或资料">
               <div style="height:10px"></div>
+              <div id="knowledgeCreatePanel" class="knowledge-create hidden">
+                <div class="create-kind" role="group" aria-label="新增类型">
+                  <button id="createBoardModeBtn" class="active" type="button" aria-pressed="true">业务板块</button>
+                  <button id="createModuleModeBtn" type="button" aria-pressed="false">业务模块</button>
+                </div>
+                <div id="createBoardField" class="create-field hidden">
+                  <label for="createBoardSelect">所属业务板块</label>
+                  <select id="createBoardSelect"></select>
+                </div>
+                <div class="create-field">
+                  <label id="createNameLabel" for="createNameInput">业务板块名称</label>
+                  <input id="createNameInput" maxlength="60" placeholder="例如：企业培训业务板块">
+                </div>
+                <div class="create-field">
+                  <label for="createDescriptionInput">说明（可选）</label>
+                  <textarea id="createDescriptionInput" class="create-description" maxlength="300" placeholder="简单说明该板块承载的业务资料"></textarea>
+                </div>
+                <div class="create-actions">
+                  <button id="createCancelBtn" class="secondary" type="button">取消</button>
+                  <button id="createSubmitBtn" type="button">创建业务板块</button>
+                </div>
+              </div>
               <div id="businessList" class="business-list"></div>
             </div>
           </section>
 
-          <section class="panel">
+          <section class="panel knowledge-detail-panel">
             <div class="panel-head">
               <div class="panel-title-stack">
                 <div class="panel-title" id="selectedBusinessTitle">选择具体资料</div>
@@ -715,7 +838,7 @@
           </section>
         </div>
 
-        <div id="status" class="status"></div>
+        <div id="status" class="status" role="status" aria-live="polite" aria-atomic="true"></div>
       </section>
     </main>
   </div>
@@ -725,18 +848,22 @@
       data: null,
       tab: "knowledge",
       selectedBusinessKey: "",
+      selectedBoardId: "",
       selectedDocKey: "",
       targetBusinessKey: "",
       docQuery: "",
       businessQuery: "",
       materialFiles: {},
+      createMode: "board",
     };
 
     const els = {};
     [
       "companyName", "sideCompanyName", "tabKnowledge", "tabTargets", "tabAccounts", "tabTemplates", "tabSettings",
       "appShell", "sidebarToggle", "pageTitle", "pageSubtitle", "refreshBtn", "businessSearch", "businessList",
-      "selectedBusinessTitle", "selectedBusinessMeta", "selectedDocTags", "selectedDocCount", "uploadOpenBtn", "uploadDialog", "uploadCloseBtn", "uploadFile", "uploadMode",
+      "selectedBusinessTitle", "selectedBusinessMeta", "selectedDocTags", "selectedDocCount", "structureOpenBtn", "knowledgeCreatePanel",
+      "createBoardModeBtn", "createModuleModeBtn", "createBoardField", "createBoardSelect", "createNameLabel", "createNameInput",
+      "createDescriptionInput", "createCancelBtn", "createSubmitBtn", "uploadOpenBtn", "uploadDialog", "uploadCloseBtn", "uploadFile", "uploadMode",
       "uploadBtn", "docList", "knowledgeView",
       "targetsView", "targetBusinessCount", "targetCards", "targetEditorTitle", "targetEditorMeta",
       "goalList", "addGoalBtn", "saveTargetsBtn", "accountsView", "accountCards", "templatesView",
@@ -784,9 +911,18 @@
       },
     ];
 
+    let statusTimer = null;
+
     function setStatus(text, type = "") {
+      if (statusTimer) {
+        window.clearTimeout(statusTimer);
+        statusTimer = null;
+      }
       els.status.textContent = text || "";
       els.status.className = "status" + (type ? " " + type : "");
+      if (text && (type === "ok" || type === "error")) {
+        statusTimer = window.setTimeout(() => setStatus(""), type === "ok" ? 5000 : 7000);
+      }
     }
 
     async function fetchJson(url, options = {}) {
@@ -938,6 +1074,10 @@
       return Array.from(map.entries()).map(([id, name]) => ({business_board_id: id, name}));
     }
 
+    function selectedBoard() {
+      return businessBoards().find(item => item.business_board_id === state.selectedBoardId) || null;
+    }
+
     function profileForBusiness(business) {
       if (!business) return null;
       const targets = state.data.business_targets || {profiles: []};
@@ -968,6 +1108,7 @@
       setStatus("正在加载...");
       state.data = await fetchJson("/api/workspace/state");
       await loadMaterialFiles();
+      if (!selectedBoard() && businessBoards()[0]) state.selectedBoardId = businessBoards()[0].business_board_id;
       if (!state.selectedBusinessKey && businesses()[0]) state.selectedBusinessKey = businesses()[0].business_key;
       if (!selectedDoc() && allDocs()[0]) state.selectedDocKey = docKey(allDocs()[0]);
       if (!state.targetBusinessKey && businesses()[0]) state.targetBusinessKey = businesses()[0].business_key;
@@ -1048,37 +1189,64 @@
       };
       const company = state.data.company || ((state.data.company_settings || {}).companies || [])[0] || {};
       const grouped = new Map();
+      businessBoards().forEach(board => {
+        const boardId = board.business_board_id || board.kb_id || board.name;
+        grouped.set(boardId, {
+          id: boardId,
+          name: board.business_board_name || board.name || "业务板块",
+          description: board.description || "",
+          modules: [],
+        });
+      });
       businesses().forEach(item => {
-        const docs = (item.documents || []).filter(doc => textMatches([
-          item.name, item.business_module_name, item.business_board_name, item.knowledge_base, item.description,
-          doc.title, doc.description, doc.summary, doc.section, (doc.tags || doc.keywords || []).join(" ")
-        ]));
-        if ((query || docQuery) && !docs.length && !textMatches([item.name, item.business_module_name, item.business_board_name, item.knowledge_base, item.description])) return;
         const boardId = item.business_board_id || item.kb_id || item.business_board_name || item.knowledge_base || "board";
         const boardName = item.business_board_name || item.knowledge_base || "业务板块";
-        if (!grouped.has(boardId)) grouped.set(boardId, {id: boardId, name: boardName, modules: []});
-        grouped.get(boardId).modules.push({...item, documents: docs.length || query || docQuery ? docs : (item.documents || [])});
+        if (!grouped.has(boardId)) grouped.set(boardId, {id: boardId, name: boardName, description: "", modules: []});
+        grouped.get(boardId).modules.push(item);
       });
+      const visibleBoards = Array.from(grouped.values()).map(board => {
+        const boardMatches = textMatches([board.name, board.description]);
+        const modules = board.modules.map(item => {
+          const allDocuments = item.documents || [];
+          const moduleMatches = textMatches([
+            item.name, item.business_module_name, item.business_board_name, item.knowledge_base, item.description
+          ]);
+          const matchingDocuments = allDocuments.filter(doc => textMatches([
+            item.name, item.business_module_name, item.business_board_name, item.knowledge_base, item.description,
+            doc.title, doc.description, doc.summary, doc.section, (doc.tags || doc.keywords || []).join(" ")
+          ]));
+          if ((query || docQuery) && !boardMatches && !moduleMatches && !matchingDocuments.length) return null;
+          return {
+            ...item,
+            documents: boardMatches || moduleMatches ? allDocuments : matchingDocuments,
+          };
+        }).filter(Boolean);
+        if ((query || docQuery) && !boardMatches && !modules.length) return null;
+        return {...board, modules};
+      }).filter(Boolean);
       const folderIcon = `<svg class="tree-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2.5h6.5A2.5 2.5 0 0 1 21 10v7.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-10Z" stroke-linejoin="round"/><path d="M3 10h18" stroke-linecap="round"/></svg>`;
       const fileIcon = `<svg class="tree-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M7 3.5h6l4 4V20a1.5 1.5 0 0 1-1.5 1.5h-8A1.5 1.5 0 0 1 6 20V5A1.5 1.5 0 0 1 7.5 3.5Z" stroke-linejoin="round"/><path d="M13 3.5V8h4M9 12h6M9 15h6M9 18h4" stroke-linecap="round"/></svg>`;
       const caret = `<svg class="tree-caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" aria-hidden="true"><path d="m6 4 4 4-4 4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-      const boardsHtml = Array.from(grouped.values()).map(board => {
+      const boardsHtml = visibleBoards.map(board => {
         const moduleHtml = board.modules.map(item => {
+          const moduleActive = item.business_key === state.selectedBusinessKey && !state.selectedDocKey ? " active" : "";
           const docsHtml = (item.documents || []).map(doc => {
             const key = docKey(doc);
             const active = key === state.selectedDocKey ? " active" : "";
             return `<button class="tree-doc${active}" type="button" data-doc-key="${escapeAttr(key)}" data-business="${escapeAttr(item.business_key)}" title="${escapeAttr(doc.title || doc.relative_path || "未命名资料")}">
               ${caret}${fileIcon}<span class="tree-label">${escapeHtml(doc.title || "未命名资料")}</span>
             </button>`;
-          }).join("") || `<div class="empty">暂无具体资料</div>`;
+          }).join("") || `<div class="empty">暂无资料，可通过右上角上传补充</div>`;
           return `<details class="tree-node" open>
-            <summary><div class="tree-row">${caret}${folderIcon}<span class="tree-label">${escapeHtml(item.name)}</span><span class="tree-count">${(item.documents || []).length} 份</span></div></summary>
+            <summary data-business-select="${escapeAttr(item.business_key)}" data-board-id="${escapeAttr(board.id)}"><div class="tree-row${moduleActive}">${caret}${folderIcon}<span class="tree-label">${escapeHtml(item.name)}</span><span class="tree-count">${(item.documents || []).length} 份</span></div></summary>
             <div class="tree-children">${docsHtml}</div>
           </details>`;
         }).join("");
-        return `<details class="tree-node tree-board" data-board-id="${escapeAttr(board.id)}">
-          <summary><div class="tree-row">${caret}${folderIcon}<span class="tree-label">${escapeHtml(board.name)}</span><span class="tree-count">${board.modules.length} 模块</span></div></summary>
-          <div class="tree-children">${moduleHtml}</div>
+        const boardOpen = board.id === state.selectedBoardId ? " open" : "";
+        const boardActive = board.id === state.selectedBoardId && !state.selectedBusinessKey && !state.selectedDocKey ? " active" : "";
+        return `<details class="tree-node tree-board" data-board-id="${escapeAttr(board.id)}"${boardOpen}>
+          <summary data-board-select="${escapeAttr(board.id)}"><div class="tree-row${boardActive}">${caret}${folderIcon}<span class="tree-label">${escapeHtml(board.name)}</span><span class="tree-count">${board.modules.length} 模块</span></div></summary>
+          <div class="tree-children">${moduleHtml || `<div class="empty">暂无业务模块，可点击“新增”创建</div>`}</div>
         </details>`;
       }).join("");
       els.businessList.innerHTML = `<details class="tree-node" open>
@@ -1089,6 +1257,24 @@
         btn.addEventListener("click", () => {
           state.selectedDocKey = btn.dataset.docKey;
           state.selectedBusinessKey = btn.dataset.business || state.selectedBusinessKey;
+          const business = selectedBusiness();
+          state.selectedBoardId = business && (business.business_board_id || business.kb_id) || state.selectedBoardId;
+          render();
+        });
+      });
+      els.businessList.querySelectorAll("[data-business-select]").forEach(summary => {
+        summary.addEventListener("click", () => {
+          state.selectedBoardId = summary.dataset.boardId || state.selectedBoardId;
+          state.selectedBusinessKey = summary.dataset.businessSelect || "";
+          state.selectedDocKey = "";
+          render();
+        });
+      });
+      els.businessList.querySelectorAll("[data-board-select]").forEach(summary => {
+        summary.addEventListener("click", () => {
+          state.selectedBoardId = summary.dataset.boardSelect || "";
+          state.selectedBusinessKey = "";
+          state.selectedDocKey = "";
           render();
         });
       });
@@ -1099,6 +1285,25 @@
       const doc = selectedDoc();
       const business = doc ? businesses().find(item => item.business_key === doc.business_key) : selectedBusiness();
       if (!doc) {
+        const board = selectedBoard();
+        if (business) {
+          const count = Number(business.document_count || (business.documents || []).length || 0);
+          els.selectedBusinessTitle.textContent = business.name || "未命名业务模块";
+          els.selectedBusinessMeta.textContent = `${business.business_board_name || business.knowledge_base || "业务板块"} / ${business.business_module_name || business.name || "业务模块"}`;
+          els.selectedDocTags.innerHTML = `<span class="badge">业务模块</span><span class="badge">${count} 份资料</span>`;
+          els.selectedDocCount.textContent = count ? "选择资料" : "空业务模块";
+          els.docList.innerHTML = `<div class="empty">${count ? "请从左侧选择一份具体资料。" : "该业务模块已创建，暂时还没有文件。可点击左上角上传按钮补充资料。"}</div>`;
+          return;
+        }
+        if (board) {
+          const moduleCount = Number(board.business_module_count || (board.modules || []).length || 0);
+          els.selectedBusinessTitle.textContent = board.business_board_name || board.name || "未命名业务板块";
+          els.selectedBusinessMeta.textContent = board.description || "业务板块已创建，可继续新增业务模块。";
+          els.selectedDocTags.innerHTML = `<span class="badge">业务板块</span><span class="badge">${moduleCount} 个模块</span>`;
+          els.selectedDocCount.textContent = moduleCount ? "选择模块" : "空业务板块";
+          els.docList.innerHTML = `<div class="empty">${moduleCount ? "请从左侧选择业务模块或具体资料。" : "该业务板块暂时没有业务模块或文件，可点击左侧“新增”继续创建业务模块。"}</div>`;
+          return;
+        }
         els.selectedBusinessTitle.textContent = "选择具体资料";
         els.selectedBusinessMeta.textContent = "从左侧文件树选择一份资料后，这里会显示正文内容。";
         els.selectedDocTags.innerHTML = "";
@@ -1296,11 +1501,112 @@
         }
       }
       setStatus("正在上传...");
-      await fetchJson("/api/admin/knowledge/upload", {method: "POST", body: form});
+      const data = await fetchJson("/api/admin/knowledge/upload", {method: "POST", body: form});
+      const uploadedDocument = data.document || {};
       els.uploadFile.value = "";
       closeUploadDialog();
       await load();
-      setStatus("上传完成", "ok");
+      const uploadedKey = docKey(uploadedDocument);
+      const uploaded = allDocs().find(doc =>
+        (uploadedKey && docKey(doc) === uploadedKey) ||
+        (uploadedDocument.relative_path && doc.relative_path === uploadedDocument.relative_path)
+      );
+      if (uploaded) {
+        state.selectedDocKey = docKey(uploaded);
+        state.selectedBusinessKey = uploaded.business_key;
+        const business = selectedBusiness();
+        state.selectedBoardId = business && (business.business_board_id || business.kb_id) || "";
+        render();
+        window.requestAnimationFrame(() => {
+          const activeDocument = els.businessList.querySelector(".tree-doc.active");
+          if (activeDocument) activeDocument.scrollIntoView({block: "nearest"});
+        });
+      }
+      setStatus(`《${uploadedDocument.title || file.name}》上传成功`, "ok");
+    }
+
+    function setCreateMode(mode) {
+      state.createMode = mode === "module" ? "module" : "board";
+      const isModule = state.createMode === "module";
+      els.createBoardModeBtn.classList.toggle("active", !isModule);
+      els.createModuleModeBtn.classList.toggle("active", isModule);
+      els.createBoardModeBtn.setAttribute("aria-pressed", String(!isModule));
+      els.createModuleModeBtn.setAttribute("aria-pressed", String(isModule));
+      els.createBoardField.classList.toggle("hidden", !isModule);
+      els.createNameLabel.textContent = isModule ? "业务模块名称" : "业务板块名称";
+      els.createNameInput.placeholder = isModule ? "例如：客户培训与交付" : "例如：企业培训业务板块";
+      els.createDescriptionInput.placeholder = isModule ? "简单说明该模块包含的业务范围" : "简单说明该板块承载的业务资料";
+      els.createSubmitBtn.textContent = isModule ? "创建业务模块" : "创建业务板块";
+      els.createSubmitBtn.disabled = isModule && !businessBoards().length;
+    }
+
+    function populateCreateBoardOptions() {
+      const boards = businessBoards();
+      els.createBoardSelect.innerHTML = boards.map(board => `<option value="${escapeAttr(board.business_board_id)}">${escapeHtml(board.business_board_name || board.name)}</option>`).join("");
+      const preferred = selectedBoard() || boards[0] || null;
+      if (preferred) els.createBoardSelect.value = preferred.business_board_id;
+    }
+
+    function openCreatePanel() {
+      const willOpen = els.knowledgeCreatePanel.classList.contains("hidden");
+      els.knowledgeCreatePanel.classList.toggle("hidden", !willOpen);
+      els.structureOpenBtn.setAttribute("aria-expanded", String(willOpen));
+      if (!willOpen) return;
+      populateCreateBoardOptions();
+      setCreateMode(state.createMode);
+      els.createNameInput.focus();
+    }
+
+    function closeCreatePanel() {
+      els.knowledgeCreatePanel.classList.add("hidden");
+      els.structureOpenBtn.setAttribute("aria-expanded", "false");
+      els.createNameInput.value = "";
+      els.createDescriptionInput.value = "";
+    }
+
+    async function createKnowledgeStructure() {
+      const name = els.createNameInput.value.trim();
+      const description = els.createDescriptionInput.value.trim();
+      if (!name) {
+        setStatus(state.createMode === "module" ? "请输入业务模块名称" : "请输入业务板块名称", "error");
+        els.createNameInput.focus();
+        return;
+      }
+      const isModule = state.createMode === "module";
+      const board = businessBoards().find(item => item.business_board_id === els.createBoardSelect.value) || null;
+      if (isModule && !board) {
+        setStatus("请先选择所属业务板块", "error");
+        return;
+      }
+      const payload = {name, description};
+      if (isModule) payload.knowledge_base = board.business_board_name || board.name;
+      els.createSubmitBtn.disabled = true;
+      els.createSubmitBtn.textContent = "正在创建...";
+      try {
+        await fetchJson(isModule ? "/api/admin/knowledge/domain/create" : "/api/admin/knowledge/base/create", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(payload),
+        });
+        await load();
+        const createdBoard = businessBoards().find(item => (item.business_board_name || item.name) === (isModule ? payload.knowledge_base : name)) || null;
+        if (createdBoard) state.selectedBoardId = createdBoard.business_board_id;
+        if (isModule) {
+          const createdBusiness = businesses().find(item =>
+            (item.business_board_name || item.knowledge_base) === payload.knowledge_base &&
+            (item.business_module_name || item.name) === name
+          );
+          state.selectedBusinessKey = createdBusiness ? createdBusiness.business_key : "";
+        } else {
+          state.selectedBusinessKey = "";
+        }
+        state.selectedDocKey = "";
+        closeCreatePanel();
+        render();
+        setStatus((isModule ? "业务模块" : "业务板块") + "已创建：" + name, "ok");
+      } finally {
+        setCreateMode(state.createMode);
+      }
     }
 
     function openUploadDialog() {
@@ -1376,6 +1682,14 @@
     });
     els.refreshBtn.addEventListener("click", () => load());
     els.businessSearch.addEventListener("input", () => { state.businessQuery = els.businessSearch.value; renderBusinessList(); });
+    els.structureOpenBtn.addEventListener("click", openCreatePanel);
+    els.createBoardModeBtn.addEventListener("click", () => setCreateMode("board"));
+    els.createModuleModeBtn.addEventListener("click", () => setCreateMode("module"));
+    els.createCancelBtn.addEventListener("click", closeCreatePanel);
+    els.createSubmitBtn.addEventListener("click", () => createKnowledgeStructure().catch(err => setStatus(err.message, "error")));
+    els.createNameInput.addEventListener("keydown", event => {
+      if (event.key === "Enter") createKnowledgeStructure().catch(err => setStatus(err.message, "error"));
+    });
     els.uploadOpenBtn.addEventListener("click", openUploadDialog);
     els.uploadCloseBtn.addEventListener("click", closeUploadDialog);
     els.uploadDialog.addEventListener("click", (event) => { if (event.target === els.uploadDialog) closeUploadDialog(); });

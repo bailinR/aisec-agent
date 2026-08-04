@@ -15,6 +15,9 @@ from aisec_agent.web.session_rag_chat import (
     build_admin_activity_save_response,
     build_admin_account_settings_save_response,
     build_admin_knowledge_delete_response,
+    build_admin_knowledge_base_create_response,
+    build_admin_knowledge_domain_create_response,
+    build_admin_knowledge_route_update_response,
     build_admin_knowledge_save_response,
     build_admin_knowledge_upload_response,
     build_admin_prompt_restore_response,
@@ -62,6 +65,7 @@ from aisec_agent.web.session_rag_chat import (
     build_project_material_save_response,
     build_project_materials_response,
     build_project_route_debug_response,
+    build_workspace_state_response,
     _public_model_configs,
     _dm_pending_queue_for_account,
     _dm_redis_hash_set,
@@ -3556,6 +3560,153 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(doc["knowledge_base"], "招聘知识库")
         self.assertTrue(doc["relative_path"].startswith("knowledge/files/招聘知识库/岗位资料/AI项目经理/"))
         self.assertTrue(any(item["doc_id"] == doc["doc_id"] for item in flat_docs))
+
+    def test_workspace_keeps_new_empty_board_and_module_visible(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectMaterialStore(Path(temp_dir))
+            state = build_admin_state_response(project_store=store)
+            project_id = state["project"]["project_id"]
+
+            board_result = build_admin_knowledge_base_create_response(
+                {
+                    "project_id": project_id,
+                    "name": "企业培训业务板块",
+                    "description": "企业培训资料",
+                },
+                project_store=store,
+            )
+            module_result = build_admin_knowledge_domain_create_response(
+                {
+                    "project_id": project_id,
+                    "knowledge_base": "企业培训业务板块",
+                    "name": "客户交付业务模块",
+                    "description": "客户交付资料",
+                },
+                project_store=store,
+            )
+            workspace = build_workspace_state_response(project_store=store)
+            project_dir = Path(temp_dir) / project_id
+            module_dir = project_dir / "knowledge" / "files" / "企业培训业务板块" / "客户交付业务模块"
+            module_dir_exists = module_dir.is_dir()
+
+            with self.assertRaisesRegex(WebInputError, "domain name already exists"):
+                build_admin_knowledge_domain_create_response(
+                    {
+                        "project_id": project_id,
+                        "knowledge_base": "企业培训业务板块",
+                        "name": "客户交付业务模块",
+                    },
+                    project_store=store,
+                )
+
+        board = next(
+            item for item in workspace["business_boards"]
+            if item["business_board_name"] == "企业培训业务板块"
+        )
+        business = next(
+            item for item in workspace["businesses"]
+            if item["business_module_name"] == "客户交付业务模块"
+        )
+        self.assertEqual(board_result["created"]["type"], "knowledge_base")
+        self.assertEqual(module_result["created"]["type"], "domain")
+        self.assertEqual(board["business_module_count"], 1)
+        self.assertEqual(board["document_count"], 0)
+        self.assertEqual(business["document_count"], 0)
+        self.assertEqual(business["documents"], [])
+        self.assertTrue(business["allow_empty_placeholder"])
+        self.assertTrue(module_dir_exists)
+
+    def test_admin_upload_auto_classifies_into_matching_empty_business_board(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectMaterialStore(Path(temp_dir))
+            state = build_admin_state_response(project_store=store)
+            project_id = state["project"]["project_id"]
+            build_admin_knowledge_base_create_response(
+                {
+                    "project_id": project_id,
+                    "name": "空气能热泵烘干机",
+                    "description": "",
+                },
+                project_store=store,
+            )
+
+            uploaded = build_admin_knowledge_upload_response(
+                file_name="空气热泵烘干设备产品介绍文档.txt",
+                file_data=(
+                    "空气热泵烘干设备采用闭环热风循环，适用于农产品和中药材烘干。"
+                    "产品支持温湿度智能控制，并提供不同型号和规格参数。"
+                ).encode("utf-8"),
+                project_id=project_id,
+                project_store=store,
+            )
+            workspace = build_workspace_state_response(project_store=store)
+
+        document = uploaded["document"]
+        board = next(
+            item for item in workspace["business_boards"]
+            if item["business_board_name"] == "空气能热泵烘干机"
+        )
+        business = next(
+            item for item in workspace["businesses"]
+            if item["business_board_name"] == "空气能热泵烘干机"
+        )
+        self.assertEqual(document["knowledge_base"], "空气能热泵烘干机")
+        self.assertEqual(document["domain"], "产品资料")
+        self.assertTrue(document["relative_path"].startswith("knowledge/files/空气能热泵烘干机/产品资料/"))
+        self.assertEqual(uploaded["auto_classification"]["knowledge_base"], "空气能热泵烘干机")
+        self.assertTrue(uploaded["auto_classification"]["created_default_module"])
+        self.assertEqual(board["business_module_count"], 1)
+        self.assertEqual(board["document_count"], 1)
+        self.assertEqual(business["business_module_name"], "产品资料")
+        self.assertEqual(business["documents"][0]["doc_id"], document["doc_id"])
+
+    def test_admin_knowledge_route_update_moves_file_and_indexes(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectMaterialStore(Path(temp_dir))
+            state = build_admin_state_response(project_store=store)
+            project_id = state["project"]["project_id"]
+            uploaded = build_admin_knowledge_upload_response(
+                file_name="热泵产品说明.txt",
+                file_data="热泵烘干机产品参数与适用场景。".encode("utf-8"),
+                project_id=project_id,
+                knowledge_base="公司基础资料板块",
+                domain="AI技术与智能硬件",
+                section="默认板块",
+                project_store=store,
+            )
+            build_admin_knowledge_base_create_response(
+                {"project_id": project_id, "name": "空气能热泵烘干机"},
+                project_store=store,
+            )
+            old_path = Path(uploaded["absolute_path"])
+
+            routed = build_admin_knowledge_route_update_response(
+                {
+                    "project_id": project_id,
+                    "doc_id": uploaded["document"]["doc_id"],
+                    "relative_path": uploaded["document"]["relative_path"],
+                    "knowledge_base": "空气能热泵烘干机",
+                    "domain": "产品资料",
+                    "section": "默认板块",
+                },
+                project_store=store,
+            )
+            new_path = Path(temp_dir) / project_id / routed["document"]["relative_path"]
+            new_path_exists = new_path.exists()
+            manifest = store._read_json(Path(temp_dir) / project_id / "knowledge" / "manifest.json")
+            chunks = (Path(temp_dir) / project_id / "knowledge" / "chunks.jsonl").read_text(encoding="utf-8")
+
+        manifest_doc = next(
+            item for item in manifest["documents"]
+            if item["doc_id"] == routed["document"]["doc_id"]
+        )
+        self.assertTrue(routed["moved"])
+        self.assertFalse(old_path.exists())
+        self.assertTrue(new_path_exists)
+        self.assertEqual(routed["document"]["knowledge_base"], "空气能热泵烘干机")
+        self.assertEqual(routed["document"]["domain"], "产品资料")
+        self.assertEqual(manifest_doc["relative_path"], routed["document"]["relative_path"])
+        self.assertIn(routed["document"]["relative_path"], chunks)
 
     def test_admin_prompt_restore_routes_recruitment_comment_to_recruitment_docs(self):
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -415,10 +415,13 @@
       display: grid;
       gap: 10px;
     }
+    .content.knowledge-content {
+      overflow: hidden;
+    }
     .knowledge-hub {
       display: block;
-      height: calc(100vh - 152px);
-      min-height: 620px;
+      height: 100%;
+      min-height: 0;
     }
     .knowledge-hub > :not(.knowledge-embed) {
       display: none !important;
@@ -426,7 +429,7 @@
     .knowledge-embed {
       width: 100%;
       height: 100%;
-      min-height: 620px;
+      min-height: 0;
       overflow: hidden;
       background: #f6f7f4;
     }
@@ -434,7 +437,7 @@
       display: block;
       width: 100%;
       height: 100%;
-      min-height: 620px;
+      min-height: 0;
       border: 0;
       background: #f6f7f4;
     }
@@ -1958,7 +1961,7 @@
           </div>
         </header>
 
-        <section class="content">
+        <section class="content" :class="{'knowledge-content': activeMenu === 'knowledge'}">
           <section v-if="activeMenu === 'company'" class="company-board">
             <aside class="panel">
               <div class="panel-head">

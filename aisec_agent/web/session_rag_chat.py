@@ -3,6 +3,7 @@
 import argparse
 import ast
 import cgi
+from difflib import SequenceMatcher
 import json
 import logging
 import mimetypes
@@ -2276,7 +2277,7 @@ def _flatten_knowledge_businesses(data: Dict[str, Any]) -> List[Dict[str, Any]]:
                         "section": section_name,
                         "section_id": section_id,
                     })
-            if not documents:
+            if not documents and not domain.get("allow_empty_placeholder"):
                 continue
             businesses.append({
                 "business_key": _business_key(board_name, module_name, board_id, module_id),
@@ -2289,6 +2290,7 @@ def _flatten_knowledge_businesses(data: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "business_module_name": module_name,
                 "name": module_name,
                 "description": str(domain.get("description") or "").strip(),
+                "allow_empty_placeholder": bool(domain.get("allow_empty_placeholder")),
                 "sections": sections,
                 "documents": documents,
                 "document_count": len(documents),
@@ -2309,6 +2311,7 @@ def _workspace_business_boards(data: Dict[str, Any], businesses: List[Dict[str, 
             "business_module_name": business.get("business_module_name") or business.get("name"),
             "name": business.get("name"),
             "description": business.get("description") or "",
+            "allow_empty_placeholder": bool(business.get("allow_empty_placeholder")),
             "document_count": business.get("document_count") or 0,
         })
 
@@ -3934,6 +3937,58 @@ def build_admin_knowledge_base_create_response(
     }
 
 
+def build_admin_knowledge_domain_create_response(
+    payload: Dict[str, Any],
+    project_store: Optional[ProjectMaterialStore] = None,
+) -> Dict[str, Any]:
+    store = _project_store(project_store)
+    project_id = str(payload.get("project_id") or "").strip()
+    knowledge_base_name = str(payload.get("knowledge_base") or "").strip()
+    name = str(payload.get("name") or "").strip()
+    description = str(payload.get("description") or "").strip()
+    if not knowledge_base_name:
+        raise WebInputError("knowledge_base is required")
+    if not name:
+        raise WebInputError("name is required")
+
+    project_dir, _ = _project_root_and_meta(store, project_id)
+    descriptions = _load_document_descriptions(store, project_dir.name)
+    base = next(
+        (item for item in descriptions.get("knowledge_bases", []) if item.get("name") == knowledge_base_name),
+        None,
+    )
+    if not base:
+        raise WebInputError("knowledge base not found")
+    domains = base.setdefault("domains", [])
+    if any(str(item.get("name") or "").strip() == name for item in domains):
+        raise WebInputError("domain name already exists")
+
+    placeholder_domain = {
+        "domain_id": _domain_id(name),
+        "name": name,
+        "description": description,
+        "document_count": 0,
+        "allow_empty_placeholder": True,
+        "sections": [],
+    }
+    domains.append(placeholder_domain)
+    _knowledge_folder_path(project_dir, knowledge_base_name, name).mkdir(parents=True, exist_ok=True)
+    descriptions = _save_document_descriptions(store, project_dir.name, descriptions)
+    businesses = _flatten_knowledge_businesses(descriptions)
+    return {
+        "document_descriptions": descriptions,
+        "business_boards": _strip_workspace_project_ids(_workspace_business_boards(descriptions, businesses)),
+        "businesses": _strip_workspace_project_ids(businesses),
+        "created": {
+            "type": "domain",
+            "knowledge_base": knowledge_base_name,
+            "name": name,
+            "description": description,
+            "allow_empty_placeholder": True,
+        },
+    }
+
+
 def build_admin_knowledge_domain_update_response(
     payload: Dict[str, Any],
     project_store: Optional[ProjectMaterialStore] = None,
@@ -4185,6 +4240,229 @@ def build_admin_open_file_location_response(
     }
 
 
+def _update_document_route_indexes(
+    project_dir: Path,
+    doc_id: str,
+    old_relative_path: str,
+    document: Dict[str, Any],
+) -> None:
+    normalized_old = str(old_relative_path or "").replace("\\", "/")
+    manifest_path = project_dir / "knowledge" / "manifest.json"
+    manifest = _load_json_file(manifest_path, {"version": 1, "documents": []})
+    manifest_changed = False
+    for item in manifest.get("documents", []):
+        same_id = doc_id and item.get("doc_id") == doc_id
+        same_path = normalized_old and str(item.get("relative_path") or "").replace("\\", "/") == normalized_old
+        if not (same_id or same_path):
+            continue
+        item.update({
+            "category": document["domain"],
+            "kb_id": document["kb_id"],
+            "knowledge_base": document["knowledge_base"],
+            "domain": document["domain"],
+            "section": document["section"],
+            "relative_path": document["relative_path"],
+        })
+        manifest_changed = True
+    if manifest_changed:
+        _write_json_file(manifest_path, manifest)
+
+    chunks_path = project_dir / "knowledge" / "chunks.jsonl"
+    if not chunks_path.is_file():
+        return
+    changed = False
+    output = []
+    for line in chunks_path.read_text(encoding="utf-8").splitlines():
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            output.append(line)
+            continue
+        same_id = doc_id and item.get("doc_id") == doc_id
+        same_path = normalized_old and str(item.get("relative_path") or "").replace("\\", "/") == normalized_old
+        if same_id or same_path:
+            item["relative_path"] = document["relative_path"]
+            changed = True
+        output.append(json.dumps(item, ensure_ascii=False))
+    if changed:
+        chunks_path.write_text("\n".join(output) + ("\n" if output else ""), encoding="utf-8")
+
+
+def build_admin_knowledge_route_update_response(
+    payload: Dict[str, Any],
+    project_store: Optional[ProjectMaterialStore] = None,
+) -> Dict[str, Any]:
+    store = _project_store(project_store)
+    project_id = str(payload.get("project_id") or "").strip()
+    doc_id = str(payload.get("doc_id") or "").strip()
+    relative_path = str(payload.get("relative_path") or "").replace("\\", "/").strip()
+    knowledge_base_name = str(payload.get("knowledge_base") or "").strip()
+    domain_name = str(payload.get("domain") or "").strip()
+    section_name = str(payload.get("section") or "具体资料").strip() or "具体资料"
+    if not doc_id and not relative_path:
+        raise WebInputError("doc_id or relative_path is required")
+    if not knowledge_base_name:
+        raise WebInputError("knowledge_base is required")
+    if not domain_name:
+        raise WebInputError("domain is required")
+
+    project_dir, _ = _project_root_and_meta(store, project_id)
+    descriptions = _load_document_descriptions(store, project_dir.name)
+    documents = _flatten_description_documents(descriptions)
+    target = next(
+        (
+            item for item in documents
+            if (doc_id and item.get("doc_id") == doc_id)
+            or (relative_path and str(item.get("relative_path") or "").replace("\\", "/") == relative_path)
+        ),
+        None,
+    )
+    if not target:
+        raise WebInputError("document not found")
+
+    old_relative_path = str(target.get("relative_path") or relative_path).replace("\\", "/")
+    old_path, _ = _resolve_project_document_file(store, project_dir.name, target)
+    file_name = Path(old_relative_path).name or f"{_safe_segment(target.get('title') or 'document')}.md"
+    new_relative_path = (
+        f"knowledge/files/{_safe_segment(knowledge_base_name)}/{_safe_segment(domain_name)}/"
+        f"{_safe_segment(section_name)}/{file_name}"
+    )
+    _, new_path, new_relative_path = _safe_project_path(store, project_dir.name, new_relative_path)
+    if old_path != new_path:
+        if new_path.exists():
+            raise WebInputError("target document already exists")
+        new_path.parent.mkdir(parents=True, exist_ok=True)
+        old_path.rename(new_path)
+        _remove_empty_parent_dirs(old_path, project_dir / "knowledge" / "files")
+
+    if new_path.is_file() and new_path.suffix.lower() in {".md", ".markdown"}:
+        markdown = new_path.read_text(encoding="utf-8")
+        markdown = re.sub(r"(?m)^> 分类：.*$", f"> 分类：{domain_name}", markdown, count=1)
+        new_path.write_text(markdown, encoding="utf-8")
+
+    _remove_document_from_descriptions(descriptions, str(target.get("doc_id") or doc_id), old_relative_path)
+    _remove_empty_sections_and_domains(descriptions)
+    target_section = _ensure_description_domain(descriptions, domain_name, section_name, knowledge_base_name)
+    routed_document = {
+        **target,
+        "kb_id": _knowledge_base_id(knowledge_base_name),
+        "knowledge_base": knowledge_base_name,
+        "domain": domain_name,
+        "section": section_name,
+        "relative_path": new_relative_path,
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    target_section.setdefault("documents", []).append(routed_document)
+    descriptions = _save_document_descriptions(store, project_dir.name, descriptions)
+    _update_document_route_indexes(
+        project_dir,
+        str(routed_document.get("doc_id") or doc_id),
+        old_relative_path,
+        routed_document,
+    )
+    return {
+        "document": routed_document,
+        "document_descriptions": descriptions,
+        "moved": old_relative_path != new_relative_path,
+    }
+
+
+def _normalize_upload_route_text(value: Any) -> str:
+    text = str(value or "").lower().strip()
+    replacements = (
+        ("空气能", "空气"),
+        ("热泵烘干设备", "热泵烘干机"),
+        ("烘干设备", "烘干机"),
+    )
+    for old, new in replacements:
+        text = text.replace(old, new)
+    text = re.sub(
+        r"(?:业务板块|业务模块|产品介绍文档|产品说明文档|介绍文档|说明文档|知识库|文档|资料)$",
+        "",
+        text,
+    )
+    return re.sub(r"[^0-9a-z\u4e00-\u9fff]+", "", text)
+
+
+def _upload_taxonomy_match_score(name: Any, file_name: str, content: str) -> float:
+    candidate = _normalize_upload_route_text(name)
+    source_name = _normalize_upload_route_text(Path(file_name).stem)
+    if len(candidate) < 2 or not source_name:
+        return 0.0
+
+    name_score = SequenceMatcher(None, candidate, source_name).ratio()
+    if candidate == source_name:
+        name_score = 1.0
+    elif candidate in source_name:
+        name_score = max(name_score, 0.65 + 0.35 * len(candidate) / len(source_name))
+    elif source_name in candidate:
+        name_score = max(name_score, 0.60 + 0.30 * len(source_name) / len(candidate))
+
+    source_content = _normalize_upload_route_text(content[:6000])
+    content_score = 0.0
+    if candidate and candidate in source_content:
+        content_score = 0.55 + 0.25 * min(len(candidate) / 12, 1.0)
+    return max(name_score, content_score)
+
+
+def _default_upload_module_name(file_name: str, content: str) -> str:
+    source = f"{file_name}\n{content[:3000]}".lower()
+    module_rules = (
+        ("产品资料", r"产品|设备|型号|规格|参数|说明书|产品介绍"),
+        ("岗位资料", r"招聘|岗位|职位|候选人|面试|薪资"),
+        ("活动资料", r"活动|优惠|折扣|补贴|领取"),
+        ("话术资料", r"话术|私信|回复|沟通模板"),
+        ("合规资料", r"合规|禁用|禁止|风险|边界"),
+    )
+    for module_name, pattern in module_rules:
+        if re.search(pattern, source, flags=re.I):
+            return module_name
+    return "导入资料"
+
+
+def _match_existing_upload_taxonomy(
+    descriptions: Dict[str, Any],
+    file_name: str,
+    content: str,
+) -> Dict[str, Any]:
+    normalized = _normalize_description_structure(descriptions)
+    board_matches = []
+    for base in normalized.get("knowledge_bases", []):
+        board_name = str(base.get("name") or "").strip()
+        score = _upload_taxonomy_match_score(board_name, file_name, content)
+        if board_name:
+            board_matches.append((score, len(_normalize_upload_route_text(board_name)), base))
+    if not board_matches:
+        return {}
+
+    board_score, _, board = max(board_matches, key=lambda item: (item[0], item[1]))
+    if board_score < 0.58:
+        return {}
+
+    domains = [item for item in board.get("domains", []) if str(item.get("name") or "").strip()]
+    domain_matches = [
+        (_upload_taxonomy_match_score(item.get("name"), file_name, content), item)
+        for item in domains
+    ]
+    matched_domain = max(domain_matches, key=lambda item: item[0]) if domain_matches else None
+    if matched_domain and matched_domain[0] >= 0.52:
+        domain_name = str(matched_domain[1].get("name") or "").strip()
+        domain_score = matched_domain[0]
+        created_default_module = False
+    else:
+        domain_name = _default_upload_module_name(file_name, content)
+        domain_score = 0.0
+        created_default_module = not any(item.get("name") == domain_name for item in domains)
+
+    return {
+        "knowledge_base": str(board.get("name") or "").strip(),
+        "domain": domain_name,
+        "board_score": round(board_score, 4),
+        "domain_score": round(domain_score, 4),
+        "created_default_module": created_default_module,
+    }
+
+
 def build_admin_knowledge_upload_response(
     file_name: str,
     file_data: bytes,
@@ -4208,12 +4486,19 @@ def build_admin_knowledge_upload_response(
     if not content:
         raise WebInputError("file content is empty after parsing")
 
+    descriptions = _load_document_descriptions(store, project_dir.name)
     meta = store._suggest_imported_document_meta(file_name, content, llm_tools, model_conf)
+    auto_route = {}
+    if not str(knowledge_base or "").strip() and not str(domain or "").strip():
+        auto_route = _match_existing_upload_taxonomy(descriptions, file_name, content)
     knowledge_base_name = _safe_segment(
-        knowledge_base or meta.get("knowledge_base") or DEFAULT_KNOWLEDGE_BASE_NAME,
+        knowledge_base or auto_route.get("knowledge_base") or meta.get("knowledge_base") or DEFAULT_KNOWLEDGE_BASE_NAME,
         DEFAULT_KNOWLEDGE_BASE_NAME,
     )
-    domain_name = _safe_segment(domain or meta.get("domain") or meta.get("category") or "导入资料", "导入资料")
+    domain_name = _safe_segment(
+        domain or auto_route.get("domain") or meta.get("domain") or meta.get("category") or "导入资料",
+        "导入资料",
+    )
     section_name = _safe_segment(section or meta.get("section") or "默认板块", "默认板块")
     title = store._safe_title(meta.get("title") or Path(file_name).stem or "导入资料")
     doc_id = "admin_" + uuid.uuid5(
@@ -4263,7 +4548,6 @@ def build_admin_knowledge_upload_response(
     store._upsert_manifest_document(project_dir, manifest_doc)
     store._upsert_chunks(project_dir, doc_id, file_name, relative_path, chunks, sender_identity=sender_identity)
 
-    descriptions = _load_document_descriptions(store, project_dir.name)
     target_section = _ensure_description_domain(descriptions, domain_name, section_name, knowledge_base_name)
     documents = [
         item for item in target_section.setdefault("documents", [])
@@ -4311,6 +4595,7 @@ def build_admin_knowledge_upload_response(
         "company_settings": company_settings,
         "manifest_document": manifest_doc,
         "absolute_path": str(doc_path),
+        "auto_classification": auto_route,
     }
 
 
@@ -7240,6 +7525,10 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self._handle_admin_knowledge_save()
             return
 
+        if path == "/api/admin/knowledge/route/update":
+            self._handle_admin_knowledge_route_update()
+            return
+
         if path == "/api/admin/knowledge/delete":
             self._handle_admin_knowledge_delete()
             return
@@ -7254,6 +7543,10 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/knowledge/base/delete":
             self._handle_admin_knowledge_base_delete()
+            return
+
+        if path == "/api/admin/knowledge/domain/create":
+            self._handle_admin_knowledge_domain_create()
             return
 
         if path == "/api/admin/knowledge/domain/update":
@@ -7576,6 +7869,19 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
+    def _handle_admin_knowledge_route_update(self):
+        try:
+            payload = self._read_json()
+            data = build_admin_knowledge_route_update_response(
+                payload,
+                project_store=self.server.project_store,
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
     def _handle_admin_knowledge_save(self):
         try:
             payload = self._read_json()
@@ -7632,6 +7938,19 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
         try:
             payload = self._read_json()
             data = build_admin_knowledge_base_delete_response(
+                payload,
+                project_store=self.server.project_store,
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_admin_knowledge_domain_create(self):
+        try:
+            payload = self._read_json()
+            data = build_admin_knowledge_domain_create_response(
                 payload,
                 project_store=self.server.project_store,
             )
