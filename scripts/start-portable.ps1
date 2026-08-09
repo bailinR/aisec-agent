@@ -70,10 +70,45 @@ function Assert-PortAvailable {
   }
 }
 
+function Find-AvailablePort {
+  param(
+    [int]$PreferredPort,
+    [int]$MaximumAttempts = 100
+  )
+
+  for ($candidate = $PreferredPort; $candidate -lt ($PreferredPort + $MaximumAttempts); $candidate++) {
+    $listener = Get-NetTCPConnection -LocalPort $candidate -State Listen -ErrorAction SilentlyContinue
+    if (-not $listener) {
+      return $candidate
+    }
+  }
+  throw "No available Redis port was found between $PreferredPort and $($PreferredPort + $MaximumAttempts - 1)."
+}
+
 if ($Restart) {
   Stop-OwnedProcess "web" $Python
   Stop-OwnedProcess "worker" $Python
   Stop-OwnedProcess "redis" $RedisServer
+  Remove-Item -LiteralPath (Join-Path $StateRoot "redis.port") -Force -ErrorAction SilentlyContinue
+}
+
+$requestedRedisPort = $RedisPort
+$redisProcess = Get-OwnedProcess "redis" $RedisServer
+if ($redisProcess) {
+  $savedRedisPortFile = Join-Path $StateRoot "redis.port"
+  if (Test-Path $savedRedisPortFile) {
+    $savedRedisPort = [int](Get-Content -LiteralPath $savedRedisPortFile -Raw)
+    if ($savedRedisPort -ge 1 -and $savedRedisPort -le 65535) {
+      $RedisPort = $savedRedisPort
+    }
+  }
+} else {
+  $RedisPort = Find-AvailablePort -PreferredPort $RedisPort
+  if ($RedisPort -ne $requestedRedisPort) {
+    $occupiedListener = Get-NetTCPConnection -LocalPort $requestedRedisPort -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+    $occupiedPid = if ($occupiedListener) { $occupiedListener.OwningProcess } else { "unknown" }
+    Write-Warning "Redis port $requestedRedisPort is occupied by PID $occupiedPid. Using available port $RedisPort for this project."
+  }
 }
 
 $env:PYTHONHOME = $null
@@ -95,9 +130,7 @@ $env:PATH = @(
   (Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0")
 ) -join ";"
 
-$redisProcess = Get-OwnedProcess "redis" $RedisServer
 if (-not $redisProcess) {
-  Assert-PortAvailable $RedisPort "Redis"
   $redisArguments = @(
     "`"$RedisConfig`"",
     "--port", [string]$RedisPort,
@@ -112,6 +145,7 @@ if (-not $redisProcess) {
     -PassThru
   Set-Content -LiteralPath (Join-Path $StateRoot "redis.pid") -Value $redisProcess.Id -Encoding ASCII
 }
+Set-Content -LiteralPath (Join-Path $StateRoot "redis.port") -Value $RedisPort -Encoding ASCII
 
 $redisReady = $false
 for ($attempt = 0; $attempt -lt 30; $attempt++) {

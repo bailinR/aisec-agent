@@ -54,7 +54,7 @@ git rev-parse origin/<当前分支>
 
 ## 4. 启动内容
 
-- Redis：`127.0.0.1:6389`，数据库 `11`。
+- Redis：默认 `127.0.0.1:6389`，数据库 `11`；端口已被其他程序占用时，启动脚本会自动选择后续空闲端口，并让 Web 与 worker 使用同一地址。
 - Web：`0.0.0.0:7860`。
 - worker：`aisec_agent.worker.douyin_dm_worker --mode send`。
 

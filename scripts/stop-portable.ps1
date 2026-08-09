@@ -29,6 +29,7 @@ function Stop-OwnedProcess {
 Stop-OwnedProcess "web" $Python
 Stop-OwnedProcess "worker" $Python
 Stop-OwnedProcess "redis" $RedisServer
+Remove-Item -LiteralPath (Join-Path $StateRoot "redis.port") -Force -ErrorAction SilentlyContinue
 
 # Persistent Playwright contexts can outlive their parent after a forced stop.
 $profileRoot = [IO.Path]::GetFullPath((Join-Path $ProjectRoot "content\playwright_profiles"))
