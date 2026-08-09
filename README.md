@@ -7,6 +7,20 @@
 - 项目资料/知识库占位：后续可继续完善资料入库和检索。
 - 文件解析预览页面：上传 txt、Word、PDF、Excel 等文件，查看解析后的文本。
 
+## Windows 一键部署
+
+全新 Windows x64 电脑安装 Git 后，克隆项目并切换到发布分支：
+
+```powershell
+git clone https://github.com/bailinR/aisec-agent.git
+cd aisec-agent
+git switch show
+```
+
+双击 `部署并启动.cmd`。首次运行会在项目内自动安装 Python、Redis、Playwright Chromium 和依赖，并同时启动 Web、私信 worker 与 Redis。
+
+以后更新直接双击 `更新并启动.cmd`；脚本会执行安全的快进拉取、校验本地与远程提交一致，再重启项目。详细说明见 `docs/Windows全新电脑一键部署.md`。
+
 ## 环境准备
 
 建议使用 Python 3.10+。

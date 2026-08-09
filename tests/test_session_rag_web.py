@@ -58,6 +58,7 @@ from aisec_agent.web.session_rag_chat import (
     _dm_message_page,
     _dm_persistent_context_alive,
     _dm_collect_message_bubble_matches,
+    _dm_message_editor_text,
     _dm_should_retry_browser_closed,
     _dm_should_keep_browser_open_on_failure,
     build_model_config_save_response,
@@ -1268,6 +1269,42 @@ class SessionRAGWebTest(unittest.TestCase):
         generic_click.assert_not_called()
         coordinate_click.assert_not_called()
 
+    def test_douyin_dm_message_editor_treats_zero_width_residue_as_empty(self):
+        class DummyPage:
+            def evaluate(self, _script):
+                return "\u200b\u200c\u200d\u2060\ufeff"
+
+        self.assertEqual(_dm_message_editor_text(DummyPage()), "")
+
+    def test_douyin_dm_send_current_message_does_not_blind_click_coordinates(self):
+        class DummyPage:
+            def get_by_role(self, *_args, **_kwargs):
+                return object()
+
+            def locator(self, *_args, **_kwargs):
+                return object()
+
+        page = DummyPage()
+        with patch(
+            "aisec_agent.web.session_rag_chat._dm_visible_message_editor",
+            return_value=object(),
+        ), patch(
+            "aisec_agent.web.session_rag_chat._dm_click_editor_send_button",
+            return_value=None,
+        ), patch(
+            "aisec_agent.web.session_rag_chat._dm_click_first",
+            side_effect=RuntimeError("explicit send button not found"),
+        ), patch(
+            "aisec_agent.web.session_rag_chat._dm_click_editor_send_icon",
+            return_value=None,
+        ), patch(
+            "aisec_agent.web.session_rag_chat._dm_editor_send_click_point",
+        ) as coordinate_click:
+            with self.assertRaisesRegex(RuntimeError, "trusted editor send control not found"):
+                _dm_send_current_message(page, timeout_ms=1)
+
+        coordinate_click.assert_not_called()
+
     def test_douyin_dm_wait_message_sent_requires_new_bubble(self):
         class DummyPage:
             def wait_for_timeout(self, *_args, **_kwargs):
@@ -1808,6 +1845,28 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertNotIn("SECRET_COOKIE", str(response))
         self.assertNotIn("ANOTHER_SECRET", str(response))
 
+    def test_douyin_account_cookie_apply_forwards_browser_open_options(self):
+        response = build_douyin_account_cookie_apply_response(
+            {
+                "browser": "edge",
+                "account_cookies": "sessionid=SECRET_COOKIE",
+                "open_url": "https://www.douyin.com/user/test-sec-uid",
+                "keep_browser_open": True,
+                "persistent_context": True,
+                "user_data_dir": "content/playwright_profiles/accounts/edge/test-account",
+            },
+            executor=fake_douyin_account_cookie_executor,
+        )
+
+        options = response["seen"]["options"]
+        self.assertEqual(options["open_url"], "https://www.douyin.com/user/test-sec-uid")
+        self.assertTrue(options["keep_browser_open"])
+        self.assertTrue(options["persistent_context"])
+        self.assertEqual(
+            options["user_data_dir"],
+            "content/playwright_profiles/accounts/edge/test-account",
+        )
+
     def test_douyin_account_profile_marks_blue_v(self):
         profile = _douyin_account_profile({
             "user": {
@@ -1912,6 +1971,80 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertIs(page, context.pages[0])
         self.assertEqual(context.new_page_calls, 0)
 
+    def test_dm_message_page_reuses_latest_page_for_a_new_target(self):
+        class FakePage:
+            def __init__(self, url):
+                self.url = url
+                self.close_calls = 0
+
+            def close(self):
+                self.close_calls += 1
+
+        class FakeContext:
+            def __init__(self):
+                self.pages = [
+                    FakePage("https://www.douyin.com/user/old-target-one"),
+                    FakePage("https://www.douyin.com/user/old-target-two"),
+                ]
+                self.new_page_calls = 0
+
+            def new_page(self):
+                self.new_page_calls += 1
+                return FakePage("about:blank")
+
+        context = FakeContext()
+        page = _dm_message_page(context, "https://www.douyin.com/user/new-target")
+
+        self.assertIs(page, context.pages[1])
+        self.assertEqual(context.new_page_calls, 0)
+        self.assertEqual(context.pages[0].close_calls, 1)
+        self.assertEqual(context.pages[1].close_calls, 0)
+
+    def test_dm_message_page_prefers_matching_target_and_closes_other_pages(self):
+        class FakePage:
+            def __init__(self, url):
+                self.url = url
+                self.close_calls = 0
+
+            def close(self):
+                self.close_calls += 1
+
+        matching_page = FakePage("https://www.douyin.com/user/target?from_tab_name=main")
+        stale_page = FakePage("https://www.douyin.com/user/stale-target")
+
+        class FakeContext:
+            pages = [matching_page, stale_page]
+
+            def new_page(self):
+                raise AssertionError("matching page should be reused")
+
+        page = _dm_message_page(FakeContext(), "https://www.douyin.com/user/target")
+
+        self.assertIs(page, matching_page)
+        self.assertEqual(matching_page.close_calls, 0)
+        self.assertEqual(stale_page.close_calls, 1)
+
+    def test_dm_message_page_opens_a_page_when_context_has_no_open_pages(self):
+        class FakePage:
+            url = "about:blank"
+
+        class FakeContext:
+            pages = []
+
+            def __init__(self):
+                self.new_page_calls = 0
+                self.created_page = FakePage()
+
+            def new_page(self):
+                self.new_page_calls += 1
+                return self.created_page
+
+        context = FakeContext()
+        page = _dm_message_page(context, "https://www.douyin.com/user/new-target")
+
+        self.assertIs(page, context.created_page)
+        self.assertEqual(context.new_page_calls, 1)
+
     def test_dm_cleanup_closed_playwright_sessions_stops_stale_runtime(self):
         class FakeContext:
             browser = None
@@ -1997,6 +2130,9 @@ class SessionRAGWebTest(unittest.TestCase):
     def test_dm_should_keep_browser_open_on_manual_failure(self):
         self.assertTrue(_dm_should_keep_browser_open_on_failure("verification required", True))
         self.assertTrue(_dm_should_keep_browser_open_on_failure("login required", True))
+        self.assertTrue(_dm_should_keep_browser_open_on_failure("message send was not confirmed", True))
+        self.assertTrue(_dm_should_keep_browser_open_on_failure("page load timed out", True))
+        self.assertFalse(_dm_should_keep_browser_open_on_failure("browser has been closed", True))
         self.assertFalse(_dm_should_keep_browser_open_on_failure("verification required", False))
 
     def test_douyin_private_message_demo_rejects_non_douyin_url(self):

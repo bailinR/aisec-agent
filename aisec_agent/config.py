@@ -5,6 +5,8 @@
 # @Site    : 
 # @File    : config.py
 from os import environ, getcwd, makedirs, path
+from json import loads
+from urllib.parse import unquote, urlparse
 
 from ugly_code.ex import load_json_config
 
@@ -25,7 +27,7 @@ JINA_MODEL_ONNX = path.join(JINA_MODEL, "onnx/model_fp16.onnx")
 BGE_MODEL = path.join(AI_MODEL_DIR, "embedding/bge/m3")
 BGE_MODEL_ONNX = path.join(BGE_MODEL, "onnx/model.onnx")
 EXPORT_PATH = path.join(CONTENT_PATH, "export")
-DUCK_URL = 'http://10.11.17.156:86/canndy/'
+DUCK_URL = environ.get("AISEC_DUCK_URL", "")
 DEEP_SEARCH_CONF = {
     "url": environ.get("DEEP_SEARCH_URL", "https://api.bochaai.com/v1/ai-search"),
     "key": environ.get("DEEP_SEARCH_API_KEY", "")
@@ -51,10 +53,30 @@ PROCESS_CONFIG = {
 }
 AK =""
 SK=""
-DEFAULT_REDIS = {
-    "host": "127.0.0.1",
-    "db": 11
-}
+def _redis_config_from_env():
+    redis_url = environ.get("REDIS_URL", "").strip()
+    if not redis_url:
+        return {"host": "127.0.0.1", "db": 11}
+
+    parsed = urlparse(redis_url)
+    if parsed.scheme not in {"redis", "rediss"}:
+        raise ValueError("REDIS_URL must use redis:// or rediss://")
+
+    redis_config = {
+        "host": parsed.hostname or "127.0.0.1",
+        "port": parsed.port or 6379,
+        "db": int(parsed.path.strip("/") or 0),
+    }
+    if parsed.username:
+        redis_config["username"] = unquote(parsed.username)
+    if parsed.password:
+        redis_config["password"] = unquote(parsed.password)
+    if parsed.scheme == "rediss":
+        redis_config["ssl"] = True
+    return redis_config
+
+
+DEFAULT_REDIS = _redis_config_from_env()
 
 MINIO_CNF = {
     "endpoint": environ.get("AISEC_MINIO_ENDPOINT", "127.0.0.1:9000"),
@@ -109,20 +131,14 @@ SQL_SERVER_TABLES = {
         "description": "存储员工的完整的请假信息"
     }
 }
-GENIE_API = "http://10.11.17.156:1603/v1"
-AK="gNqrjlm6c9NBvzRXrA67"
-SK="LGwk7ogHHErtKHnwXWiC"
+GENIE_API = environ.get("AISEC_GENIE_API", "")
+AK = environ.get("AISEC_GENIE_AK", "")
+SK = environ.get("AISEC_GENIE_SK", "")
 DISABLED_WORKERS = ()
-MCP_SERVICES = [
-    {
-        "url": "http://10.11.17.156:81/toolbox/mcp",
-        "description": ""
-    },
-    {
-        "url": "http://10.11.17.156:81/piggy/mcp",
-        "description": ""
-    }
-]
+try:
+    MCP_SERVICES = loads(environ.get("AISEC_MCP_SERVICES_JSON", "[]"))
+except (TypeError, ValueError):
+    MCP_SERVICES = []
 
 for d in (
        CONTENT_PATH,  EXPORT_PATH

@@ -1,7 +1,0 @@
-# The /api/v1 demo API entrypoint is intentionally lightweight.
-# It uses Python standard-library HTTP serving and urllib for model calls.
-# Install extra packages only when enabling optional file parsing features:
-# PyMuPDF==1.28.0
-# numpy==1.26.4
-# pandas==2.2.3
-# openpyxl==3.1.5

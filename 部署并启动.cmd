@@ -1,19 +1,16 @@
 @echo off
 setlocal
-
+chcp 65001 >nul
 cd /d "%~dp0"
-
-echo Starting aisec-agent Web + worker...
-echo.
 
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\deploy-start.ps1" -Restart -Open
 if errorlevel 1 (
   echo.
-  echo Startup failed. Review the message above and runtime\logs.
+  echo Deployment or startup failed. Review the message above and runtime\logs.
   pause
   exit /b 1
 )
 
 echo.
-echo Done. You can close this window after checking the startup output.
+echo Deployment and startup completed.
 pause

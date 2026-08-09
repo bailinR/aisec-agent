@@ -325,6 +325,49 @@
       font-size: 12px;
       line-height: 1.5;
     }
+    .dm-send-panel .panel-body { padding: 0; }
+    .dm-send-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 290px;
+      min-height: 180px;
+    }
+    .dm-send-layout > * { min-width: 0; }
+    .dm-send-editor {
+      padding: 14px;
+      display: grid;
+      gap: 8px;
+      align-content: start;
+    }
+    .dm-send-editor textarea {
+      min-height: 120px;
+      font-family: "Inter", "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+    }
+    .dm-send-side {
+      border-left: 1px solid var(--line);
+      background: var(--panel-soft);
+      padding: 14px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 14px;
+      align-content: space-between;
+      min-width: 0;
+    }
+    .dm-send-status { display: flex; gap: 6px; flex-wrap: wrap; }
+    .dm-send-target {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .dm-send-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      min-width: 0;
+    }
+    .dm-send-actions button { width: 100%; }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
     .inline-check { width: auto; min-height: 0; }
     button.mini { min-height: 30px; padding: 0 9px; font-size: 12px; }
@@ -1907,6 +1950,8 @@
       .kb-editor-head { align-items: flex-start; flex-direction: column; }
       .kb-meta-grid { grid-template-columns: 1fr; }
       .metric-grid, .field-grid, .field-grid.three, .field-grid.four, .dm-demo-strip { grid-template-columns: 1fr; }
+      .dm-send-layout { grid-template-columns: 1fr; }
+      .dm-send-side { border-left: 0; border-top: 1px solid var(--line); }
       .prompt-compose-panel {
         margin: 0 12px 12px;
       }
@@ -3045,7 +3090,6 @@
                   <div class="panel-meta">生成回复后查看私信内容</div>
                 </div>
                 <div class="panel-actions">
-                  <button class="danger mini" @click="runDouyinDmDemo(true)" :disabled="!dmAnswer || !dmForm.target_profile_url || dmRunning">发送私信</button>
                   <button class="secondary mini" @click="pauseDmAction" :disabled="!dmRunning">暂停</button>
                   <button @click="generateDm" :disabled="dmRunning">生成私信</button>
                 </div>
@@ -3142,6 +3186,48 @@
                   <div class="bubble user" v-if="dmForm.question">{{ dmForm.question }}</div>
                   <div class="bubble ai" v-if="dmAnswer">{{ dmAnswer }}</div>
                   <div class="empty" v-if="!dmAnswer">生成后，回复会显示在这里。</div>
+                </div>
+              </div>
+            </section>
+            <section class="panel dm-send-panel" data-testid="dm-browser-send-card">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">浏览器发送</div>
+                  <div class="panel-meta">打开目标主页，或按演示动作预填、发送当前私信。</div>
+                </div>
+                <span class="tag" :class="dmRunning ? 'amber' : (dmAnswer ? 'ok' : '')">
+                  {{ dmRunning ? dmAction : (dmAnswer ? '内容已就绪' : '等待生成') }}
+                </span>
+              </div>
+              <div class="panel-body">
+                <div class="dm-send-layout">
+                  <div class="dm-send-editor">
+                    <label>发送内容（可修改）</label>
+                    <textarea
+                      v-model="dmAnswer"
+                      rows="5"
+                      placeholder="先生成私信，或直接输入要预填、发送的内容"
+                    ></textarea>
+                    <div class="panel-meta">执行时使用这里的最终文本；生成后手动修改也会按修改后的内容发送。</div>
+                  </div>
+                  <div class="dm-send-side">
+                    <div>
+                      <div class="dm-send-status">
+                        <span class="tag" :class="dmForm.target_profile_url ? 'ok' : 'amber'">{{ dmForm.target_profile_url ? '目标已填写' : '缺少目标' }}</span>
+                        <span class="tag" :class="dmAnswer ? 'ok' : 'amber'">{{ dmAnswer ? (dmAnswer.length + ' 字') : '缺少内容' }}</span>
+                      </div>
+                      <div class="panel-meta">{{ dmSendAccountLabel }}</div>
+                      <div class="dm-send-target" :title="dmForm.target_profile_url || ''">{{ dmForm.target_profile_url || '请先填写抖音主页链接' }}</div>
+                    </div>
+                    <div class="dm-send-actions">
+                      <button class="secondary" @click="openDouyinDmBrowser" :disabled="!dmForm.target_profile_url || dmRunning">打开浏览器</button>
+                      <button
+                        :class="dmForm.demo_mode === 'send' ? 'danger' : ''"
+                        @click="runDouyinDmDemo(false)"
+                        :disabled="!dmAnswer || !dmForm.target_profile_url || dmRunning"
+                      >{{ dmForm.demo_mode === 'send' ? '发送私信' : '预填私信' }}</button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </section>
@@ -3330,6 +3416,16 @@
             return this.managedAccounts.find(item => item.id === this.dmForm.selected_account_id)
               || this.selectedManagedAccount
               || {};
+          },
+          dmSendAccountLabel() {
+            const selected = this.dmSelectedAccount || {};
+            if (this.dmForm.selected_account_id && String(selected.cookie_text || "").trim()) {
+              return "发送账号：" + (selected.name || "已选托管账号");
+            }
+            if (this.dmForm.use_account_cookie && String(this.dmForm.account_cookie_text || "").trim()) {
+              return "发送账号：使用手动 Cookie";
+            }
+            return "发送账号：使用浏览器当前登录态";
           },
           managedAccountStats() {
             const total = this.managedAccounts.length;
@@ -4798,7 +4894,14 @@
                 account_cookies: accountCookies,
               }),
             });
-            account.status = data.success === false ? "risk" : "hosting";
+            const failed = data.success === false || data.opened === false;
+            if (failed) {
+              account.status = "risk";
+              this.applyManagedAccountProfile(account, data);
+              this.persistManagedAccounts(true);
+              throw new Error(data.failure_summary || data.error || "浏览器未能打开或应用 Cookie");
+            }
+            account.status = "hosting";
             this.applyManagedAccountProfile(account, data);
             this.persistManagedAccounts(true);
             return data;
@@ -4809,7 +4912,7 @@
             this.setStatus("正在把账号 Cookie 写入浏览器会话...");
             try {
               const data = await this.applyManagedAccountCookieRequest(account);
-              this.setStatus("已写入 " + (data.account_cookie_count || 0) + " 枚 Cookie", data.success === false ? "error" : "ok");
+              this.setStatus("已写入 " + (data.account_cookie_count || 0) + " 枚 Cookie", "ok");
             } catch (error) {
               account.status = "risk";
               this.persistManagedAccounts(true);
@@ -4832,6 +4935,9 @@
             this.setStatus("正在检测当前账号是蓝V还是普通账号...");
             try {
               const data = await this.applyManagedAccountCookieRequest(account, "https://www.douyin.com/");
+              if (data.success === false || data.opened === false) {
+                throw new Error(data.failure_summary || data.error || "浏览器未能打开或应用 Cookie");
+              }
               const label = this.managedAccountTypeLabel(account);
               if (data.account_type === "unknown") {
                 const tip = data.requires_login
@@ -4861,8 +4967,6 @@
             this.setStatus("正在打开账号托管浏览器...");
             try {
               const data = await this.applyManagedAccountCookieRequest(account, url);
-              account.status = "hosting";
-              this.persistManagedAccounts(true);
               this.setStatus("已携带账号登录信息打开托管浏览器：" + (data.resolved_browser || data.browser || this.managedAccountBrowserLabel(account.browser_name)), "ok");
             } catch (error) {
               account.status = "risk";
@@ -5449,12 +5553,81 @@
             this.dmForm.account_cookie_text = "";
             this.setStatus("已清空私信调试 Cookie", "ok");
           },
+          resolvedDmAccountCookieText() {
+            const manualCookie = String(this.dmForm.account_cookie_text || "").trim();
+            if (this.dmForm.use_account_cookie && manualCookie) return manualCookie;
+            if (this.dmForm.selected_account_id) {
+              return String((this.dmSelectedAccount || {}).cookie_text || "").trim();
+            }
+            return "";
+          },
           douyinAccountCookiePayload() {
-            if (!this.dmForm.use_account_cookie) return {};
-            const accountCookies = String(this.dmForm.account_cookie_text || "").trim()
-              || String((this.dmSelectedAccount || {}).cookie_text || "").trim();
+            const accountCookies = this.resolvedDmAccountCookieText();
             if (!accountCookies) return {};
-            return {account_cookies: accountCookies};
+            return {
+              account_id: String((this.dmSelectedAccount || {}).id || ""),
+              account_cookies: accountCookies,
+            };
+          },
+          async openDouyinDmBrowser() {
+            const url = String(this.dmForm.target_profile_url || "").trim();
+            if (!url) {
+              this.setStatus("请先填写抖音主页链接", "error");
+              return null;
+            }
+            if (!/^https?:\/\/([a-z0-9-]+\.)*douyin\.com(?:\/|$)/i.test(url)) {
+              this.setStatus("请输入有效的抖音主页链接", "error");
+              return null;
+            }
+            const controller = this.startDmAction("打开浏览器");
+            if (!controller) return null;
+            this.setStatus("正在打开抖音主页...");
+            try {
+              const accountCookies = this.resolvedDmAccountCookieText();
+              const data = accountCookies
+                ? await this.fetchJson("/api/v1/douyin/account-cookie/apply", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({
+                      browser: this.dmForm.browser_name || "default",
+                      headless: false,
+                      use_cdp: true,
+                      keep_browser_open: true,
+                      persistent_context: true,
+                      open_url: url,
+                      account_id: String((this.dmSelectedAccount || {}).id || ""),
+                      account_cookies: accountCookies,
+                    }),
+                    ...this.abortableOptions(controller),
+                  })
+                : await this.fetchJson("/api/open-url", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({
+                      url,
+                      browser: this.dmForm.browser_name || "default",
+                      new_window: true,
+                    }),
+                    ...this.abortableOptions(controller),
+                  });
+              if (data.success === false || data.opened === false) {
+                throw new Error(data.failure_summary || data.error || "浏览器未能打开");
+              }
+              this.setStatus(
+                accountCookies ? "已携带账号登录信息打开抖音主页" : "已打开抖音主页",
+                "ok"
+              );
+              return data;
+            } catch (error) {
+              if (this.isAbortError(error)) {
+                this.setStatus("已暂停打开浏览器", "info");
+                return null;
+              }
+              this.setStatus(error.message || "打开浏览器失败", "error");
+              return null;
+            } finally {
+              this.finishDmAction(controller);
+            }
           },
           async runDouyinDmDemo(forceSend = false) {
             const url = String(this.dmForm.target_profile_url || "").trim();
@@ -5467,7 +5640,7 @@
               return null;
             }
             if (!reply) {
-              this.setStatus("请先生成私信", "error");
+              this.setStatus("请先生成或填写私信内容", "error");
               return null;
             }
             if (shouldSendGroupLink && !/^https?:\/\/([a-z0-9-]+\.)*douyin\.com(?:\/|$)/i.test(groupLink)) {

@@ -3,6 +3,7 @@
 import argparse
 import ast
 import cgi
+from concurrent.futures import ThreadPoolExecutor
 from difflib import SequenceMatcher
 import json
 import logging
@@ -8190,7 +8191,7 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             payload = self._read_json()
             data = build_douyin_private_message_demo_response(
                 payload,
-                executor=_douyin_private_message_playwright_executor,
+                executor=_web_douyin_private_message_playwright_executor,
             )
             self._send_json({"ok": True, "data": data})
         except WebInputError as e:
@@ -8203,7 +8204,7 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             payload = self._read_json()
             data = build_douyin_account_cookie_apply_response(
                 payload,
-                executor=_douyin_account_cookie_playwright_executor,
+                executor=_web_douyin_account_cookie_playwright_executor,
             )
             self._send_json({"ok": True, "data": data})
         except WebInputError as e:
@@ -8529,6 +8530,10 @@ DM_DEFAULT_VIEWPORT_WIDTH = 1440
 DM_DEFAULT_VIEWPORT_HEIGHT = 900
 DM_PLAYWRIGHT_PROFILE_ROOT = Path(os.getenv("AISEC_DM_PLAYWRIGHT_PROFILE_ROOT", Path(__file__).resolve().parents[2] / "content" / "playwright_profiles"))
 _DM_PLAYWRIGHT_SESSIONS: Dict[str, Dict[str, Any]] = {}
+# Playwright's sync API is bound to the thread that starts its greenlet.  The
+# HTTP server is a ThreadingHTTPServer, so web requests must share one stable
+# execution thread when persistent contexts are kept alive between requests.
+_DM_WEB_PLAYWRIGHT_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="dm-web-playwright")
 
 
 DM_FAILURE_PROFILES = {
@@ -8894,19 +8899,39 @@ def _dm_persistent_context_alive(context: Any) -> bool:
 def _dm_message_page(context: Any, profile_url: str) -> Any:
     pages = list(getattr(context, "pages", None) or [])
     target = _dm_normalized_target(profile_url)
-    for page in reversed(pages):
-        try:
-            if target and _dm_normalized_target(page.url) == target:
-                return page
-        except Exception:
-            continue
+
+    open_pages = []
     for page in pages:
         try:
-            if str(page.url or "").strip().lower() in {"", "about:blank", "edge://newtab/", "chrome://newtab/"}:
-                return page
+            is_closed = getattr(page, "is_closed", None)
+            if callable(is_closed) and bool(is_closed()):
+                continue
         except Exception:
             continue
-    return context.new_page()
+        open_pages.append(page)
+
+    selected_page = None
+    for page in reversed(open_pages):
+        try:
+            if target and _dm_normalized_target(page.url) == target:
+                selected_page = page
+                break
+        except Exception:
+            continue
+
+    if selected_page is None and open_pages:
+        selected_page = open_pages[-1]
+    if selected_page is None:
+        selected_page = context.new_page()
+
+    for page in open_pages:
+        if page is selected_page:
+            continue
+        try:
+            page.close()
+        except Exception:
+            pass
+    return selected_page
 
 
 def _dm_cleanup_closed_playwright_sessions() -> int:
@@ -8946,14 +8971,7 @@ def _dm_should_retry_browser_closed(error_text: str, steps: Iterable[Dict[str, A
 def _dm_should_keep_browser_open_on_failure(error_text: str, keep_browser_open: bool) -> bool:
     if not keep_browser_open:
         return False
-    return _dm_infer_failure_code("", error_text, None) in {
-        "login_required",
-        "verification_required",
-        "account_risk",
-        "automation_changed",
-        "cookie_invalid",
-        "rate_limited",
-    }
+    return _dm_infer_failure_code("", error_text, None) != "browser_closed"
 
 
 def _dm_launch_persistent_playwright_context(playwright: Any, browser_name: str, options: Dict[str, Any]):
@@ -9172,7 +9190,8 @@ def _dm_message_editor_text(page: Any) -> str:
     }
     """
     try:
-        return str(page.evaluate(script) or "").strip()
+        text = str(page.evaluate(script) or "")
+        return re.sub(r"[\u200b-\u200d\u2060\ufeff]", "", text).strip()
     except Exception:
         return ""
 
@@ -9337,6 +9356,30 @@ def _dm_click_editor_send_icon(page: Any) -> Optional[str]:
         return rect.width >= 8 && rect.height >= 8 && rect.right > 0 && rect.bottom > 0 &&
           style.visibility !== 'hidden' && style.display !== 'none' && style.pointerEvents !== 'none' && style.opacity !== '0';
       };
+      const isSendColor = (value) => {
+        const match = String(value || '').match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/i);
+        if (!match) return false;
+        const red = Number(match[1]);
+        const green = Number(match[2]);
+        const blue = Number(match[3]);
+        return red >= 220 && green <= 105 && blue >= 55 && blue <= 150;
+      };
+      const hasSendColor = (el) => {
+        let node = el;
+        for (let depth = 0; node && depth < 4; depth += 1, node = node.parentElement) {
+          const style = window.getComputedStyle(node);
+          if (isSendColor(style.backgroundColor) || isSendColor(style.color)) return true;
+        }
+        return false;
+      };
+      const isUploadControl = (el, metadata) => {
+        if (/上传|文件|图片|照片|相册|附件|upload|file|image|picture|photo|attachment|folder/i.test(metadata)) return true;
+        if (el.matches && el.matches('input[type="file"]')) return true;
+        if (el.querySelector && el.querySelector('input[type="file"]')) return true;
+        const label = el.closest && el.closest('label');
+        if (label && label.querySelector && label.querySelector('input[type="file"]')) return true;
+        return false;
+      };
       const visible = items.filter((el) => {
         const rect = el.getBoundingClientRect();
         const style = window.getComputedStyle(el);
@@ -9384,21 +9427,30 @@ def _dm_click_editor_send_icon(page: Any) -> Optional[str]:
             el.innerText,
             el.textContent,
           ].filter(Boolean).join(' '));
+          const metadata = normalize([
+            label,
+            el.id,
+            typeof el.className === 'string' ? el.className : '',
+            el.getAttribute && el.getAttribute('data-e2e'),
+            el.getAttribute && el.getAttribute('data-testid'),
+          ].filter(Boolean).join(' '));
+          if (isUploadControl(el, metadata)) continue;
           const style = window.getComputedStyle(el);
           const tag = String(el.tagName || '').toLowerCase();
           const role = String(el.getAttribute && el.getAttribute('role') || '').toLowerCase();
           const clickable = tag === 'button' || role === 'button' || style.cursor === 'pointer' ||
             (el.onclick != null) || el.querySelector('svg,path,img');
           if (!clickable) continue;
+          const explicitSend = /发送|发私信|send/i.test(label);
+          if (!explicitSend && !hasSendColor(el)) continue;
           let score = bias;
           score += Math.max(0, 90 - Math.abs(panelRect.right - centerX));
           score += Math.max(0, 90 - Math.abs(Math.max(panelRect.bottom, editorRect.bottom + 40) - centerY));
           if (centerY > editorRect.bottom) score += 80;
           if (centerX > editorRect.left + editorRect.width * 0.75) score += 50;
-          if (/send/i.test(label)) score += 120;
+          if (explicitSend) score += 120;
           if (rect.width <= 56 && rect.height <= 56) score += 30;
           if (/rgb\\(255,\\s*44,\\s*85\\)|rgb\\(254,\\s*44,\\s*85\\)|rgb\\(255,\\s*22,\\s*81\\)/i.test(style.backgroundColor + ' ' + style.color)) score += 40;
-          if (/emoji|image|picture|photo|upload/i.test(label)) score -= 120;
           scored.push({el, score, label, x: centerX, y: centerY, width: rect.width, height: rect.height});
           break;
         }
@@ -9484,6 +9536,30 @@ def _dm_click_editor_send_button(page: Any) -> Optional[str]:
         const style = window.getComputedStyle(el);
         return rect.width >= 18 && rect.height >= 18 && style.visibility !== 'hidden' && style.display !== 'none' && style.pointerEvents !== 'none';
       };
+      const isSendColor = (value) => {
+        const match = String(value || '').match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/i);
+        if (!match) return false;
+        const red = Number(match[1]);
+        const green = Number(match[2]);
+        const blue = Number(match[3]);
+        return red >= 220 && green <= 105 && blue >= 55 && blue <= 150;
+      };
+      const hasSendColor = (el) => {
+        let node = el;
+        for (let depth = 0; node && depth < 4; depth += 1, node = node.parentElement) {
+          const style = window.getComputedStyle(node);
+          if (isSendColor(style.backgroundColor) || isSendColor(style.color)) return true;
+        }
+        return false;
+      };
+      const isUploadControl = (el, metadata) => {
+        if (/上传|文件|图片|照片|相册|附件|upload|file|image|picture|photo|attachment|folder/i.test(metadata)) return true;
+        if (el.matches && el.matches('input[type="file"]')) return true;
+        if (el.querySelector && el.querySelector('input[type="file"]')) return true;
+        const label = el.closest && el.closest('label');
+        if (label && label.querySelector && label.querySelector('input[type="file"]')) return true;
+        return false;
+      };
       const editors = Array.from(document.querySelectorAll('[contenteditable="true"], textarea, .public-DraftEditor-content'));
       const editor = editors.find((el) => {
         const rect = el.getBoundingClientRect();
@@ -9512,6 +9588,16 @@ def _dm_click_editor_send_button(page: Any) -> Optional[str]:
             el.textContent,
             el.value,
           ].filter(Boolean).join(' '));
+          const metadata = normalize([
+            label,
+            el.id,
+            typeof el.className === 'string' ? el.className : '',
+            el.getAttribute('data-e2e'),
+            el.getAttribute('data-testid'),
+          ].filter(Boolean).join(' '));
+          if (isUploadControl(el, metadata)) continue;
+          const explicitSend = /发送|发私信|send/i.test(label);
+          if (!explicitSend && !hasSendColor(el)) continue;
           const tag = String(el.tagName || '').toLowerCase();
           const role = String(el.getAttribute('role') || '').toLowerCase();
           const nearEditor =
@@ -9523,7 +9609,7 @@ def _dm_click_editor_send_button(page: Any) -> Optional[str]:
           if (tag === 'button') score += 20;
           if (role === 'button') score += 14;
           if (label) score += Math.min(label.length, 12);
-          if (/发送|发私信|私信|send/i.test(label)) score += 120;
+          if (explicitSend) score += 120;
           if (/聊天|message|reply|提交/i.test(label)) score += 35;
           if (nearEditor) score += 35;
           const dist = Math.hypot(rect.right - editorRect.right, rect.bottom - editorRect.bottom);
@@ -9592,11 +9678,7 @@ def _dm_send_current_message(page: Any, timeout_ms: int = 8000) -> Dict[str, Any
         clicked_at = _dm_click_editor_send_icon(page)
         if clicked_at:
             return {"name": "click_send", "ok": True, "detail": f"clicked editor send icon at {clicked_at}"}
-        point = _dm_editor_send_click_point(page)
-        if not point:
-            raise RuntimeError("editor send click point not found")
-        page.mouse.click(point["x"], point["y"])
-        return {"name": "click_send", "ok": True, "detail": "clicked editor bottom-right send icon"}
+        raise RuntimeError("trusted editor send control not found")
     except Exception as exc:
         last_error = f"{last_error}; {exc}"
     raise RuntimeError(f"send button not found: {last_error}")
@@ -10173,6 +10255,48 @@ def _douyin_account_cookie_playwright_executor(raw_cookies: str, browser_name: s
 
 
 _douyin_account_cookie_playwright_executor.needs_raw_cookies = True
+
+
+def _run_web_playwright_call(callable_obj: Any, *args: Any) -> Any:
+    """Run sync Playwright work on the stable web runtime thread."""
+    future = _DM_WEB_PLAYWRIGHT_EXECUTOR.submit(callable_obj, *args)
+    return future.result()
+
+
+def _web_douyin_private_message_playwright_executor(
+    profile_url: str,
+    message: str,
+    browser_name: str,
+    auto_send: bool,
+    options: Dict[str, Any],
+) -> Dict[str, Any]:
+    return _run_web_playwright_call(
+        _douyin_private_message_playwright_executor,
+        profile_url,
+        message,
+        browser_name,
+        auto_send,
+        options,
+    )
+
+
+_web_douyin_private_message_playwright_executor.needs_raw_cookies = True
+
+
+def _web_douyin_account_cookie_playwright_executor(
+    raw_cookies: str,
+    browser_name: str,
+    options: Dict[str, Any],
+) -> Dict[str, Any]:
+    return _run_web_playwright_call(
+        _douyin_account_cookie_playwright_executor,
+        raw_cookies,
+        browser_name,
+        options,
+    )
+
+
+_web_douyin_account_cookie_playwright_executor.needs_raw_cookies = True
 
 
 def _dm_redis_hash_all(redis_conn: Any, key: str) -> Dict[str, Any]:
@@ -10949,6 +11073,12 @@ def build_douyin_account_cookie_apply_response(
         "headless": headless,
         "use_cdp": use_cdp,
         "cdp_url": "" if not use_cdp else str(normalized.get("cdp_url") or "").strip(),
+        "keep_browser_open": _dm_bool_text(normalized.get("keep_browser_open", not headless)),
+        "persistent_context": _dm_bool_text(
+            normalized.get("persistent_context", (not headless) or normalized.get("user_data_dir"))
+        ),
+        "user_data_dir": str(normalized.get("user_data_dir") or "").strip(),
+        "open_url": str(normalized.get("open_url") or "").strip(),
         "timeout_ms": int(_payload_float(normalized, "timeout_ms", 45000)),
         "slow_mo": int(_payload_float(normalized, "slow_mo", 120)),
         "account_cookies": "[redacted]" if raw_cookies else "",

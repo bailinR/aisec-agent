@@ -6,6 +6,7 @@ content/session_rag_model_configs.json
 content/config.json
 content/export/
 content/playwright_profiles/
+content/douyin_dm_artifacts/
 
 __pycache__/
 *.py[cod]
@@ -17,6 +18,8 @@ __pycache__/
 .vscode/
 
 .deploy_build/
+.portable_build/
+runtime/
 *.zip
 
 content/**/index/
