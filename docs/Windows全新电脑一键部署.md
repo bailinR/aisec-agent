@@ -32,6 +32,8 @@ git switch show
 
 首次安装可能需要几分钟。下载缓存、Python、Redis、浏览器、日志和 PID 都位于 Git 忽略的 `runtime` 目录，不会被提交或影响后续 `git pull`。
 
+安装器不会继承目标电脑的全局 pip 镜像配置。Python 包优先从阿里云镜像下载，失败后自动切换到官方 PyPI，避免本机遗留的清华镜像或公司镜像返回 403 后反复失败。
+
 ## 3. 更新与完整性确认
 
 双击 `更新并启动.cmd` 等价于：
@@ -121,3 +123,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-runtime.ps
 - 第一次监听 `0.0.0.0:7860` 时，Windows 防火墙可能要求确认网络权限。
 - Redis 只绑定 `127.0.0.1`，不会暴露给局域网。
 - 当前自动运行时支持 x64 Windows 10/11，不支持 32 位或 ARM64 Windows。
+- 首次安装失败后先拉取最新代码，再重新双击 `部署并启动.cmd`；已成功下载的 Python、Redis 等文件会从 `runtime/cache/downloads` 复用。

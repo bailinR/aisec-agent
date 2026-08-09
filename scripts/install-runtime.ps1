@@ -20,6 +20,10 @@ $RequirementsPath = Join-Path $ProjectRoot "deploy\requirements-windows-portable
 $Python = Join-Path $PythonRoot "python.exe"
 $RedisServer = Join-Path $RedisRoot "redis-server.exe"
 $RequirementsHash = (Get-FileHash -LiteralPath $RequirementsPath -Algorithm SHA256).Hash
+$PackageIndexes = @(
+  "https://mirrors.aliyun.com/pypi/simple",
+  "https://pypi.org/simple"
+)
 
 function Invoke-Checked {
   param([string]$FilePath, [string[]]$Arguments)
@@ -39,6 +43,20 @@ function Get-CachedFile {
   }
   Write-Host "Downloading $Url"
   Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing
+}
+
+function Invoke-PythonPackageCommand {
+  param([string[]]$Arguments)
+
+  foreach ($indexUrl in $PackageIndexes) {
+    Write-Host "Using Python package index: $indexUrl"
+    & $Python @Arguments --index-url $indexUrl --retries 8 --timeout 120
+    if ($LASTEXITCODE -eq 0) {
+      return
+    }
+    Write-Warning "Python package installation failed from $indexUrl. Trying the next index."
+  }
+  throw "Python package installation failed from all configured indexes."
 }
 
 function Remove-RuntimeDirectory {
@@ -106,13 +124,23 @@ $PthFile = Join-Path $PythonRoot "python$PythonMinor._pth"
   "import site"
 ) | Set-Content -LiteralPath $PthFile -Encoding ASCII
 
-Invoke-Checked $Python @($GetPip, "--no-warn-script-location")
-Invoke-Checked $Python @(
-  "-m", "pip", "install", "--disable-pip-version-check", "--no-warn-script-location",
+# Do not inherit a machine-wide pip mirror. A stale global mirror makes every
+# retry fail in exactly the same way on otherwise clean deployment machines.
+$env:PIP_CONFIG_FILE = "nul"
+$env:PIP_INDEX_URL = $null
+$env:PIP_EXTRA_INDEX_URL = $null
+$env:PIP_TRUSTED_HOST = $null
+$env:PIP_NO_INDEX = $null
+$env:PIP_FIND_LINKS = $null
+$env:PIP_REQUIRE_VIRTUALENV = $null
+
+Invoke-PythonPackageCommand @($GetPip, "--no-warn-script-location")
+Invoke-PythonPackageCommand @(
+  "-m", "pip", "--isolated", "install", "--disable-pip-version-check", "--no-warn-script-location",
   "-r", $RequirementsPath
 )
 Invoke-Checked $Python @(
-  "-m", "pip", "install", "--disable-pip-version-check", "--no-warn-script-location",
+  "-m", "pip", "--isolated", "install", "--disable-pip-version-check", "--no-warn-script-location",
   "--no-build-isolation", "--no-deps", (Join-Path $ProjectRoot "form_validate")
 )
 
