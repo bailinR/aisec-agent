@@ -3293,10 +3293,11 @@ class SessionRAGWebTest(unittest.TestCase):
         )
 
         self.assertIn("本轮私信对外只使用通用身份：助理。", health_context)
-        self.assertIn("固定写“您好，我是这边的助理”", health_context)
+        self.assertIn("如果场景模板已经定义开场，优先使用模板开场", health_context)
+        self.assertIn("确需自我介绍时使用“您好，我是这边的助理”", health_context)
         self.assertNotIn("本轮私信对外只使用通用身份：健康顾问助理", health_context)
         self.assertIn("本轮私信对外只使用通用身份：顾问。", cross_border_context)
-        self.assertIn("固定写“您好，我是这边的顾问”", cross_border_context)
+        self.assertIn("确需自我介绍时使用“您好，我是这边的顾问”", cross_border_context)
         self.assertNotIn("本轮私信对外只使用通用身份：跨境运营顾问", cross_border_context)
         self.assertIn("不得添加健康、医疗、招聘、跨境、电商", health_context)
 
@@ -3600,6 +3601,8 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertIn("<scene_template>", project_context)
         self.assertIn("首次私信六步引导回复模板", project_context)
         self.assertIn("附上草料码/名片", project_context)
+        self.assertIn("高优先级约束", project_context)
+        self.assertIn("不要用通用默认话术覆盖模板", project_context)
 
     def test_admin_open_file_location_uses_project_relative_file(self):
         opened = []

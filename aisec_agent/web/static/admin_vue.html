@@ -1611,6 +1611,75 @@
       max-height: none;
       resize: none;
     }
+    .template-editor {
+      min-height: 0;
+      height: 100%;
+      overflow: auto;
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+    .template-editor textarea {
+      font-family: "Inter", "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+      font-size: 14px;
+    }
+    .template-step-list {
+      display: grid;
+      gap: 8px;
+    }
+    .template-step-row {
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr) 34px;
+      gap: 8px;
+      align-items: start;
+    }
+    .template-step-index {
+      min-height: 36px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--panel-soft);
+      color: var(--accent-strong);
+      font-weight: 900;
+    }
+    .model-settings-board {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+    }
+    .model-config-list {
+      display: grid;
+      gap: 8px;
+      max-height: min(620px, calc(100vh - 300px));
+      overflow: auto;
+    }
+    .model-config-item {
+      width: 100%;
+      min-height: 0;
+      padding: 12px;
+      display: grid;
+      gap: 5px;
+      text-align: left;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      color: var(--text);
+      box-shadow: none;
+    }
+    .model-config-item:hover,
+    .model-config-item.active {
+      border-color: rgba(13,135,152,.28);
+      background: var(--accent-soft);
+      transform: none;
+      box-shadow: none;
+    }
+    .model-config-item-title { font-weight: 900; }
+    .model-config-item-meta { color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .model-key-status { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .model-key-mask { color: var(--muted); font-family: Consolas, monospace; font-size: 12px; }
+    .model-empty-note { color: var(--muted); line-height: 1.6; }
     .prompt-modal-foot {
       border-top: 1px solid var(--line);
       padding: 12px 16px;
@@ -1912,6 +1981,7 @@
       .layout { grid-template-columns: 1fr; }
       .sidebar { position: static; height: auto; }
       .workspace, .split-editor { grid-template-columns: 1fr; }
+      .model-settings-board { grid-template-columns: 1fr; }
       .knowledge-workbench { grid-template-columns: 1fr; }
       .dm-flow { grid-template-columns: 1fr; }
       .account-workspace { grid-template-columns: 1fr; }
@@ -2881,6 +2951,88 @@
 
           </section>
 
+          <section v-if="activeMenu === 'models'" class="model-settings-board">
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">模型 API Key</div>
+                  <div class="panel-meta">按供应商保存模型连接信息，Key 只显示脱敏结果。</div>
+                </div>
+                <button class="secondary mini" @click="loadModelConfigs">刷新</button>
+              </div>
+              <div class="panel-body">
+                <div class="model-config-list" v-if="modelConfigEntries.length">
+                  <button
+                    v-for="item in modelConfigEntries"
+                    :key="item.provider"
+                    type="button"
+                    class="model-config-item"
+                    :class="{active: modelDraft.provider === item.provider}"
+                    @click="selectModelConfig(item.provider)"
+                  >
+                    <span class="model-config-item-title">{{ providerLabel(item.provider) }}</span>
+                    <span class="model-config-item-meta">{{ item.model_name || '尚未设置模型' }}</span>
+                    <span class="model-config-item-meta">{{ item.has_api_key ? ('Key：' + item.api_key_masked) : '未配置 API Key' }}</span>
+                  </button>
+                </div>
+                <div v-else class="model-empty-note">暂无已保存配置。选择右侧供应商并保存后，会在这里显示。</div>
+              </div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">{{ providerLabel(modelDraft.provider) }} 配置</div>
+                  <div class="panel-meta">留空 API Key 保存时会沿用已保存的 Key。</div>
+                </div>
+                <div class="panel-actions">
+                  <button class="secondary mini" @click="testModelConfig" :disabled="modelSaving">测试连接</button>
+                  <button class="danger mini" @click="deleteModelConfig" :disabled="!modelDraft.provider || modelSaving">删除配置</button>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div class="field-grid three">
+                  <div>
+                    <label>供应商</label>
+                    <select v-model="modelDraft.provider" @change="selectModelConfig(modelDraft.provider)">
+                      <option v-for="item in modelProviderEntries" :key="item.provider" :value="item.provider">{{ item.label || providerLabel(item.provider) }}</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label>模型名称</label>
+                    <input v-model.trim="modelDraft.model_name" placeholder="例如 MiniMax-M3">
+                  </div>
+                  <div>
+                    <label>最大输入长度</label>
+                    <input v-model.number="modelDraft.max_len_input" type="number" min="1000" step="1000">
+                  </div>
+                </div>
+                <div>
+                  <label>API Key</label>
+                  <div class="row">
+                    <input v-model.trim="modelDraft.api_key" :type="modelKeyVisible ? 'text' : 'password'" autocomplete="new-password" :placeholder="modelDraft.api_key_masked ? ('已保存：' + modelDraft.api_key_masked + '，留空表示不修改') : '粘贴供应商 API Key'">
+                    <button class="secondary" type="button" @click="modelKeyVisible = !modelKeyVisible">{{ modelKeyVisible ? '隐藏' : '显示' }}</button>
+                  </div>
+                  <div class="model-key-status field-note">
+                    <span class="tag" :class="modelDraft.has_api_key ? 'ok' : 'amber'">{{ modelDraft.has_api_key ? '已配置' : '未配置' }}</span>
+                    <span class="model-key-mask" v-if="modelDraft.api_key_masked">{{ modelDraft.api_key_masked }}</span>
+                  </div>
+                </div>
+                <div>
+                  <label>接口 URL</label>
+                  <input v-model.trim="modelDraft.url" placeholder="模型接口地址">
+                </div>
+                <div>
+                  <label>调用函数</label>
+                  <input v-model.trim="modelDraft.func_name" placeholder="例如 minimax_anthropic_chat">
+                </div>
+                <div class="actions">
+                  <button @click="saveModelConfig" :disabled="modelSaving">{{ modelSaving ? '保存中...' : '保存模型配置' }}</button>
+                  <button class="secondary" @click="resetModelDraft" :disabled="modelSaving">恢复已保存</button>
+                </div>
+              </div>
+            </section>
+          </section>
+
           <div
             v-if="promptModalVisible && activePromptItem"
             class="prompt-modal-backdrop"
@@ -2920,12 +3072,46 @@
                   </div>
                 </aside>
                 <div class="prompt-modal-main">
-                  <label>{{ activePromptItem.editable ? '提示词内容' : '预览内容' }}</label>
-                  <textarea class="editor prompt-modal-editor" v-model="activePromptDraft.content" spellcheck="false" :readonly="!activePromptItem.editable"></textarea>
+                  <template v-if="activePromptItem.kind === 'template'">
+                    <label>流程模板字段</label>
+                    <div class="template-editor">
+                      <div>
+                        <label>模板名称</label>
+                        <input v-model.trim="activePromptDraft.title" :readonly="!activePromptItem.editable">
+                      </div>
+                      <div>
+                        <label>模板用途</label>
+                        <textarea rows="3" v-model="activePromptDraft.purpose" :readonly="!activePromptItem.editable"></textarea>
+                      </div>
+                      <div>
+                        <label>适用场景</label>
+                        <textarea rows="4" v-model="activePromptDraft.applicable_scene" :readonly="!activePromptItem.editable"></textarea>
+                      </div>
+                      <div>
+                        <label>标签（用逗号分隔）</label>
+                        <input v-model="activePromptDraft.tagsText" :readonly="!activePromptItem.editable" placeholder="首次私信，评论承接，售前">
+                      </div>
+                      <div>
+                        <label>回复步骤</label>
+                        <div class="template-step-list">
+                          <div class="template-step-row" v-for="(step, index) in (activePromptDraft.steps || [])" :key="index">
+                            <span class="template-step-index">{{ index + 1 }}</span>
+                            <textarea rows="2" v-model="activePromptDraft.steps[index]" :readonly="!activePromptItem.editable"></textarea>
+                            <button v-if="activePromptItem.editable" class="danger kb-icon-btn" type="button" @click="removeTemplateStep(index)" title="删除步骤" aria-label="删除步骤">×</button>
+                          </div>
+                        </div>
+                        <button v-if="activePromptItem.editable" class="secondary mini" type="button" @click="addTemplateStep">+ 增加步骤</button>
+                      </div>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <label>{{ activePromptItem.editable ? '提示词内容' : '预览内容' }}</label>
+                    <textarea class="editor prompt-modal-editor" v-model="activePromptDraft.content" spellcheck="false" :readonly="!activePromptItem.editable"></textarea>
+                  </template>
                 </div>
               </div>
               <div class="prompt-modal-foot">
-                <button class="secondary" @click="copyText(activePromptDraft.content || '', '提示词已复制')" :disabled="!activePromptDraft.content">复制</button>
+                <button class="secondary" v-if="activePromptItem.kind !== 'template'" @click="copyText(activePromptDraft.content || '', '提示词已复制')" :disabled="!activePromptDraft.content">复制</button>
                 <button class="secondary" @click="closePromptPopup">返回</button>
                 <button class="danger" v-if="activePromptItem.canDelete !== false" @click="deletePromptItem(activePromptItem)">删除</button>
                 <button @click="savePromptItem" :disabled="!activePromptItem || !activePromptItem.editable">保存修改</button>
@@ -3091,7 +3277,9 @@
                 </div>
                 <div class="panel-actions">
                   <button class="secondary mini" @click="pauseDmAction" :disabled="!dmRunning">暂停</button>
-                  <button @click="generateDm" :disabled="dmRunning">生成私信</button>
+                  <button @click="generateDm" :disabled="dmRunning">
+                    {{ dmRunning ? '生成中...' : (dmAnswer ? '重新生成' : '生成私信') }}
+                  </button>
                 </div>
               </div>
               <div class="panel-body">
@@ -3195,8 +3383,8 @@
                   <div class="panel-title">浏览器发送</div>
                   <div class="panel-meta">打开目标主页，或按演示动作预填、发送当前私信。</div>
                 </div>
-                <span class="tag" :class="dmRunning ? 'amber' : (dmAnswer ? 'ok' : '')">
-                  {{ dmRunning ? dmAction : (dmAnswer ? '内容已就绪' : '等待生成') }}
+                <span class="tag" :class="dmRunning ? 'amber' : (dmSendContent ? 'ok' : '')">
+                  {{ dmRunning ? dmAction : (dmSendContent ? '内容已就绪' : '等待生成') }}
                 </span>
               </div>
               <div class="panel-body">
@@ -3204,7 +3392,7 @@
                   <div class="dm-send-editor">
                     <label>发送内容（可修改）</label>
                     <textarea
-                      v-model="dmAnswer"
+                      v-model="dmSendContent"
                       rows="5"
                       placeholder="先生成私信，或直接输入要预填、发送的内容"
                     ></textarea>
@@ -3214,7 +3402,7 @@
                     <div>
                       <div class="dm-send-status">
                         <span class="tag" :class="dmForm.target_profile_url ? 'ok' : 'amber'">{{ dmForm.target_profile_url ? '目标已填写' : '缺少目标' }}</span>
-                        <span class="tag" :class="dmAnswer ? 'ok' : 'amber'">{{ dmAnswer ? (dmAnswer.length + ' 字') : '缺少内容' }}</span>
+                        <span class="tag" :class="dmSendContent ? 'ok' : 'amber'">{{ dmSendContent ? (dmSendContent.length + ' 字') : '缺少内容' }}</span>
                       </div>
                       <div class="panel-meta">{{ dmSendAccountLabel }}</div>
                       <div class="dm-send-target" :title="dmForm.target_profile_url || ''">{{ dmForm.target_profile_url || '请先填写抖音主页链接' }}</div>
@@ -3224,7 +3412,7 @@
                       <button
                         :class="dmForm.demo_mode === 'send' ? 'danger' : ''"
                         @click="runDouyinDmDemo(false)"
-                        :disabled="!dmAnswer || !dmForm.target_profile_url || dmRunning"
+                        :disabled="!dmSendContent || !dmForm.target_profile_url || dmRunning"
                       >{{ dmForm.demo_mode === 'send' ? '发送私信' : '预填私信' }}</button>
                     </div>
                   </div>
@@ -3320,6 +3508,11 @@
             conversationSettings: {auto_send: true, poll_seconds: "8"},
             conversationMonitorTimer: null,
             sceneTemplates: {templates: []},
+            modelConfigs: {},
+            modelProviders: {},
+            modelDraft: {provider: "minimax", api_key: "", api_key_masked: "", has_api_key: false, url: "", func_name: "", model_name: "", max_len_input: 16000},
+            modelKeyVisible: false,
+            modelSaving: false,
             activitySettings: {activities: []},
             projectFiles: [],
             upload: {file: null, useAi: true},
@@ -3374,6 +3567,7 @@
               target_note: ""
             },
             dmAnswer: "",
+            dmSendContent: "",
             dmMeta: {},
             activeDmPromptKey: "final_prompt",
             dmRunning: false,
@@ -3389,6 +3583,7 @@
               {key: "conversations", label: "私信对话", icon: "CH", desc: "监控托管账号的新私信，自动生成并推进多轮对话。"},
               {key: "knowledge", label: "知识库", icon: "KB", desc: "文件夹式知识库，映射真实路径，支持文件预览和修改。"},
               {key: "prompts", label: "提示词", icon: "PT", desc: "管理全局、业务承接、任务规则、活动提示词，并说明最终组装关系。"},
+              {key: "models", label: "模型设置", icon: "AI", desc: "管理模型供应商、API Key 和调用参数，Key 只显示脱敏结果。"},
               {key: "batch", label: "批量任务", icon: "BT", desc: "批量维护评论转私信任务，逐条生成并预填或发送。"},
               {key: "dm", label: "私信调试", icon: "DM", desc: "用当前配置生成私信，查看简化响应和提示词链路。"},
             ];
@@ -3750,6 +3945,13 @@
               prompts: this.promptCatalog.reduce((sum, group) => sum + group.items.length, 0),
             };
           },
+          modelConfigEntries() {
+            return Object.values(this.modelConfigs || {});
+          },
+          modelProviderEntries() {
+            const providers = new Set([...Object.keys(this.modelProviders || {}), ...Object.keys(this.modelConfigs || {})]);
+            return [...providers].map(provider => ({provider, ...((this.modelProviders || {})[provider] || {})}));
+          },
           promptCatalog() {
             const files = (this.projectFiles || []).filter(file => file && file.exists !== false);
             const filePath = file => String(file && file.relative_path || "").replace(/\\/g, "/");
@@ -3912,6 +4114,9 @@
           dmAnswer() {
             this.scheduleDmStatePersist();
           },
+          dmSendContent() {
+            this.scheduleDmStatePersist();
+          },
           dmMeta: {
             deep: true,
             handler() {
@@ -3944,6 +4149,9 @@
           this.dmForm.conversion_target = savedDmForm.conversion_target || saved.conversionTarget || "";
           this.dmForm.target_note = savedDmForm.target_note || saved.targetNote || "";
           this.dmAnswer = savedDm.dmAnswer || "";
+          this.dmSendContent = Object.prototype.hasOwnProperty.call(savedDm, "dmSendContent")
+            ? String(savedDm.dmSendContent || "")
+            : this.dmAnswer;
           this.dmMeta = savedDm.dmMeta || {};
           this.activeDmPromptKey = savedDm.activeDmPromptKey || this.activeDmPromptKey;
           this.$nextTick(() => {
@@ -4505,6 +4713,7 @@
                 target_note: String(this.dmForm.target_note || "")
               },
               dmAnswer: String(this.dmAnswer || ""),
+              dmSendContent: String(this.dmSendContent || ""),
               dmMeta: this.dmMeta || {},
               activeDmPromptKey: String(this.activeDmPromptKey || "final_prompt"),
             }));
@@ -5631,7 +5840,7 @@
           },
           async runDouyinDmDemo(forceSend = false) {
             const url = String(this.dmForm.target_profile_url || "").trim();
-            const reply = String(this.dmAnswer || "").trim();
+            const reply = String(this.dmSendContent || "").trim();
             const groupLink = String(this.dmForm.douyin_group_link || "").trim();
             const shouldSend = !!forceSend || this.dmForm.demo_mode === "send";
             const shouldSendGroupLink = shouldSend && this.dmForm.send_followup_group_link === true && !!groupLink;
@@ -5808,6 +6017,7 @@
               }
               this.sceneTemplates = state.scene_templates || {templates: []};
               this.activitySettings = state.activity_settings || {activities: []};
+              await this.loadModelConfigs();
               try {
                 this.workspaceState = await this.fetchJson("/api/workspace/state");
               } catch (_) {
@@ -5818,6 +6028,129 @@
               this.setStatus("已加载：" + ((this.project && this.project.name) || this.projectId), "ok");
             } catch (error) {
               this.setStatus(error.message || "加载失败", "error");
+            }
+          },
+          providerLabel(provider) {
+            const config = (this.modelProviders || {})[provider] || {};
+            return config.label || provider || "未选择供应商";
+          },
+          modelDraftFromConfig(provider) {
+            const config = (this.modelConfigs || {})[provider] || {};
+            const preset = (this.modelProviders || {})[provider] || {};
+            return {
+              provider,
+              api_key: "",
+              api_key_masked: config.api_key_masked || "",
+              has_api_key: !!config.has_api_key,
+              url: config.url || preset.url || "",
+              func_name: config.func_name || preset.func_name || "",
+              model_name: config.model_name || preset.model_name || "",
+              max_len_input: Number(config.max_len_input || 16000),
+            };
+          },
+          selectModelConfig(provider) {
+            const next = provider || "minimax";
+            this.modelDraft = this.modelDraftFromConfig(next);
+            this.modelKeyVisible = false;
+          },
+          resetModelDraft() {
+            this.selectModelConfig(this.modelDraft.provider);
+          },
+          async loadModelConfigs() {
+            try {
+              const [configData, presetData] = await Promise.all([
+                this.fetchJson("/api/v1/model/configs"),
+                this.fetchJson("/api/presets"),
+              ]);
+              this.modelConfigs = configData.providers || {};
+              this.modelProviders = presetData.providers || {};
+              const provider = this.modelDraft.provider || Object.keys(this.modelProviders)[0] || "minimax";
+              this.selectModelConfig(provider);
+            } catch (error) {
+              this.setStatus(error.message || "模型配置加载失败", "error");
+            }
+          },
+          async saveModelConfig() {
+            if (!this.modelDraft.provider) return;
+            this.modelSaving = true;
+            this.setStatus("正在保存模型配置...");
+            try {
+              const data = await this.fetchJson("/api/v1/model/config/save", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                  provider: this.modelDraft.provider,
+                  api_key: this.modelDraft.api_key || "",
+                  url: this.modelDraft.url,
+                  func_name: this.modelDraft.func_name,
+                  model_name: this.modelDraft.model_name,
+                  max_len_input: Number(this.modelDraft.max_len_input || 16000),
+                }),
+              });
+              this.modelConfigs = data.configs && data.configs.providers || this.modelConfigs;
+              const store = this.savedChatConfig();
+              store.provider = this.modelDraft.provider;
+              store.providers = store.providers || {};
+              store.providers[this.modelDraft.provider] = {
+                ...(store.providers[this.modelDraft.provider] || {}),
+                apiKey: "",
+                url: this.modelDraft.url,
+                funcName: this.modelDraft.func_name,
+                modelName: this.modelDraft.model_name,
+                maxLenInput: String(this.modelDraft.max_len_input || 16000),
+              };
+              localStorage.setItem("session-rag-chat-config", JSON.stringify(store));
+              this.selectModelConfig(this.modelDraft.provider);
+              this.setStatus("模型配置已保存，API Key 已脱敏展示", "ok");
+            } catch (error) {
+              this.setStatus(error.message || "模型配置保存失败", "error");
+            } finally {
+              this.modelSaving = false;
+            }
+          },
+          async deleteModelConfig() {
+            const provider = this.modelDraft.provider;
+            if (!provider || !window.confirm("确定删除“" + this.providerLabel(provider) + "”的模型配置吗？")) return;
+            this.modelSaving = true;
+            try {
+              const data = await this.fetchJson("/api/v1/model/config/delete", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({provider}),
+              });
+              this.modelConfigs = data.providers || {};
+              const store = this.savedChatConfig();
+              if (store.providers) delete store.providers[provider];
+              localStorage.setItem("session-rag-chat-config", JSON.stringify(store));
+              this.selectModelConfig(provider);
+              this.setStatus("模型配置已删除", "ok");
+            } catch (error) {
+              this.setStatus(error.message || "模型配置删除失败", "error");
+            } finally {
+              this.modelSaving = false;
+            }
+          },
+          async testModelConfig() {
+            this.modelSaving = true;
+            this.setStatus("正在测试模型连接...");
+            try {
+              const data = await this.fetchJson("/api/v1/model/test", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                  provider: this.modelDraft.provider,
+                  api_key: this.modelDraft.api_key || "",
+                  url: this.modelDraft.url,
+                  func_name: this.modelDraft.func_name,
+                  model_name: this.modelDraft.model_name,
+                  max_len_input: Number(this.modelDraft.max_len_input || 16000),
+                }),
+              });
+              this.setStatus("模型连接测试成功" + (data.reply ? "：" + data.reply : ""), "ok");
+            } catch (error) {
+              this.setStatus(error.message || "模型连接测试失败", "error");
+            } finally {
+              this.modelSaving = false;
             }
           },
           async loadProjectMaterials() {
@@ -6051,7 +6384,17 @@
           },
           selectPromptItem(item) {
             this.activePromptItem = item;
-            this.activePromptDraft = {...item, content: item.content || ""};
+            const raw = item.raw || {};
+            this.activePromptDraft = item.kind === "template"
+              ? {...raw, tagsText: (raw.tags || []).join(", "), steps: [...(raw.steps || [])]}
+              : {...item, content: item.content || ""};
+          },
+          addTemplateStep() {
+            if (!this.activePromptDraft.steps) this.activePromptDraft.steps = [];
+            this.activePromptDraft.steps.push("");
+          },
+          removeTemplateStep(index) {
+            if (this.activePromptDraft.steps && this.activePromptDraft.steps.length > 1) this.activePromptDraft.steps.splice(index, 1);
           },
           findPromptItemById(itemId) {
             if (!itemId) return null;
@@ -6157,7 +6500,12 @@
                 });
                 await this.loadProjectMaterials();
               } else if (this.activePromptItem.kind === "template") {
-                const template = JSON.parse(this.activePromptDraft.content || "{}");
+                const template = {
+                  ...this.activePromptDraft,
+                  tags: String(this.activePromptDraft.tagsText || "").split(/[,，、]/).map(item => item.trim()).filter(Boolean),
+                  steps: (this.activePromptDraft.steps || []).map(item => String(item || "").trim()).filter(Boolean),
+                };
+                delete template.tagsText;
                 const data = await this.fetchJson("/api/admin/scene-template/save", {
                   method: "POST",
                   headers: {"Content-Type": "application/json"},
@@ -6195,6 +6543,12 @@
             if (!controller) return;
             this.setStatus("正在生成私信...");
             try {
+              const requestSessionId = this.dmForm.conversation_stage === "first_comment"
+                ? this.uuid()
+                : (this.dmForm.session_id || this.uuid());
+              if (this.dmForm.conversation_stage === "first_comment") {
+                this.dmForm.session_id = requestSessionId;
+              }
               const data = await this.fetchJson("/api/chat", {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
@@ -6204,7 +6558,7 @@
                   video_overview: this.dmForm.video_overview,
                   project_id: this.projectId,
                   company_id: this.currentCompanyId,
-                  session_id: this.dmForm.session_id || this.uuid(),
+                  session_id: requestSessionId,
                   conversation_stage: this.dmForm.conversation_stage,
                   source_platform: this.dmForm.source_platform,
                   target_profile_url: this.dmForm.target_profile_url,
@@ -6215,10 +6569,13 @@
                 }),
                 ...this.abortableOptions(controller),
               });
-              this.dmAnswer = data.reply || data.answer || "";
+              const generatedReply = String(data.reply || data.answer || "").trim();
+              if (!generatedReply) throw new Error("模型未返回私信文案");
+              this.dmAnswer = generatedReply;
+              this.dmSendContent = generatedReply;
               this.dmMeta = {
                 ...data,
-                reply: data.reply || data.answer || "",
+                reply: generatedReply,
               };
               this.activeDmPromptKey = (data.prompts || []).some(item => item.key === "final_prompt")
                 ? "final_prompt"
