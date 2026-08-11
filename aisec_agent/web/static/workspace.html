@@ -493,6 +493,15 @@
       cursor: pointer;
     }
     .target-card.active { border-color: rgba(21, 115, 107, .42); background: var(--brand-soft); }
+    .template-card { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+    .template-card .doc-meta { line-height: 1.55; }
+    .template-editor { display: grid; gap: 14px; }
+    .template-editor textarea { min-height: 104px; resize: vertical; line-height: 1.65; }
+    .template-editor .steps-input { min-height: 220px; }
+    .template-editor-actions { display: flex; justify-content: space-between; gap: 10px; }
+    .template-editor-actions > div { display: flex; gap: 8px; }
+    .template-list-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .template-help { color: var(--muted); font-size: 12px; line-height: 1.6; }
     .goal-list { display: grid; gap: 10px; }
     .goal-editor {
       border: 1px solid var(--line);
@@ -625,6 +634,9 @@
             <div class="panel-head">
               <div class="panel-title">知识库文件树</div>
               <div class="panel-actions">
+                <button id="knowledgeRootBtn" class="icon-button hidden" type="button" aria-label="打开当前知识库根目录" title="打开当前知识库根目录">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h4l2 2H18.5A2.5 2.5 0 0 1 21 10.5v6A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-8Z" stroke-linejoin="round"/><path d="M8 14h8" stroke-linecap="round"/></svg>
+                </button>
                 <button id="structureOpenBtn" class="compact-action" type="button" aria-expanded="false" aria-controls="knowledgeCreatePanel">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>
                   <span>新增</span>
@@ -777,11 +789,13 @@
         <div id="templatesView" class="targets-layout hidden">
           <section class="panel">
             <div class="panel-head">
-              <div>
+              <div class="template-list-head">
+                <div>
                 <div class="panel-title">话术模板</div>
-                <div class="subtitle">模板决定私信结构，业务模块的话术偏好仍放在业务承接里。</div>
+                  <div class="subtitle">直接修改首次私信、后续跟进等模板，保存后立即参与生成。</div>
+                </div>
               </div>
-              <span class="badge">内置模板</span>
+              <button id="newTemplateBtn" type="button">新增模板</button>
             </div>
             <div class="panel-body">
               <div id="templateCards" class="target-cards"></div>
@@ -790,23 +804,40 @@
           <section class="panel">
             <div class="panel-head">
               <div>
-                <div class="panel-title">模板选择规则</div>
-                <div class="subtitle">生成时按平台、会话阶段、目标类型和意向强弱自动匹配。</div>
+                <div class="panel-title" id="templateEditorTitle">编辑话术模板</div>
+                <div class="subtitle" id="templateEditorMeta">选择左侧模板后修改内容。</div>
               </div>
             </div>
             <div class="panel-body">
-              <div class="goal-list">
-                <div class="goal-editor">
-                  <div class="doc-title">匹配顺序</div>
-                  <div class="doc-meta">平台 -> 会话阶段 -> 目标类型 -> 意向强弱 -> 业务模块指定模板。</div>
+              <div id="templateEditor" class="template-editor">
+                <div>
+                  <label for="templateTitleInput">模板名称</label>
+                  <input id="templateTitleInput" maxlength="80" placeholder="例如：首次私信六步引导模板">
                 </div>
-                <div class="goal-editor">
-                  <div class="doc-title">模块可覆盖</div>
-                  <div class="doc-meta">后续在业务承接里允许业务模块指定模板；未指定时使用自动选择。</div>
+                <div>
+                  <label for="templatePurposeInput">生成目标</label>
+                  <textarea id="templatePurposeInput" maxlength="600" placeholder="说明这套话术要达成什么目标"></textarea>
                 </div>
-                <div class="goal-editor">
-                  <div class="doc-title">模板不是知识库</div>
-                  <div class="doc-meta">模板只管怎么说，知识库仍负责说什么事实。</div>
+                <div>
+                  <label for="templateSceneInput">适用场景与边界</label>
+                  <textarea id="templateSceneInput" maxlength="800" placeholder="说明平台、会话阶段、适用用户和合规边界"></textarea>
+                </div>
+                <div>
+                  <label for="templateTagsInput">匹配标签</label>
+                  <input id="templateTagsInput" placeholder="首次私信, 评论承接, 引导回复">
+                  <div class="template-help">使用逗号或换行分隔，系统会结合标题、目标、场景和标签自动匹配。</div>
+                </div>
+                <div>
+                  <label for="templateStepsInput">话术步骤</label>
+                  <textarea id="templateStepsInput" class="steps-input" placeholder="每行一个步骤，可直接写句式、示例、语气和顺序要求"></textarea>
+                  <div class="template-help">这里是首次私信灵活度最高的配置。每行会作为一个明确步骤传入最终 Prompt。</div>
+                </div>
+                <div class="template-editor-actions">
+                  <button id="deleteTemplateBtn" class="danger" type="button">删除</button>
+                  <div>
+                    <button id="resetTemplateBtn" class="secondary" type="button">撤销修改</button>
+                    <button id="saveTemplateBtn" type="button">保存模板</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -855,20 +886,25 @@
       businessQuery: "",
       materialFiles: {},
       createMode: "board",
+      selectedTemplateId: "",
     };
 
     const els = {};
     [
       "companyName", "sideCompanyName", "tabKnowledge", "tabTargets", "tabAccounts", "tabTemplates", "tabSettings",
       "appShell", "sidebarToggle", "pageTitle", "pageSubtitle", "refreshBtn", "businessSearch", "businessList",
-      "selectedBusinessTitle", "selectedBusinessMeta", "selectedDocTags", "selectedDocCount", "structureOpenBtn", "knowledgeCreatePanel",
+      "selectedBusinessTitle", "selectedBusinessMeta", "selectedDocTags", "selectedDocCount", "knowledgeRootBtn", "structureOpenBtn", "knowledgeCreatePanel",
       "createBoardModeBtn", "createModuleModeBtn", "createBoardField", "createBoardSelect", "createNameLabel", "createNameInput",
       "createDescriptionInput", "createCancelBtn", "createSubmitBtn", "uploadOpenBtn", "uploadDialog", "uploadCloseBtn", "uploadFile", "uploadMode",
       "uploadBtn", "docList", "knowledgeView",
       "targetsView", "targetBusinessCount", "targetCards", "targetEditorTitle", "targetEditorMeta",
       "goalList", "addGoalBtn", "saveTargetsBtn", "accountsView", "accountCards", "templatesView",
-      "templateCards", "settingsView", "companySettingsPanel", "systemSettingsPanel", "status"
+      "templateCards", "newTemplateBtn", "templateEditor", "templateEditorTitle", "templateEditorMeta",
+      "templateTitleInput", "templatePurposeInput", "templateSceneInput", "templateTagsInput", "templateStepsInput",
+      "deleteTemplateBtn", "resetTemplateBtn", "saveTemplateBtn", "settingsView", "companySettingsPanel", "systemSettingsPanel", "status"
     ].forEach(id => els[id] = document.getElementById(id));
+
+    const isLocalRuntime = ["localhost", "127.0.0.1", "::1"].includes(location.hostname);
 
     const goalTypeLabels = {
       wechat: "加微信",
@@ -887,29 +923,6 @@
       templates: ["话术模板", "模板决定私信结构，默认由系统自动选择。"],
       settings: ["设置", "管理企业默认信息和当前工作台状态。"],
     };
-
-    const builtinTemplates = [
-      {
-        name: "抖音首次私信 · 加微信",
-        match: "抖音 / 首次私信 / 加微信 / 中高意向",
-        steps: "承接评论 -> 给低门槛价值 -> 自然引导加微信",
-      },
-      {
-        name: "抖音首次私信 · 引导回复",
-        match: "抖音 / 首次私信 / 弱意向 / 信息不足",
-        steps: "轻承接 -> 问一个低压力问题 -> 给回复理由",
-      },
-      {
-        name: "内容平台首次私信 · 领资料",
-        match: "抖音、小红书、视频号 / 首次私信 / 领取资料",
-        steps: "点明关注点 -> 说明资料价值 -> 引导领取",
-      },
-      {
-        name: "后续跟进 · 预约",
-        match: "私信后续 / 预约、评估、演示",
-        steps: "承接上一轮信息 -> 给下一步建议 -> 推进预约",
-      },
-    ];
 
     let statusTimer = null;
 
@@ -1078,6 +1091,30 @@
       return businessBoards().find(item => item.business_board_id === state.selectedBoardId) || null;
     }
 
+    function safePathSegment(value, fallback = "默认知识库") {
+      const clean = String(value || "")
+        .trim()
+        .replace(/[\\/:*?"<>|\r\n\t]+/g, "_")
+        .replace(/^[ ._]+|[ ._]+$/g, "");
+      return (clean || fallback).slice(0, 60);
+    }
+
+    function selectedKnowledgeRootPath() {
+      const board = selectedBoard();
+      if (!board) return "knowledge/files";
+      return "knowledge/files/" + safePathSegment(board.business_board_name || board.name);
+    }
+
+    async function openSelectedKnowledgeRoot() {
+      const relativePath = selectedKnowledgeRootPath();
+      const data = await fetchJson("/api/admin/open-file-location", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({relative_path: relativePath, type: "folder"}),
+      });
+      setStatus("已打开知识库目录：" + (data.relative_path || relativePath), "ok");
+    }
+
     function profileForBusiness(business) {
       if (!business) return null;
       const targets = state.data.business_targets || {profiles: []};
@@ -1155,6 +1192,12 @@
       const meta = tabMeta[state.tab] || tabMeta.knowledge;
       els.pageTitle.textContent = meta[0];
       els.pageSubtitle.textContent = meta[1];
+      if (isLocalRuntime) {
+        const board = selectedBoard();
+        const boardName = board && (board.business_board_name || board.name);
+        els.knowledgeRootBtn.title = boardName ? `打开“${boardName}”根目录` : "打开知识库根目录";
+        els.knowledgeRootBtn.setAttribute("aria-label", els.knowledgeRootBtn.title);
+      }
     }
 
     function renderChrome() {
@@ -1373,15 +1416,142 @@
       </div>`;
     }
 
+    function sceneTemplates() {
+      return ((state.data.scene_templates || {}).templates || []);
+    }
+
+    function selectedTemplate() {
+      return sceneTemplates().find(item => item.template_id === state.selectedTemplateId) || null;
+    }
+
+    function templateFieldValues(template) {
+      const item = template || {};
+      els.templateTitleInput.value = item.title || "";
+      els.templatePurposeInput.value = item.purpose || "";
+      els.templateSceneInput.value = item.applicable_scene || "";
+      els.templateTagsInput.value = (item.tags || []).join(", ");
+      els.templateStepsInput.value = (item.steps || []).join("\n");
+    }
+
     function renderTemplates() {
-      els.templateCards.innerHTML = builtinTemplates.map(template => `<div class="target-card">
-        <div>
-          <div class="doc-title">${escapeHtml(template.name)}</div>
-          <div class="doc-meta"><span>${escapeHtml(template.match)}</span></div>
-        </div>
-        <div class="doc-meta">${escapeHtml(template.steps)}</div>
-        <div><span class="badge ok">自动选择</span></div>
-      </div>`).join("");
+      const templates = sceneTemplates();
+      if (!state.selectedTemplateId || !templates.some(item => item.template_id === state.selectedTemplateId)) {
+        state.selectedTemplateId = (templates.find(item => item.template_id === "tpl_first_dm_reply") || templates[0] || {}).template_id || "";
+      }
+      els.templateCards.innerHTML = templates.map(template => {
+        const active = template.template_id === state.selectedTemplateId ? " active" : "";
+        const isFirst = template.template_id === "tpl_first_dm_reply" || (template.tags || []).includes("首次私信");
+        const summary = template.purpose || template.applicable_scene || "未填写模板目标";
+        return `<button class="target-card template-card${active}" type="button" data-template-id="${escapeAttr(template.template_id)}">
+          <div>
+            <div class="doc-title">${escapeHtml(template.title || "未命名模板")}</div>
+            <div class="doc-meta">${escapeHtml(summary.slice(0, 120))}</div>
+            <div class="doc-meta"><span>${(template.steps || []).length} 个步骤</span><span>${(template.tags || []).length} 个标签</span></div>
+          </div>
+          <span class="badge${isFirst ? " ok" : ""}">${isFirst ? "首次私信" : "自动匹配"}</span>
+        </button>`;
+      }).join("") || `<div class="empty">暂无话术模板，点击“新增模板”开始配置。</div>`;
+      els.templateCards.querySelectorAll("[data-template-id]").forEach(card => {
+        card.addEventListener("click", () => {
+          state.selectedTemplateId = card.dataset.templateId;
+          renderTemplates();
+        });
+      });
+
+      const template = selectedTemplate();
+      const disabled = !template;
+      [els.templateTitleInput, els.templatePurposeInput, els.templateSceneInput, els.templateTagsInput, els.templateStepsInput,
+        els.deleteTemplateBtn, els.resetTemplateBtn, els.saveTemplateBtn].forEach(control => control.disabled = disabled);
+      els.templateEditorTitle.textContent = template ? (template.title || "编辑话术模板") : "编辑话术模板";
+      els.templateEditorMeta.textContent = template
+        ? `模板 ID：${template.template_id} · 保存后立即参与下一次私信生成`
+        : "新增或选择左侧模板后修改内容。";
+      templateFieldValues(template);
+    }
+
+    function splitTemplateItems(value) {
+      return String(value || "").split(/[\n,，]+/).map(item => item.trim()).filter(Boolean);
+    }
+
+    function splitTemplateSteps(value) {
+      return String(value || "").split(/\n+/).map(item => item.trim()).filter(Boolean);
+    }
+
+    function createTemplate() {
+      const template = {
+        template_id: "tpl_" + Math.random().toString(16).slice(2, 12),
+        title: "新话术模板",
+        purpose: "",
+        applicable_scene: "",
+        tags: [],
+        steps: [],
+      };
+      state.data.scene_templates = state.data.scene_templates || {templates: []};
+      state.data.scene_templates.templates = sceneTemplates().concat(template);
+      state.selectedTemplateId = template.template_id;
+      renderTemplates();
+      els.templateTitleInput.select();
+    }
+
+    async function saveTemplate() {
+      const current = selectedTemplate();
+      if (!current) return;
+      const title = els.templateTitleInput.value.trim();
+      if (!title) {
+        setStatus("请输入模板名称", "error");
+        els.templateTitleInput.focus();
+        return;
+      }
+      const template = {
+        template_id: current.template_id,
+        title,
+        purpose: els.templatePurposeInput.value.trim(),
+        applicable_scene: els.templateSceneInput.value.trim(),
+        tags: splitTemplateItems(els.templateTagsInput.value),
+        steps: splitTemplateSteps(els.templateStepsInput.value),
+      };
+      if (!template.steps.length) {
+        setStatus("请至少填写一个话术步骤", "error");
+        els.templateStepsInput.focus();
+        return;
+      }
+      els.saveTemplateBtn.disabled = true;
+      setStatus("正在保存话术模板...");
+      try {
+        const data = await fetchJson("/api/admin/scene-template/save", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            project_id: (state.data.project || {}).project_id || "",
+            template,
+          }),
+        });
+        state.data.scene_templates = data.scene_templates || state.data.scene_templates;
+        state.selectedTemplateId = (data.template || template).template_id;
+        renderTemplates();
+        setStatus("话术模板已保存，下一次生成立即生效", "ok");
+      } finally {
+        els.saveTemplateBtn.disabled = false;
+      }
+    }
+
+    async function deleteTemplate() {
+      const template = selectedTemplate();
+      if (!template) return;
+      if (!confirm(`删除话术模板“${template.title || "未命名模板"}”？`)) return;
+      setStatus("正在删除话术模板...");
+      const data = await fetchJson("/api/admin/scene-template/delete", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          project_id: (state.data.project || {}).project_id || "",
+          template_id: template.template_id,
+        }),
+      });
+      state.data.scene_templates = data.scene_templates || state.data.scene_templates;
+      state.selectedTemplateId = "";
+      renderTemplates();
+      setStatus("话术模板已删除", "ok");
     }
 
     function renderSettings() {
@@ -1682,6 +1852,7 @@
     });
     els.refreshBtn.addEventListener("click", () => load());
     els.businessSearch.addEventListener("input", () => { state.businessQuery = els.businessSearch.value; renderBusinessList(); });
+    els.knowledgeRootBtn.addEventListener("click", () => openSelectedKnowledgeRoot().catch(err => setStatus(err.message, "error")));
     els.structureOpenBtn.addEventListener("click", openCreatePanel);
     els.createBoardModeBtn.addEventListener("click", () => setCreateMode("board"));
     els.createModuleModeBtn.addEventListener("click", () => setCreateMode("module"));
@@ -1697,8 +1868,16 @@
     els.uploadBtn.addEventListener("click", () => uploadFile().catch(err => setStatus(err.message, "error")));
     els.addGoalBtn.addEventListener("click", addGoal);
     els.saveTargetsBtn.addEventListener("click", () => saveTargets().catch(err => setStatus(err.message, "error")));
+    els.newTemplateBtn.addEventListener("click", createTemplate);
+    els.saveTemplateBtn.addEventListener("click", () => saveTemplate().catch(err => setStatus(err.message, "error")));
+    els.deleteTemplateBtn.addEventListener("click", () => deleteTemplate().catch(err => setStatus(err.message, "error")));
+    els.resetTemplateBtn.addEventListener("click", () => {
+      templateFieldValues(selectedTemplate());
+      setStatus("已撤销未保存修改");
+    });
 
     restoreSidebarState();
+    els.knowledgeRootBtn.classList.toggle("hidden", !isLocalRuntime);
     load().catch(err => setStatus(err.message, "error"));
   </script>
 </body>

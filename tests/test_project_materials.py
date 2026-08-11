@@ -204,6 +204,40 @@ class ProjectMaterialStoreTest(unittest.TestCase):
             self.assertNotIn("sender_identity:", selection["context"])
             self.assertNotIn("建议私信身份", selection["context"])
 
+    def test_reimport_moves_existing_document_when_route_changes(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectMaterialStore(Path(temp_dir))
+            project_id = store.default_project_id
+            routes = iter([
+                {
+                    "title": "同一资料",
+                    "knowledge_base": "知识库甲",
+                    "domain": "模块甲",
+                    "section": "资料",
+                    "category": "模块甲",
+                },
+                {
+                    "title": "同一资料",
+                    "knowledge_base": "知识库乙",
+                    "domain": "模块乙",
+                    "section": "资料",
+                    "category": "模块乙",
+                },
+            ])
+            store._suggest_imported_document_meta = lambda *args, **kwargs: next(routes)
+            file_data = "同一来源文件重新归档时只能保留一个实体文件。".encode("utf-8")
+
+            first = store.import_file_to_knowledge("same.txt", file_data, project_id=project_id)
+            second = store.import_file_to_knowledge("same.txt", file_data, project_id=project_id)
+            project_dir = Path(temp_dir) / project_id
+
+            self.assertEqual(first["doc_id"], second["doc_id"])
+            self.assertFalse((project_dir / first["relative_path"]).exists())
+            self.assertTrue((project_dir / second["relative_path"]).exists())
+            docs = [doc for doc in store.list_knowledge_documents(project_id) if doc.get("doc_id") == first["doc_id"]]
+            self.assertEqual(len(docs), 1)
+            self.assertEqual(docs[0]["relative_path"], second["relative_path"])
+
     def test_manifest_restores_documents_from_document_descriptions(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             store = ProjectMaterialStore(Path(temp_dir))

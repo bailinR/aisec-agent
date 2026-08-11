@@ -626,6 +626,12 @@ class ProjectMaterialStore:
 
         relative_path = f"knowledge/files/{self._safe_title(knowledge_base)}/{self._safe_title(domain)}/{self._safe_title(section)}/{title}.md"
         doc_path = project_dir / relative_path
+        manifest = self._read_json(project_dir / "knowledge" / "manifest.json")
+        previous_document = next(
+            (item for item in manifest.get("documents", []) if item.get("doc_id") == doc_id),
+            None,
+        )
+        previous_relative_path = str((previous_document or {}).get("relative_path") or "").replace("\\", "/")
         doc_path.parent.mkdir(parents=True, exist_ok=True)
         doc_path.write_text(
             self._format_imported_markdown(
@@ -638,6 +644,19 @@ class ProjectMaterialStore:
             ),
             encoding="utf-8",
         )
+        if previous_relative_path and previous_relative_path != relative_path:
+            previous_path = project_dir / previous_relative_path
+            if previous_path.is_file():
+                previous_path.unlink()
+                current = previous_path.parent
+                knowledge_root = (project_dir / "knowledge" / "files").resolve()
+                while current.exists() and current.resolve() != knowledge_root:
+                    try:
+                        current.resolve().relative_to(knowledge_root)
+                        current.rmdir()
+                    except (OSError, ValueError):
+                        break
+                    current = current.parent
 
         chunks = self._split_text(content)
         self._upsert_manifest_document(

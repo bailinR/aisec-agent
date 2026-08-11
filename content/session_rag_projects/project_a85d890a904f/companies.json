@@ -1,7 +1,7 @@
 {
   "version": 1,
   "project_id": "project_a85d890a904f",
-  "updated_at": "2026-07-27T09:45:33",
+  "updated_at": "2026-08-11T21:11:26",
   "companies": [
     {
       "company_id": "company_cf97f621f6",
@@ -28,23 +28,7 @@
     },
     {
       "company_id": "company_cf97f621f6",
-      "kb_id": "kb_b85ac31bf1",
-      "role": "owner",
-      "enabled": true,
-      "created_at": "2026-07-17T18:48:35",
-      "updated_at": "2026-07-17T18:48:35"
-    },
-    {
-      "company_id": "company_cf97f621f6",
       "kb_id": "kb_7cf5474512",
-      "role": "owner",
-      "enabled": true,
-      "created_at": "2026-07-17T18:48:35",
-      "updated_at": "2026-07-17T18:48:35"
-    },
-    {
-      "company_id": "company_cf97f621f6",
-      "kb_id": "kb_8186c138ea",
       "role": "owner",
       "enabled": true,
       "created_at": "2026-07-17T18:48:35",
@@ -80,24 +64,12 @@
       "kb_id": "kb_5bede326e3",
       "name": "AI技术与私信自动化业务板块",
       "description": "面向自动私信、评论采集、AI内容生产、智能硬件和自动化运营的业务资料。",
-      "document_count": 6
-    },
-    {
-      "kb_id": "kb_b85ac31bf1",
-      "name": "公司基础资料板块",
-      "description": "沉淀公司定位、对外口径、通用承接边界和目标优先级。",
-      "document_count": 7
+      "document_count": 4
     },
     {
       "kb_id": "kb_7cf5474512",
       "name": "大健康业务板块",
       "description": "面向睡眠、膝骨关节、健康咨询和合规评估承接的业务资料。",
-      "document_count": 4
-    },
-    {
-      "kb_id": "kb_8186c138ea",
-      "name": "招聘与机器人面试业务板块",
-      "description": "面向 Boss 沟通、岗位咨询、线上初面和招聘流程的业务资料。",
       "document_count": 4
     },
     {

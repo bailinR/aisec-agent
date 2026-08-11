@@ -703,6 +703,11 @@
       display: none;
     }
 
+    .app.config-collapsed .inspector-tabs,
+    .app.config-collapsed .prompt-inspector {
+      display: none;
+    }
+
     .group {
       display: grid;
       gap: 12px;
@@ -932,6 +937,228 @@
       color: var(--text);
     }
 
+    .inspector-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      margin-bottom: 14px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #eef2f6;
+    }
+
+    .inspector-tab {
+      min-height: 34px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      box-shadow: none;
+      padding: 0 10px;
+    }
+
+    .inspector-tab:hover {
+      background: rgba(255,255,255,.7);
+      color: var(--text);
+      box-shadow: none;
+      transform: none;
+    }
+
+    .inspector-tab.active {
+      background: #fff;
+      color: var(--text);
+      box-shadow: 0 1px 4px rgba(16, 24, 39, .08);
+      font-weight: 700;
+    }
+
+    .prompt-inspector {
+      display: grid;
+      gap: 12px;
+      min-height: 0;
+    }
+
+    .prompt-inspector.hidden {
+      display: none;
+    }
+
+    .prompt-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .prompt-toolbar button {
+      flex: 1 1 120px;
+    }
+
+    .prompt-summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .prompt-summary span {
+      min-height: 24px;
+      display: inline-flex;
+      align-items: center;
+      padding: 0 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+    }
+
+    .prompt-modules {
+      display: grid;
+      gap: 10px;
+    }
+
+    .prompt-empty {
+      padding: 24px 16px;
+      border: 1px dashed var(--line-strong);
+      border-radius: 8px;
+      color: var(--muted);
+      background: #f8fafc;
+      line-height: 1.7;
+      text-align: center;
+    }
+
+    .prompt-module {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      overflow: hidden;
+    }
+
+    .prompt-module[open] {
+      border-color: #c6d5e5;
+    }
+
+    .prompt-module summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 11px 12px;
+    }
+
+    .prompt-module summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .prompt-module-head {
+      display: grid;
+      grid-template-columns: 26px minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: start;
+    }
+
+    .prompt-module-index {
+      width: 26px;
+      height: 26px;
+      display: grid;
+      place-items: center;
+      border-radius: 6px;
+      background: var(--accent-soft);
+      color: var(--accent-dark);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .prompt-module-title {
+      color: var(--text);
+      font-weight: 800;
+      line-height: 1.35;
+    }
+
+    .prompt-module-note {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .prompt-module-chars {
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .prompt-module-content {
+      margin: 0;
+      max-height: 320px;
+      overflow: auto;
+      padding: 12px;
+      border-top: 1px solid var(--line);
+      background: #f8fafc;
+      color: #263244;
+      font-family: Consolas, "Microsoft YaHei", monospace;
+      font-size: 12px;
+      line-height: 1.75;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .prompt-module.final .prompt-module-index {
+      background: #fff0e8;
+      color: #a74320;
+    }
+
+    .prompt-module.final .prompt-module-content {
+      max-height: 560px;
+    }
+
+    body {
+      background: #eef2f6;
+    }
+
+    .app {
+      grid-template-columns: 232px minmax(440px, 1fr) 440px;
+      gap: 10px;
+      padding: 10px;
+    }
+
+    .app.config-collapsed {
+      grid-template-columns: 232px minmax(440px, 1fr) 54px;
+    }
+
+    .sessions,
+    .chat,
+    .config {
+      height: calc(100vh - 20px);
+      border-radius: 8px;
+      box-shadow: 0 4px 18px rgba(54, 72, 94, .08);
+    }
+
+    .chat-head {
+      min-height: 68px;
+      padding: 12px 18px;
+    }
+
+    .messages {
+      padding: 20px 24px;
+      gap: 16px;
+    }
+
+    .message,
+    .message.comment,
+    .message.private_in,
+    .message.private_first,
+    .message.private_out {
+      max-width: min(88%, 760px);
+    }
+
+    .bubble {
+      padding: 12px 14px;
+      font-size: 15px;
+      line-height: 1.8;
+      border-radius: 8px;
+    }
+
+    .config {
+      padding: 14px;
+    }
+
     a:focus-visible,
     button:focus-visible,
     input:focus-visible,
@@ -1026,6 +1253,14 @@
       .actions {
         grid-template-columns: 1fr;
       }
+
+      .prompt-module-head {
+        grid-template-columns: 26px minmax(0, 1fr);
+      }
+
+      .prompt-module-chars {
+        grid-column: 2;
+      }
     }
   </style>
 </head>
@@ -1066,9 +1301,14 @@
 
     <aside class="config" id="configPanel">
       <header class="config-head">
-        <h2>配置</h2>
+        <h2>调试面板</h2>
         <button class="secondary config-toggle" type="button" id="toggleConfigPanel">收起</button>
       </header>
+
+      <div class="inspector-tabs" role="tablist" aria-label="调试面板视图">
+        <button class="inspector-tab active" type="button" id="settingsTab" role="tab" aria-selected="true">生成设置</button>
+        <button class="inspector-tab" type="button" id="promptTab" role="tab" aria-selected="false">Prompt 检查</button>
+      </div>
 
       <div class="config-body" id="configBody">
         <section class="group">
@@ -1149,6 +1389,17 @@
 
         <div class="status" id="status"></div>
       </div>
+
+      <div class="prompt-inspector hidden" id="promptInspector">
+        <div class="prompt-toolbar">
+          <button type="button" id="previewPromptBtn">预览当前 Prompt</button>
+          <button class="secondary" type="button" id="copyAllPromptBtn" disabled>复制完整 Prompt</button>
+        </div>
+        <div class="prompt-summary" id="promptSummary"></div>
+        <div class="prompt-modules" id="promptModules">
+          <div class="prompt-empty">输入评论后可先预览 Prompt；发送生成后，这里会保留实际发给 AI 的完整提示词和各模块标注。</div>
+        </div>
+      </div>
     </aside>
   </div>
 
@@ -1205,12 +1456,31 @@
     const promptModalBody = document.getElementById("promptModalBody");
     const copyPromptBtn = document.getElementById("copyPromptBtn");
     const closePromptBtn = document.getElementById("closePromptBtn");
+    const configBody = document.getElementById("configBody");
+    const settingsTab = document.getElementById("settingsTab");
+    const promptTab = document.getElementById("promptTab");
+    const promptInspector = document.getElementById("promptInspector");
+    const promptSummary = document.getElementById("promptSummary");
+    const promptModules = document.getElementById("promptModules");
+    const previewPromptBtn = document.getElementById("previewPromptBtn");
+    const copyAllPromptBtn = document.getElementById("copyAllPromptBtn");
     let presets = {};
     let projects = [];
     let sceneTemplates = [];
     let sessions = [];
     let activeSessionId = "";
     let serverModelConfigs = {};
+    let activePromptTrace = null;
+
+    const promptModuleNotes = {
+      user_context: "用户评论、视频概述和当前会话上下文，是本轮生成的原始输入。",
+      global_prompt: "项目级统一口吻、生成原则和合规边界。",
+      sender_identity: "本轮允许使用的发送身份及其来源，避免身份串用。",
+      scene_template: "后台可编辑的话术结构，控制首次私信或跟进消息怎么组织。",
+      activity_settings: "当前命中的活动、利益钩子、领取方式和限制条件。",
+      retrieved_knowledge: "根据评论与场景检索到的业务事实，只能基于这些内容回答。",
+      final_prompt: "系统最终组装并实际发送给 AI 的完整 Prompt。",
+    };
 
     function uuid() {
       if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID().replaceAll("-", "");
@@ -1313,10 +1583,10 @@
           throw new Error(body.msg || response.statusText || "model config save failed");
         }
         serverModelConfigs = (body.data && body.data.configs && body.data.configs.providers) || serverModelConfigs;
-        if (showMessage) setStatus("??????API ?????????? key", "success");
+        if (showMessage) setStatus("模型配置已保存，API Key 仅保存在本机", "success");
         return true;
       } catch (error) {
-        if (showMessage) setStatus("???????" + (error.message || String(error)), "error");
+        if (showMessage) setStatus("模型配置保存失败：" + (error.message || String(error)), "error");
         return false;
       }
     }
@@ -1585,6 +1855,8 @@
       const session = activeSession();
       empty.style.display = session.messages.length ? "none" : "block";
       session.messages.forEach(message => addMessage(message.role, message.text, false, message));
+      const latestPrompt = [...session.messages].reverse().find(message => message.promptTrace || message.prompt_trace);
+      renderPromptInspector(latestPrompt ? (latestPrompt.promptTrace || latestPrompt.prompt_trace) : null);
       messages.scrollTop = messages.scrollHeight;
       syncSessionInput();
     }
@@ -1936,12 +2208,76 @@
       return promptTrace.final_prompt || promptTrace.prompt || "";
     }
 
+    function promptModulesFromTrace(promptTrace) {
+      if (!promptTrace) return [];
+      if (typeof promptTrace === "string") {
+        return [{key: "final_prompt", title: "最终完整 Prompt", content: promptTrace, chars: promptTrace.length}];
+      }
+      const modules = promptTrace.prompt_modules || promptTrace.prompts || [];
+      if (modules.length) return modules;
+      const finalPrompt = promptTextFromTrace(promptTrace);
+      return finalPrompt
+        ? [{key: "final_prompt", title: "最终完整 Prompt", content: finalPrompt, chars: finalPrompt.length}]
+        : [];
+    }
+
+    function setInspectorView(view) {
+      const showPrompt = view === "prompt";
+      configBody.classList.toggle("hidden-config", showPrompt);
+      promptInspector.classList.toggle("hidden", !showPrompt);
+      settingsTab.classList.toggle("active", !showPrompt);
+      promptTab.classList.toggle("active", showPrompt);
+      settingsTab.setAttribute("aria-selected", String(!showPrompt));
+      promptTab.setAttribute("aria-selected", String(showPrompt));
+    }
+
+    function renderPromptInspector(promptTrace) {
+      activePromptTrace = promptTrace || null;
+      const modules = promptModulesFromTrace(promptTrace);
+      promptModules.innerHTML = "";
+      promptSummary.innerHTML = "";
+      copyAllPromptBtn.disabled = !promptTextFromTrace(promptTrace);
+      if (!modules.length) {
+        promptModules.innerHTML = '<div class="prompt-empty">还没有可展示的 Prompt。输入评论后点击“预览当前 Prompt”，或直接发送生成。</div>';
+        return;
+      }
+
+      const finalPrompt = promptTextFromTrace(promptTrace) || (modules.find(item => item.key === "final_prompt") || {}).content || "";
+      const moduleChars = modules.reduce((sum, item) => sum + Number(item.chars || String(item.content || "").length), 0);
+      [
+        `${modules.length} 个模块`,
+        `完整 Prompt ${finalPrompt.length} 字符`,
+        `模块内容 ${moduleChars} 字符`,
+      ].forEach(label => promptSummary.appendChild(createNode("span", "", label)));
+
+      modules.forEach((module, index) => {
+        const key = module.key || `module_${index + 1}`;
+        const content = String(module.content || "");
+        const details = document.createElement("details");
+        details.className = "prompt-module" + (key === "final_prompt" ? " final" : "");
+        details.open = true;
+
+        const summary = document.createElement("summary");
+        const head = createNode("div", "prompt-module-head");
+        head.appendChild(createNode("span", "prompt-module-index", String(index + 1)));
+        const titleWrap = createNode("div", "");
+        titleWrap.appendChild(createNode("div", "prompt-module-title", module.title || key));
+        titleWrap.appendChild(createNode("div", "prompt-module-note", promptModuleNotes[key] || "本轮 Prompt 的组成模块。"));
+        head.appendChild(titleWrap);
+        head.appendChild(createNode("span", "prompt-module-chars", `${Number(module.chars || content.length)} 字符`));
+        summary.appendChild(head);
+        details.appendChild(summary);
+        details.appendChild(createNode("pre", "prompt-module-content", content || "未配置内容。"));
+        promptModules.appendChild(details);
+      });
+    }
+
     function openPromptModal(promptTrace) {
       const promptText = promptTextFromTrace(promptTrace);
       if (!promptText) return;
-      promptModalBody.textContent = promptText;
-      promptModal.classList.add("open");
-      promptModal.setAttribute("aria-hidden", "false");
+      renderPromptInspector(promptTrace);
+      setConfigCollapsed(false);
+      setInspectorView("prompt");
     }
 
     function closePromptModal() {
@@ -2036,6 +2372,51 @@
         raw_max_chars: Number(fields.rawMaxChars.value || 12000),
         knowledge_size: Number(fields.knowledgeSize.value || 4)
       };
+    }
+
+    function previewQuestion() {
+      const input = document.getElementById("question").value.trim();
+      if (input) return input;
+      const history = activeSession().messages || [];
+      const latestInbound = [...history].reverse().find(item => ["comment", "private_in", "user"].includes(item.role));
+      return latestInbound ? String(latestInbound.text || "").trim() : "";
+    }
+
+    async function previewCurrentPrompt() {
+      const question = previewQuestion();
+      if (!question) {
+        setStatus("请先输入一条评论或私信内容", "error");
+        document.getElementById("question").focus();
+        return;
+      }
+      const isFirstTurn = activeSession().messages.length === 0;
+      previewPromptBtn.disabled = true;
+      previewPromptBtn.textContent = "正在组装...";
+      setStatus("正在组装完整 Prompt...");
+      try {
+        const response = await fetch("/api/v1/private-message/route-debug", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(payload(question, isFirstTurn ? "first_comment" : "private_followup")),
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok || body.code !== 0) {
+          throw new Error(body.msg || response.statusText || "Prompt 预览失败");
+        }
+        const data = body.data || {};
+        renderPromptInspector({
+          final_prompt: data.prompt || "",
+          prompt_modules: data.prompt_modules || [],
+          conversation_stage: data.conversation_stage || "",
+        });
+        setInspectorView("prompt");
+        setStatus("Prompt 已按当前输入完成组装", "success");
+      } catch (error) {
+        setStatus("Prompt 预览失败：" + (error.message || String(error)), "error");
+      } finally {
+        previewPromptBtn.disabled = false;
+        previewPromptBtn.textContent = "预览当前 Prompt";
+      }
     }
 
     function streamStatusText(code) {
@@ -2138,6 +2519,7 @@
 
         const result = (doneData && doneData.result) || {};
         const promptTrace = (doneData && doneData.prompt_trace) || result.prompt_trace || null;
+        renderPromptInspector(promptTrace);
         const finalAnswer = result.answer || streamedText || "";
         bubble.textContent = finalAnswer;
         pendingRecord.text = finalAnswer;
@@ -2181,9 +2563,22 @@
       if (!text) return;
       try {
         await navigator.clipboard.writeText(text);
-        setStatus("Prompt ???", "success");
+        setStatus("Prompt 已复制", "success");
       } catch (_) {
-        setStatus("??????????????", true);
+        setStatus("复制失败，请在 Prompt 检查面板中手动选择文本", true);
+      }
+    });
+    settingsTab.addEventListener("click", () => setInspectorView("settings"));
+    promptTab.addEventListener("click", () => setInspectorView("prompt"));
+    previewPromptBtn.addEventListener("click", previewCurrentPrompt);
+    copyAllPromptBtn.addEventListener("click", async () => {
+      const text = promptTextFromTrace(activePromptTrace);
+      if (!text) return;
+      try {
+        await navigator.clipboard.writeText(text);
+        setStatus("完整 Prompt 已复制", "success");
+      } catch (_) {
+        setStatus("复制失败，请展开最终完整 Prompt 后手动选择文本", "error");
       }
     });
     document.addEventListener("keydown", (event) => {

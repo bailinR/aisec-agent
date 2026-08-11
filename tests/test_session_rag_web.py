@@ -3624,6 +3624,161 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(len(opened), 1)
         self.assertTrue(opened[0].name.endswith(".md"))
 
+    def test_admin_open_file_location_can_open_knowledge_root_folder(self):
+        opened = []
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectMaterialStore(Path(temp_dir))
+            state = build_admin_state_response(project_store=store)
+            response = build_admin_open_file_location_response(
+                {
+                    "project_id": state["project"]["project_id"],
+                    "relative_path": "knowledge/files",
+                    "type": "folder",
+                },
+                project_store=store,
+                opener=opened.append,
+            )
+            opened_path_is_dir = opened[0].is_dir()
+
+        self.assertTrue(response["opened"])
+        self.assertEqual(response["relative_path"], "knowledge/files")
+        self.assertEqual(len(opened), 1)
+        self.assertTrue(opened_path_is_dir)
+
+    def test_workspace_refresh_removes_manually_deleted_knowledge_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectMaterialStore(Path(temp_dir))
+            state = build_admin_state_response(project_store=store)
+            uploaded = build_admin_knowledge_upload_response(
+                file_name="manual_delete.txt",
+                file_data="手动删除后不应继续显示".encode("utf-8"),
+                project_id=state["project"]["project_id"],
+                domain="测试领域",
+                section="测试板块",
+                project_store=store,
+            )
+            doc = uploaded["document"]
+            Path(uploaded["absolute_path"]).unlink()
+
+            workspace = build_workspace_state_response(project_store=store)
+
+        visible_doc_ids = [
+            item.get("doc_id")
+            for business in workspace["businesses"]
+            for item in business.get("documents", [])
+        ]
+        self.assertNotIn(doc["doc_id"], visible_doc_ids)
+
+    def test_workspace_state_exposes_editable_scene_templates(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectMaterialStore(Path(temp_dir))
+            state = build_admin_state_response(project_store=store)
+            project_id = state["project"]["project_id"]
+            saved = build_admin_scene_template_save_response(
+                {
+                    "project_id": project_id,
+                    "template": {
+                        "template_id": "tpl_first_dm_reply",
+                        "title": "首次私信可编辑模板",
+                        "purpose": "承接评论并引导回复",
+                        "applicable_scene": "公开评论后的首次私信",
+                        "tags": ["首次私信", "评论承接"],
+                        "steps": ["承接评论", "给出下一步方向", "引导回复"],
+                    },
+                },
+                project_store=store,
+            )
+
+            workspace = build_workspace_state_response(project_store=store)
+
+        templates = workspace["scene_templates"]["templates"]
+        self.assertEqual(workspace["project"]["project_id"], project_id)
+        self.assertEqual(templates, saved["scene_templates"]["templates"])
+        self.assertEqual(templates[0]["title"], "首次私信可编辑模板")
+
+    def test_workspace_repairs_document_attached_to_wrong_knowledge_base(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectMaterialStore(Path(temp_dir))
+            state = build_admin_state_response(project_store=store)
+            project_id = state["project"]["project_id"]
+            descriptions = state["document_descriptions"]
+            source_base, source_domain, source_section, source_doc = next(
+                (base, domain, section, section["documents"][0])
+                for base in descriptions["knowledge_bases"]
+                for domain in base.get("domains", [])
+                for section in domain.get("sections", [])
+                if section.get("documents")
+            )
+            descriptions["knowledge_bases"].append({
+                "kb_id": "kb_wrong",
+                "name": "错误知识库",
+                "description": "错误挂载",
+                "domains": [{
+                    "domain_id": source_domain["domain_id"],
+                    "name": source_domain["name"],
+                    "sections": [{
+                        "section_id": source_section["section_id"],
+                        "name": source_section["name"],
+                        "documents": [json.loads(json.dumps(source_doc, ensure_ascii=False))],
+                    }],
+                }],
+            })
+            description_path = Path(temp_dir) / project_id / "knowledge" / "document_descriptions.json"
+            description_path.write_text(json.dumps(descriptions, ensure_ascii=False, indent=2), encoding="utf-8")
+
+            workspace = build_workspace_state_response(project_store=store)
+            saved = json.loads(description_path.read_text(encoding="utf-8"))
+
+        visible_docs = [
+            item
+            for business in workspace["businesses"]
+            for item in business.get("documents", [])
+            if item.get("doc_id") == source_doc["doc_id"]
+        ]
+        self.assertEqual(len(visible_docs), 1)
+        self.assertNotIn("错误知识库", [item["name"] for item in saved["knowledge_bases"]])
+
+    def test_reuploading_same_file_moves_single_document_instead_of_copying(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectMaterialStore(Path(temp_dir))
+            state = build_admin_state_response(project_store=store)
+            project_id = state["project"]["project_id"]
+            file_data = "同一个来源文件只能归属一个知识库目录。".encode("utf-8")
+
+            first = build_admin_knowledge_upload_response(
+                file_name="single-source.txt",
+                file_data=file_data,
+                project_id=project_id,
+                knowledge_base="知识库甲",
+                domain="模块甲",
+                section="资料",
+                project_store=store,
+            )
+            second = build_admin_knowledge_upload_response(
+                file_name="single-source.txt",
+                file_data=file_data,
+                project_id=project_id,
+                knowledge_base="知识库乙",
+                domain="模块乙",
+                section="资料",
+                project_store=store,
+            )
+            workspace = build_workspace_state_response(project_store=store)
+            first_path_exists = Path(first["absolute_path"]).exists()
+            second_path_exists = Path(second["absolute_path"]).exists()
+
+        matching_docs = [
+            item
+            for business in workspace["businesses"]
+            for item in business.get("documents", [])
+            if item.get("source_file_name") == "single-source.txt"
+        ]
+        self.assertEqual(first["document"]["doc_id"], second["document"]["doc_id"])
+        self.assertFalse(first_path_exists)
+        self.assertTrue(second_path_exists)
+        self.assertEqual(len(matching_docs), 1)
+        self.assertEqual(matching_docs[0]["knowledge_base"], "知识库乙")
+
     def test_admin_delete_knowledge_document_removes_file_and_indexes(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             store = ProjectMaterialStore(Path(temp_dir))

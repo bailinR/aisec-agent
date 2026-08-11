@@ -2190,6 +2190,112 @@ def _flatten_description_documents(data: Dict[str, Any]) -> List[Dict[str, Any]]
     return docs
 
 
+def _description_document_route_from_path(
+    relative_path: Any,
+    fallback_domain: str = "",
+    fallback_section: str = "",
+) -> tuple[str, str, str]:
+    normalized = str(relative_path or "").replace("\\", "/").strip().lstrip("/")
+    parts = normalized.split("/") if normalized else []
+    if len(parts) < 4 or parts[:2] != ["knowledge", "files"]:
+        return "", fallback_domain, fallback_section
+    knowledge_base_name = str(parts[2] or "").strip()
+    domain_name = str(parts[3] or fallback_domain).strip() if len(parts) >= 5 else fallback_domain
+    section_name = fallback_section
+    if len(parts) >= 6:
+        section_name = str(parts[4] or fallback_section).strip()
+    return knowledge_base_name, domain_name or fallback_domain, section_name or fallback_section
+
+
+def _repair_description_document_routes(data: Dict[str, Any]) -> bool:
+    data = _normalize_description_structure(data)
+    before = json.dumps(data.get("knowledge_bases", []), ensure_ascii=False, sort_keys=True)
+    entries = []
+    for base in data.get("knowledge_bases", []):
+        base_name = str(base.get("name") or DEFAULT_KNOWLEDGE_BASE_NAME)
+        for domain in base.get("domains", []):
+            domain_name = str(domain.get("name") or "默认领域")
+            for section in domain.get("sections", []):
+                section_name = str(section.get("name") or "默认板块")
+                for doc in section.get("documents", []):
+                    if not isinstance(doc, dict):
+                        continue
+                    route_base, route_domain, route_section = _description_document_route_from_path(
+                        doc.get("relative_path"),
+                        str(doc.get("domain") or domain_name),
+                        str(doc.get("section") or section_name),
+                    )
+                    target_base = route_base or str(doc.get("knowledge_base") or base_name)
+                    target_domain = route_domain or str(doc.get("domain") or domain_name)
+                    target_section = route_section or str(doc.get("section") or section_name)
+                    entries.append({
+                        "doc": doc,
+                        "source_base": base_name,
+                        "source_domain": domain_name,
+                        "source_section": section_name,
+                        "target_base": target_base,
+                        "target_domain": target_domain,
+                        "target_section": target_section,
+                        "route_matches": base_name == target_base and domain_name == target_domain,
+                    })
+                section["documents"] = []
+
+    def target_section(entry: Dict[str, Any]) -> Dict[str, Any]:
+        base_name = entry["target_base"] or DEFAULT_KNOWLEDGE_BASE_NAME
+        base = next((item for item in data.get("knowledge_bases", []) if item.get("name") == base_name), None)
+        if not base:
+            base = {
+                "kb_id": _knowledge_base_id(base_name),
+                "name": base_name,
+                "description": "",
+                "domains": [],
+            }
+            data.setdefault("knowledge_bases", []).append(base)
+        domain_name = entry["target_domain"] or "默认领域"
+        domain = next((item for item in base.setdefault("domains", []) if item.get("name") == domain_name), None)
+        if not domain:
+            domain = {"domain_id": _domain_id(domain_name), "name": domain_name, "sections": []}
+            base["domains"].append(domain)
+        section_name = entry["target_section"] or "默认板块"
+        section = next((item for item in domain.setdefault("sections", []) if item.get("name") == section_name), None)
+        if not section:
+            section = {
+                "section_id": _section_id(domain_name, section_name, base_name),
+                "name": section_name,
+                "documents": [],
+            }
+            domain["sections"].append(section)
+        return section
+
+    seen_doc_ids = set()
+    seen_paths = set()
+    entries.sort(key=lambda item: bool(item["route_matches"]), reverse=True)
+    for entry in entries:
+        doc = entry["doc"]
+        doc_id = str(doc.get("doc_id") or "").strip()
+        relative_path = _description_path_key(doc.get("relative_path"))
+        if (doc_id and doc_id in seen_doc_ids) or (relative_path and relative_path in seen_paths):
+            continue
+        if doc_id:
+            seen_doc_ids.add(doc_id)
+        if relative_path:
+            seen_paths.add(relative_path)
+        base_name = entry["target_base"] or DEFAULT_KNOWLEDGE_BASE_NAME
+        domain_name = entry["target_domain"] or "默认领域"
+        section_name = entry["target_section"] or "默认板块"
+        target_section(entry).setdefault("documents", []).append({
+            **doc,
+            "kb_id": _knowledge_base_id(base_name),
+            "knowledge_base": base_name,
+            "domain": domain_name,
+            "section": section_name,
+        })
+
+    _remove_empty_sections_and_domains(data)
+    after = json.dumps(data.get("knowledge_bases", []), ensure_ascii=False, sort_keys=True)
+    return before != after
+
+
 def _knowledge_base_summaries(data: Dict[str, Any]) -> List[Dict[str, Any]]:
     data = _normalize_description_structure(data)
     summaries = []
@@ -3267,7 +3373,8 @@ def _load_document_descriptions(store: ProjectMaterialStore, project_id: str) ->
         manifest_changed = _merge_manifest_documents_into_descriptions(store, project_dir.name, data)
         filesystem_changed = _merge_filesystem_documents_into_descriptions(store, project_dir.name, data)
         pruned_missing = _prune_missing_description_documents(store, project_dir.name, data)
-        if manifest_changed or filesystem_changed or pruned_missing:
+        repaired_routes = _repair_description_document_routes(data)
+        if manifest_changed or filesystem_changed or pruned_missing or repaired_routes:
             data["updated_at"] = datetime.now().isoformat(timespec="seconds")
             _write_json_file(path, data)
             _sync_manifest_from_document_descriptions(store, project_dir.name, data)
@@ -3582,19 +3689,24 @@ def build_workspace_state_response(
     project_store: Optional[ProjectMaterialStore] = None,
 ) -> Dict[str, Any]:
     store = _project_store(project_store)
-    project_dir, _ = _project_root_and_meta(store, "")
+    project_dir, project_meta = _project_root_and_meta(store, "")
     descriptions = _load_document_descriptions(store, project_dir.name)
     businesses = _flatten_knowledge_businesses(descriptions)
     business_targets = _load_business_targets(store, project_dir.name, businesses)
     company_settings = _load_company_settings(store, project_dir.name, descriptions)
     current_company = (company_settings.get("companies") or [_default_company()])[0]
     return {
+        "project": {
+            "project_id": project_dir.name,
+            "name": project_meta.get("name") or project_dir.name,
+        },
         "company": _strip_workspace_project_ids(current_company),
         "company_settings": _strip_workspace_project_ids(company_settings),
         "document_descriptions": _strip_workspace_project_ids(descriptions),
         "business_boards": _strip_workspace_project_ids(_workspace_business_boards(descriptions, businesses)),
         "businesses": _strip_workspace_project_ids(_merge_business_targets(businesses, business_targets)),
         "business_targets": _strip_workspace_project_ids(business_targets),
+        "scene_templates": _strip_workspace_project_ids(_load_scene_templates(store, project_dir.name)),
     }
 
 
@@ -4502,11 +4614,42 @@ def build_admin_knowledge_upload_response(
     )
     section_name = _safe_segment(section or meta.get("section") or "默认板块", "默认板块")
     title = store._safe_title(meta.get("title") or Path(file_name).stem or "导入资料")
-    doc_id = "admin_" + uuid.uuid5(
+    stable_doc_id = "admin_" + uuid.uuid5(
         uuid.NAMESPACE_URL,
-        f"{project_dir.name}:{knowledge_base_name}:{domain_name}:{section_name}:{file_name}:{content[:500]}:{len(content)}",
+        f"{project_dir.name}:{file_name}:{content[:500]}:{len(content)}",
     ).hex[:12]
     relative_path = f"knowledge/files/{knowledge_base_name}/{domain_name}/{section_name}/{title}.md"
+    existing_documents = _flatten_description_documents(descriptions)
+    matching_documents = [
+        item for item in existing_documents
+        if item.get("doc_id") == stable_doc_id
+        or (
+            str(item.get("source_file_name") or "").strip().casefold() == file_name.strip().casefold()
+            and str(item.get("title") or "").strip().casefold() == title.casefold()
+        )
+    ]
+    doc_id = str((matching_documents[0] if matching_documents else {}).get("doc_id") or stable_doc_id)
+    old_document_paths = {
+        str(item.get("relative_path") or "").replace("\\", "/").strip()
+        for item in matching_documents
+        if str(item.get("relative_path") or "").strip()
+    }
+    for item in matching_documents:
+        _remove_document_from_descriptions(
+            descriptions,
+            str(item.get("doc_id") or ""),
+            str(item.get("relative_path") or ""),
+        )
+        _remove_document_from_manifest(
+            project_dir,
+            str(item.get("doc_id") or ""),
+            str(item.get("relative_path") or ""),
+        )
+        _remove_document_from_chunks(
+            project_dir,
+            str(item.get("doc_id") or ""),
+            str(item.get("relative_path") or ""),
+        )
     doc_path = project_dir / relative_path
     doc_path.parent.mkdir(parents=True, exist_ok=True)
     description = str(meta.get("description") or f"从 {file_name} 解析入库的资料").strip()
@@ -4528,6 +4671,17 @@ def build_admin_knowledge_upload_response(
         ),
         encoding="utf-8",
     )
+    knowledge_root = project_dir / "knowledge" / "files"
+    for old_relative_path in old_document_paths:
+        if old_relative_path == relative_path:
+            continue
+        try:
+            _, old_path, _ = _safe_project_path(store, project_dir.name, old_relative_path)
+        except WebInputError:
+            continue
+        if old_path.is_file():
+            old_path.unlink()
+            _remove_empty_parent_dirs(old_path, knowledge_root)
 
     chunks = store._split_text(content)
     manifest_doc = {
