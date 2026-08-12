@@ -2723,7 +2723,7 @@ def _load_company_settings(
         data,
         project_dir.name,
         knowledge_bases,
-        assign_all_to_default=not existed,
+        assign_all_to_default=True,
     )
     if not existed or normalized != data:
         normalized["updated_at"] = datetime.now().isoformat(timespec="seconds")
@@ -3078,23 +3078,25 @@ def _sync_chunks_from_document_descriptions(
             continue
 
         doc = docs_by_id.get(str(item.get("doc_id") or ""))
-        if doc:
-            relative_path = str(doc.get("relative_path") or "").replace("\\", "/").strip()
-            if relative_path and item.get("relative_path") != relative_path:
-                item["relative_path"] = relative_path
-                changed = True
-            source_file_name = str(doc.get("source_file_name") or "").strip()
-            if source_file_name and item.get("source_file_name") != source_file_name:
-                item["source_file_name"] = source_file_name
-                changed = True
-            sender_identity = _suggest_sender_identity_from_doc(
-                doc,
-                f"{doc.get('knowledge_base') or DEFAULT_KNOWLEDGE_BASE_NAME}/{doc.get('domain') or ''}",
-                str(doc.get("section") or ""),
-            )
-            if sender_identity and item.get("sender_identity") != sender_identity:
-                item["sender_identity"] = sender_identity
-                changed = True
+        if not doc:
+            changed = True
+            continue
+        relative_path = str(doc.get("relative_path") or "").replace("\\", "/").strip()
+        if relative_path and item.get("relative_path") != relative_path:
+            item["relative_path"] = relative_path
+            changed = True
+        source_file_name = str(doc.get("source_file_name") or "").strip()
+        if source_file_name and item.get("source_file_name") != source_file_name:
+            item["source_file_name"] = source_file_name
+            changed = True
+        sender_identity = _suggest_sender_identity_from_doc(
+            doc,
+            f"{doc.get('knowledge_base') or DEFAULT_KNOWLEDGE_BASE_NAME}/{doc.get('domain') or ''}",
+            str(doc.get("section") or ""),
+        )
+        if sender_identity and item.get("sender_identity") != sender_identity:
+            item["sender_identity"] = sender_identity
+            changed = True
         lines.append(json.dumps(item, ensure_ascii=False))
 
     if changed:
@@ -3296,6 +3298,93 @@ def _doc_id_from_relative_path(relative_path: str) -> str:
     return "doc_" + uuid.uuid5(uuid.NAMESPACE_URL, relative_path).hex[:12]
 
 
+def _merge_filesystem_structure_into_descriptions(
+    store: ProjectMaterialStore,
+    project_id: str,
+    data: Dict[str, Any],
+) -> bool:
+    project_dir, _ = _project_root_and_meta(store, project_id)
+    files_dir = project_dir / "knowledge" / "files"
+    if not files_dir.exists() or not files_dir.is_dir():
+        return False
+
+    data = _normalize_description_structure(data)
+    bases = data.setdefault("knowledge_bases", [])
+    changed = False
+    visible_dir = lambda path: path.is_dir() and not path.name.startswith(".")
+
+    for base in bases:
+        base_name = str(base.get("name") or DEFAULT_KNOWLEDGE_BASE_NAME)
+        base_exists = _knowledge_folder_path(project_dir, base_name).is_dir()
+        if bool(base.get("allow_empty_placeholder")) != base_exists:
+            base["allow_empty_placeholder"] = base_exists
+            changed = True
+        for domain in base.get("domains", []):
+            domain_name = str(domain.get("name") or "默认领域")
+            domain_exists = _knowledge_folder_path(project_dir, base_name, domain_name).is_dir()
+            if bool(domain.get("allow_empty_placeholder")) != domain_exists:
+                domain["allow_empty_placeholder"] = domain_exists
+                changed = True
+            for section in domain.get("sections", []):
+                section_name = str(section.get("name") or "默认板块")
+                section_exists = _knowledge_folder_path(project_dir, base_name, domain_name, section_name).is_dir()
+                if bool(section.get("allow_empty_placeholder")) != section_exists:
+                    section["allow_empty_placeholder"] = section_exists
+                    changed = True
+
+    for base_path in sorted((path for path in files_dir.iterdir() if visible_dir(path)), key=lambda path: path.name):
+        base = next((item for item in bases if item.get("name") == base_path.name), None)
+        if not base:
+            base = {
+                "kb_id": _knowledge_base_id(base_path.name),
+                "name": base_path.name,
+                "description": "",
+                "domains": [],
+            }
+            bases.append(base)
+            changed = True
+        if not base.get("allow_empty_placeholder"):
+            base["allow_empty_placeholder"] = True
+            changed = True
+
+        domains = base.setdefault("domains", [])
+        for domain_path in sorted((path for path in base_path.iterdir() if visible_dir(path)), key=lambda path: path.name):
+            domain = next((item for item in domains if item.get("name") == domain_path.name), None)
+            if not domain:
+                domain = {
+                    "domain_id": _domain_id(domain_path.name),
+                    "name": domain_path.name,
+                    "description": "",
+                    "sections": [],
+                }
+                domains.append(domain)
+                changed = True
+            if not domain.get("allow_empty_placeholder"):
+                domain["allow_empty_placeholder"] = True
+                changed = True
+
+            sections = domain.setdefault("sections", [])
+            for section_path in sorted((path for path in domain_path.iterdir() if visible_dir(path)), key=lambda path: path.name):
+                section = next((item for item in sections if item.get("name") == section_path.name), None)
+                if not section:
+                    section = {
+                        "section_id": _section_id(domain_path.name, section_path.name, base_path.name),
+                        "name": section_path.name,
+                        "documents": [],
+                    }
+                    sections.append(section)
+                    changed = True
+                if not section.get("allow_empty_placeholder"):
+                    section["allow_empty_placeholder"] = True
+                    changed = True
+
+    data["domains"] = (next(
+        (item for item in bases if item.get("name") == DEFAULT_KNOWLEDGE_BASE_NAME),
+        bases[0] if bases else {"domains": []},
+    )).setdefault("domains", [])
+    return changed
+
+
 def _section_from_filesystem_path(parts: List[str]) -> str:
     if len(parts) <= 4:
         return "README与路由" if parts[-1].lower() == "readme.md" else "默认板块"
@@ -3368,22 +3457,23 @@ def _load_document_descriptions(store: ProjectMaterialStore, project_id: str) ->
     if not data.get("domains") and not data.get("knowledge_bases"):
         data = _document_descriptions_from_manifest(store, project_dir.name)
         _write_json_file(path, data)
-    else:
-        data = _normalize_description_structure(data)
-        manifest_changed = _merge_manifest_documents_into_descriptions(store, project_dir.name, data)
-        filesystem_changed = _merge_filesystem_documents_into_descriptions(store, project_dir.name, data)
-        pruned_missing = _prune_missing_description_documents(store, project_dir.name, data)
-        repaired_routes = _repair_description_document_routes(data)
-        if manifest_changed or filesystem_changed or pruned_missing or repaired_routes:
-            data["updated_at"] = datetime.now().isoformat(timespec="seconds")
-            _write_json_file(path, data)
-            _sync_manifest_from_document_descriptions(store, project_dir.name, data)
+    data = _normalize_description_structure(data)
+    filesystem_structure_changed = _merge_filesystem_structure_into_descriptions(store, project_dir.name, data)
+    manifest_changed = _merge_manifest_documents_into_descriptions(store, project_dir.name, data)
+    filesystem_changed = _merge_filesystem_documents_into_descriptions(store, project_dir.name, data)
+    pruned_missing = _prune_missing_description_documents(store, project_dir.name, data)
+    repaired_routes = _repair_description_document_routes(data)
+    if filesystem_structure_changed or manifest_changed or filesystem_changed or pruned_missing or repaired_routes:
+        data["updated_at"] = datetime.now().isoformat(timespec="seconds")
+        _write_json_file(path, data)
+        _sync_manifest_from_document_descriptions(store, project_dir.name, data)
     if _refresh_document_description_summaries(store, project_dir.name, data):
         data["updated_at"] = datetime.now().isoformat(timespec="seconds")
         _write_json_file(path, data)
         _sync_manifest_from_document_descriptions(store, project_dir.name, data)
     elif _manifest_missing_description_documents(store, project_dir.name, data):
         _sync_manifest_from_document_descriptions(store, project_dir.name, data)
+    _sync_chunks_from_document_descriptions(project_dir, data)
     data["project_id"] = project_dir.name
     return data
 
@@ -3397,6 +3487,15 @@ def _save_document_descriptions(store: ProjectMaterialStore, project_id: str, da
     data["version"] = data.get("version") or 1
     data["project_id"] = project_dir.name
     data["updated_at"] = datetime.now().isoformat(timespec="seconds")
+    for base in data.get("knowledge_bases", []):
+        base_name = str(base.get("name") or DEFAULT_KNOWLEDGE_BASE_NAME)
+        _knowledge_folder_path(project_dir, base_name).mkdir(parents=True, exist_ok=True)
+        for domain in base.get("domains", []):
+            domain_name = str(domain.get("name") or "默认领域")
+            _knowledge_folder_path(project_dir, base_name, domain_name).mkdir(parents=True, exist_ok=True)
+            for section in domain.get("sections", []):
+                section_name = str(section.get("name") or "默认板块")
+                _knowledge_folder_path(project_dir, base_name, domain_name, section_name).mkdir(parents=True, exist_ok=True)
     _write_json_file(path, data)
     _sync_manifest_from_document_descriptions(store, project_dir.name, data)
     return data
@@ -3772,7 +3871,7 @@ def _remove_empty_sections_and_domains(descriptions: Dict[str, Any]) -> bool:
         for domain in base.get("domains", []):
             kept_sections = []
             for section in domain.get("sections", []):
-                if section.get("documents"):
+                if section.get("documents") or section.get("allow_empty_placeholder"):
                     kept_sections.append(section)
             domain["sections"] = kept_sections
             if kept_sections or domain.get("allow_empty_placeholder"):
@@ -3917,7 +4016,6 @@ def _delete_knowledge_folder(project_dir: Path, folder_path: Path) -> bool:
     if not folder_path.is_dir():
         raise WebInputError("target is not a folder")
     shutil.rmtree(folder_path)
-    _remove_empty_parent_dirs(folder_path, project_dir / "knowledge" / "files")
     return True
 
 
@@ -4293,7 +4391,6 @@ def build_admin_knowledge_delete_response(
     if target_path.exists() and target_path.is_file():
         target_path.unlink()
         file_deleted = True
-        _remove_empty_parent_dirs(target_path, project_dir / "knowledge" / "files")
 
     if not removed_doc and not manifest_removed and not file_deleted and removed_chunks == 0:
         raise WebInputError("document not found")
@@ -4446,7 +4543,6 @@ def build_admin_knowledge_route_update_response(
             raise WebInputError("target document already exists")
         new_path.parent.mkdir(parents=True, exist_ok=True)
         old_path.rename(new_path)
-        _remove_empty_parent_dirs(old_path, project_dir / "knowledge" / "files")
 
     if new_path.is_file() and new_path.suffix.lower() in {".md", ".markdown"}:
         markdown = new_path.read_text(encoding="utf-8")
@@ -4671,7 +4767,6 @@ def build_admin_knowledge_upload_response(
         ),
         encoding="utf-8",
     )
-    knowledge_root = project_dir / "knowledge" / "files"
     for old_relative_path in old_document_paths:
         if old_relative_path == relative_path:
             continue
@@ -4681,7 +4776,6 @@ def build_admin_knowledge_upload_response(
             continue
         if old_path.is_file():
             old_path.unlink()
-            _remove_empty_parent_dirs(old_path, knowledge_root)
 
     chunks = store._split_text(content)
     manifest_doc = {

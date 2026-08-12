@@ -3661,6 +3661,12 @@ class SessionRAGWebTest(unittest.TestCase):
             Path(uploaded["absolute_path"]).unlink()
 
             workspace = build_workspace_state_response(project_store=store)
+            chunks_path = Path(temp_dir) / state["project"]["project_id"] / "knowledge" / "chunks.jsonl"
+            remaining_chunk_doc_ids = {
+                json.loads(line).get("doc_id")
+                for line in chunks_path.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            }
 
         visible_doc_ids = [
             item.get("doc_id")
@@ -3668,6 +3674,7 @@ class SessionRAGWebTest(unittest.TestCase):
             for item in business.get("documents", [])
         ]
         self.assertNotIn(doc["doc_id"], visible_doc_ids)
+        self.assertNotIn(doc["doc_id"], remaining_chunk_doc_ids)
 
     def test_workspace_state_exposes_editable_scene_templates(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -3880,7 +3887,9 @@ class SessionRAGWebTest(unittest.TestCase):
             )
             workspace = build_workspace_state_response(project_store=store)
             project_dir = Path(temp_dir) / project_id
+            board_dir = project_dir / "knowledge" / "files" / "企业培训业务板块"
             module_dir = project_dir / "knowledge" / "files" / "企业培训业务板块" / "客户交付业务模块"
+            board_dir_exists = board_dir.is_dir()
             module_dir_exists = module_dir.is_dir()
 
             with self.assertRaisesRegex(WebInputError, "domain name already exists"):
@@ -3908,7 +3917,127 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(business["document_count"], 0)
         self.assertEqual(business["documents"], [])
         self.assertTrue(business["allow_empty_placeholder"])
+        self.assertTrue(board_dir_exists)
         self.assertTrue(module_dir_exists)
+
+    def test_workspace_maps_empty_filesystem_folders_back_to_board_and_module(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectMaterialStore(Path(temp_dir))
+            state = build_admin_state_response(project_store=store)
+            project_id = state["project"]["project_id"]
+            section_dir = (
+                Path(temp_dir)
+                / project_id
+                / "knowledge"
+                / "files"
+                / "空白公司资料板块"
+                / "空白公司介绍模块"
+                / "基础资料"
+            )
+            section_dir.mkdir(parents=True, exist_ok=True)
+
+            workspace = build_workspace_state_response(project_store=store)
+            descriptions = workspace["document_descriptions"]
+
+        board = next(
+            item for item in workspace["business_boards"]
+            if item["business_board_name"] == "空白公司资料板块"
+        )
+        business = next(
+            item for item in workspace["businesses"]
+            if item["business_board_name"] == "空白公司资料板块"
+            and item["business_module_name"] == "空白公司介绍模块"
+        )
+        base = next(item for item in descriptions["knowledge_bases"] if item["name"] == "空白公司资料板块")
+        domain = next(item for item in base["domains"] if item["name"] == "空白公司介绍模块")
+        section = next(item for item in domain["sections"] if item["name"] == "基础资料")
+        relations = workspace["company_settings"]["company_knowledge_bases"]
+        self.assertEqual(board["document_count"], 0)
+        self.assertEqual(business["document_count"], 0)
+        self.assertTrue(base["allow_empty_placeholder"])
+        self.assertTrue(domain["allow_empty_placeholder"])
+        self.assertTrue(section["allow_empty_placeholder"])
+        self.assertTrue(any(item["kb_id"] == base["kb_id"] and item["enabled"] for item in relations))
+
+    def test_deleting_last_document_preserves_physical_board_and_module_folders(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectMaterialStore(Path(temp_dir))
+            state = build_admin_state_response(project_store=store)
+            project_id = state["project"]["project_id"]
+            uploaded = build_admin_knowledge_upload_response(
+                file_name="company-profile.txt",
+                file_data="公司基础资料。".encode("utf-8"),
+                project_id=project_id,
+                knowledge_base="待清空资料板块",
+                domain="待清空资料模块",
+                section="基础资料",
+                project_store=store,
+            )
+            document = uploaded["document"]
+            build_admin_knowledge_delete_response(
+                {
+                    "project_id": project_id,
+                    "doc_id": document["doc_id"],
+                    "relative_path": document["relative_path"],
+                },
+                project_store=store,
+            )
+            workspace = build_workspace_state_response(project_store=store)
+            module_dir = (
+                Path(temp_dir)
+                / project_id
+                / "knowledge"
+                / "files"
+                / "待清空资料板块"
+                / "待清空资料模块"
+            )
+            module_dir_exists = module_dir.is_dir()
+
+        self.assertTrue(module_dir_exists)
+        self.assertTrue(any(
+            item["business_board_name"] == "待清空资料板块"
+            and item["business_module_name"] == "待清空资料模块"
+            and item["document_count"] == 0
+            for item in workspace["businesses"]
+        ))
+
+    def test_workspace_removes_empty_module_mapping_when_physical_folder_is_deleted(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ProjectMaterialStore(Path(temp_dir))
+            state = build_admin_state_response(project_store=store)
+            project_id = state["project"]["project_id"]
+            build_admin_knowledge_base_create_response(
+                {"project_id": project_id, "name": "目录映射板块"},
+                project_store=store,
+            )
+            build_admin_knowledge_domain_create_response(
+                {
+                    "project_id": project_id,
+                    "knowledge_base": "目录映射板块",
+                    "name": "待删除目录模块",
+                },
+                project_store=store,
+            )
+            module_dir = (
+                Path(temp_dir)
+                / project_id
+                / "knowledge"
+                / "files"
+                / "目录映射板块"
+                / "待删除目录模块"
+            )
+            module_dir.rmdir()
+
+            workspace = build_workspace_state_response(project_store=store)
+
+        self.assertTrue(any(
+            item["business_board_name"] == "目录映射板块"
+            for item in workspace["business_boards"]
+        ))
+        self.assertFalse(any(
+            item["business_module_name"] == "待删除目录模块"
+            for item in workspace["businesses"]
+        ))
 
     def test_admin_upload_auto_classifies_into_matching_empty_business_board(self):
         with tempfile.TemporaryDirectory() as temp_dir:

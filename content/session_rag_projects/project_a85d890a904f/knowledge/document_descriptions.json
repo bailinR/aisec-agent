@@ -1,7 +1,7 @@
 {
   "version": 1,
   "project_id": "project_a85d890a904f",
-  "updated_at": "2026-08-11T21:11:25",
+  "updated_at": "2026-08-12T09:14:56",
   "knowledge_bases": [
     {
       "kb_id": "kb_5bede326e3",
@@ -48,7 +48,8 @@
                 }
               ]
             }
-          ]
+          ],
+          "allow_empty_placeholder": true
         },
         {
           "domain_id": "domain_cf78c31a6e",
@@ -143,9 +144,11 @@
                 }
               ]
             }
-          ]
+          ],
+          "allow_empty_placeholder": true
         }
-      ]
+      ],
+      "allow_empty_placeholder": true
     },
     {
       "kb_id": "kb_7cf5474512",
@@ -219,7 +222,8 @@
                 }
               ]
             }
-          ]
+          ],
+          "allow_empty_placeholder": true
         },
         {
           "domain_id": "domain_90764af36d",
@@ -287,9 +291,11 @@
                 }
               ]
             }
-          ]
+          ],
+          "allow_empty_placeholder": true
         }
-      ]
+      ],
+      "allow_empty_placeholder": true
     },
     {
       "kb_id": "kb_da06906974",
@@ -336,7 +342,8 @@
                 }
               ]
             }
-          ]
+          ],
+          "allow_empty_placeholder": true
         },
         {
           "domain_id": "domain_9f9e7792ac",
@@ -377,9 +384,11 @@
                 }
               ]
             }
-          ]
+          ],
+          "allow_empty_placeholder": true
         }
-      ]
+      ],
+      "allow_empty_placeholder": true
     },
     {
       "kb_id": "kb_bf41b01f15",
@@ -391,208 +400,39 @@
           "domain_id": "domain_1312315cd6",
           "name": "干燥设备细分",
           "description": "用于整理不同干燥设备路线、适用场景、核心参数和选型差异。",
-          "sections": [
-            {
-              "section_id": "section_a3990b27f4",
-              "name": "具体资料",
-              "description": "该业务模块下的具体资料文件。",
-              "documents": [
-                {
-                  "doc_id": "doc_4b46d518233c",
-                  "title": "干燥设备细分资料待补充",
-                  "kb_id": "kb_61d072dd76",
-                  "knowledge_base": "烘干设备业务板块",
-                  "domain": "干燥设备细分",
-                  "section": "具体资料",
-                  "category": "干燥设备细分",
-                  "sender_identity": "烘干设备顾问",
-                  "relative_path": "knowledge/files/烘干设备业务板块/干燥设备细分/干燥设备细分资料待补充.md",
-                  "description": "用于整理不同干燥设备路线、适用场景、核心参数和选型差异。 当前为初始化占位资料，后续可继续补充。",
-                  "summary": "# 干燥设备细分资料待补充\n\n当前业务模块已创建。\n\n后续可在本目录继续补充：\n- 干燥设备按热源分类\n- 干燥设备按物料分类\n- 干燥设备按产能分类\n- 干燥设备按工艺路线分类\n- 典型适用场景与选型差异",
-                  "tags": [
-                    "烘干设备业务板块",
-                    "干燥设备细分",
-                    "干燥设备细分资料待补充"
-                  ],
-                  "keywords": [
-                    "烘干设备业务板块",
-                    "干燥设备细分",
-                    "干燥设备细分资料待补充"
-                  ],
-                  "source_file_name": "干燥设备细分资料待补充.md",
-                  "imported_at": "2026-07-23T14:43:57",
-                  "updated_at": "2026-07-23T14:43:57",
-                  "content_chars": 101
-                }
-              ]
-            }
-          ]
+          "sections": [],
+          "allow_empty_placeholder": true
         },
         {
           "domain_id": "domain_de297fd804",
           "name": "烘干房品类",
           "description": "用于整理不同烘干房方案、结构配置、适用品类和交付方式。",
-          "sections": [
-            {
-              "section_id": "section_f998ed87fb",
-              "name": "具体资料",
-              "description": "该业务模块下的具体资料文件。",
-              "documents": [
-                {
-                  "doc_id": "doc_83cba3c2321f",
-                  "title": "烘干房品类资料待补充",
-                  "kb_id": "kb_61d072dd76",
-                  "knowledge_base": "烘干设备业务板块",
-                  "domain": "烘干房品类",
-                  "section": "具体资料",
-                  "category": "烘干房品类",
-                  "sender_identity": "烘干设备顾问",
-                  "relative_path": "knowledge/files/烘干设备业务板块/烘干房品类/烘干房品类资料待补充.md",
-                  "description": "用于整理不同烘干房方案、结构配置、适用品类和交付方式。 当前为初始化占位资料，后续可继续补充。",
-                  "summary": "# 烘干房品类资料待补充\n\n当前业务模块已创建。\n\n后续可在本目录继续补充：\n- 不同烘干房结构方案\n- 不同容量段配置\n- 适用物料范围\n- 温湿度与风路控制特点\n- 安装条件与交付方式",
-                  "tags": [
-                    "烘干设备业务板块",
-                    "烘干房品类",
-                    "烘干房品类资料待补充"
-                  ],
-                  "keywords": [
-                    "烘干设备业务板块",
-                    "烘干房品类",
-                    "烘干房品类资料待补充"
-                  ],
-                  "source_file_name": "烘干房品类资料待补充.md",
-                  "imported_at": "2026-07-23T14:43:57",
-                  "updated_at": "2026-07-23T14:43:57",
-                  "content_chars": 92
-                }
-              ]
-            }
-          ]
+          "sections": [],
+          "allow_empty_placeholder": true
         },
         {
           "domain_id": "domain_f0036abd6f",
           "name": "烘干机整机品类",
           "description": "用于整理整机型号、规格参数、适用物料和报价说明。",
-          "sections": [
-            {
-              "section_id": "section_a3fec5d798",
-              "name": "具体资料",
-              "description": "该业务模块下的具体资料文件。",
-              "documents": [
-                {
-                  "doc_id": "doc_f9447c2864d0",
-                  "title": "烘干机整机品类资料待补充",
-                  "kb_id": "kb_61d072dd76",
-                  "knowledge_base": "烘干设备业务板块",
-                  "domain": "烘干机整机品类",
-                  "section": "具体资料",
-                  "category": "烘干机整机品类",
-                  "sender_identity": "烘干设备顾问",
-                  "relative_path": "knowledge/files/烘干设备业务板块/烘干机整机品类/烘干机整机品类资料待补充.md",
-                  "description": "用于整理整机型号、规格参数、适用物料和报价说明。 当前为初始化占位资料，后续可继续补充。",
-                  "summary": "# 烘干机整机品类资料待补充\n\n当前业务模块已创建。\n\n后续可在本目录继续补充：\n- 不同整机型号划分\n- 单机与组合机差异\n- 适配物料与典型批次\n- 产能范围与能耗水平\n- 客户常问问题",
-                  "tags": [
-                    "烘干设备业务板块",
-                    "烘干机整机品类",
-                    "烘干机整机品类资料待补充"
-                  ],
-                  "keywords": [
-                    "烘干设备业务板块",
-                    "烘干机整机品类",
-                    "烘干机整机品类资料待补充"
-                  ],
-                  "source_file_name": "烘干机整机品类资料待补充.md",
-                  "imported_at": "2026-07-23T14:43:57",
-                  "updated_at": "2026-07-23T14:43:57",
-                  "content_chars": 93
-                }
-              ]
-            }
-          ]
+          "sections": [],
+          "allow_empty_placeholder": true
         },
         {
           "domain_id": "domain_48bb4080d2",
           "name": "热泵烘干机结构",
           "description": "用于整理热泵烘干机核心结构、部件组成、工作原理和卖点说明。",
-          "sections": [
-            {
-              "section_id": "section_0cf8f1c49c",
-              "name": "具体资料",
-              "description": "该业务模块下的具体资料文件。",
-              "documents": [
-                {
-                  "doc_id": "doc_68ed2d300d7b",
-                  "title": "热泵烘干机结构资料待补充",
-                  "kb_id": "kb_61d072dd76",
-                  "knowledge_base": "烘干设备业务板块",
-                  "domain": "热泵烘干机结构",
-                  "section": "具体资料",
-                  "category": "热泵烘干机结构",
-                  "sender_identity": "烘干设备顾问",
-                  "relative_path": "knowledge/files/烘干设备业务板块/热泵烘干机结构/热泵烘干机结构资料待补充.md",
-                  "description": "用于整理热泵烘干机核心结构、部件组成、工作原理和卖点说明。 当前为初始化占位资料，后续可继续补充。",
-                  "summary": "# 热泵烘干机结构资料待补充\n\n当前业务模块已创建。\n\n后续可在本目录继续补充：\n- 热泵主机结构\n- 箱体与保温结构\n- 风机、风道与循环系统\n- 控制系统与传感器\n- 维护保养与常见故障点",
-                  "tags": [
-                    "烘干设备业务板块",
-                    "热泵烘干机结构",
-                    "热泵烘干机结构资料待补充"
-                  ],
-                  "keywords": [
-                    "烘干设备业务板块",
-                    "热泵烘干机结构",
-                    "热泵烘干机结构资料待补充"
-                  ],
-                  "source_file_name": "热泵烘干机结构资料待补充.md",
-                  "imported_at": "2026-07-23T14:43:57",
-                  "updated_at": "2026-07-23T14:43:57",
-                  "content_chars": 94
-                }
-              ]
-            }
-          ]
+          "sections": [],
+          "allow_empty_placeholder": true
         },
         {
           "domain_id": "domain_79c4e86686",
           "name": "通用烘干大类",
           "description": "用于整理通用烘干场景、行业分类、基础术语和标准话术。",
-          "sections": [
-            {
-              "section_id": "section_5a2a62dccd",
-              "name": "具体资料",
-              "description": "该业务模块下的具体资料文件。",
-              "documents": [
-                {
-                  "doc_id": "doc_39f0bf15893e",
-                  "title": "通用烘干大类资料待补充",
-                  "kb_id": "kb_61d072dd76",
-                  "knowledge_base": "烘干设备业务板块",
-                  "domain": "通用烘干大类",
-                  "section": "具体资料",
-                  "category": "通用烘干大类",
-                  "sender_identity": "烘干设备顾问",
-                  "relative_path": "knowledge/files/烘干设备业务板块/通用烘干大类/通用烘干大类资料待补充.md",
-                  "description": "用于整理通用烘干场景、行业分类、基础术语和标准话术。 当前为初始化占位资料，后续可继续补充。",
-                  "summary": "# 通用烘干大类资料待补充\n\n当前业务模块已创建。\n\n后续可在本目录继续补充：\n- 常见烘干大类总览\n- 不同烘干方式优缺点\n- 不同物料的基础选型逻辑\n- 常见咨询承接口径\n- 合规边界与禁止承诺",
-                  "tags": [
-                    "烘干设备业务板块",
-                    "通用烘干大类",
-                    "通用烘干大类资料待补充"
-                  ],
-                  "keywords": [
-                    "烘干设备业务板块",
-                    "通用烘干大类",
-                    "通用烘干大类资料待补充"
-                  ],
-                  "source_file_name": "通用烘干大类资料待补充.md",
-                  "imported_at": "2026-07-23T14:43:57",
-                  "updated_at": "2026-07-23T14:43:57",
-                  "content_chars": 97
-                }
-              ]
-            }
-          ]
+          "sections": [],
+          "allow_empty_placeholder": true
         }
-      ]
+      ],
+      "allow_empty_placeholder": true
     },
     {
       "kb_id": "kb_9f2d412527",
@@ -604,37 +444,74 @@
         {
           "domain_id": "domain_6a1730348a",
           "name": "产品资料",
+          "sections": [],
+          "allow_empty_placeholder": true
+        },
+        {
+          "domain_id": "domain_e3b3efbb8a",
+          "name": "默认领域",
           "sections": [
             {
-              "section_id": "section_d2371271dc",
+              "section_id": "section_58c659f2fc",
               "name": "默认板块",
               "documents": [
                 {
-                  "doc_id": "admin_1731fa107838",
-                  "title": "空气热泵烘干设备产品介绍文档",
-                  "kb_id": "kb_9f2d412527",
-                  "knowledge_base": "空气能热泵烘干机",
-                  "domain": "产品资料",
-                  "section": "默认板块",
-                  "source_file_name": "空气热泵烘干设备产品介绍文档.docx",
-                  "relative_path": "knowledge/files/空气能热泵烘干机/产品资料/默认板块/空气热泵烘干设备产品介绍文档.md",
-                  "description": "当用户问题涉及AI技术与智能硬件相关内容时读取。",
-                  "summary": "空气热泵烘干设备产品介绍文档；一、产品概述；空气热泵烘干设备是一款基于逆卡诺循环原理研发的新型节能环保烘干设备，突破传统燃煤、燃气、电加热烘干设备的能耗高、污染大、烘干品质差的短板。设备以少量电能为驱动核心，可吸收空气中的低位热能转化为可用高温热能，搭配闭环热风循环系统，实现低温、均匀、高效的物料烘干加工。设备兼容性极强，可适配水电、太阳能、风能等多种清洁能源供电，广泛适用于中药材、农副产品、食品、化工物料、木制品等多领域烘干作业，同时可产出高价值副产品，兼具经济效益、环保效益与实用价值，是工业及农业烘干升级的优选。",
+                  "doc_id": "doc_8e15d3ebc05a",
+                  "title": "32款烘干机介绍-整理",
+                  "source_file_name": "32款烘干机介绍-整理.md",
+                  "relative_path": "knowledge/files/空气能热泵烘干机/32款烘干机介绍-整理.md",
+                  "description": "奥伯特 32 款烘干机介绍（整理稿）；> 整理原则：按原页顺序保留产品型号、宣传语、产品参数、烘干领域及案例语义；单位和乘号做了统一排版，但没有改写参数值。二维码及纯装饰文字未重复收录。；型号索引；| 页码 | 机组型号 | 页面所示类型/定位 |；|---:|---|---|；| 1 | AHRD015-HJ（单风机） | 小型圆桶式烘干机 |；| 2 | AHRD015-HJ（双风机） | 1.5P 双风机烘干机 |；| 3 | AHRD015-X | 1.5P 厢式烘干机 |；| 4 | AHRZ030-U-。",
+                  "summary": "奥伯特 32 款烘干机介绍（整理稿）；> 整理原则：按原页顺序保留产品型号、宣传语、产品参数、烘干领域及案例语义；单位和乘号做了统一排版，但没有改写参数值。二维码及纯装饰文字未重复收录。；型号索引；| 页码 | 机组型号 | 页面所示类型/定位 |；|---:|---|---|；| 1 | AHRD015-HJ（单风机） | 小型圆桶式烘干机 |；| 2 | AHRD015-HJ（双风机） | 1.5P 双风机烘干机 |；| 3 | AHRD015-X | 1.5P 厢式烘干机 |；| 4 | AHRZ030-U-。",
                   "tags": [
-                    "AI",
-                    "优惠",
-                    "空气热泵烘干设备产品介绍文档"
+                    "空气能热泵烘干机",
+                    "默认领域"
                   ],
-                  "sender_identity": "运营顾问",
-                  "content_chars": 2532,
-                  "chunk_count": 4,
-                  "updated_at": "2026-07-27T09:45:32"
+                  "sender_identity": "招聘助理",
+                  "content_chars": 11166,
+                  "updated_at": "2026-08-12T09:12:26"
+                },
+                {
+                  "doc_id": "doc_4f7a2b876801",
+                  "title": "奥伯特全系列产品型号清单、核心卖点",
+                  "source_file_name": "奥伯特全系列产品型号清单、核心卖点.md",
+                  "relative_path": "knowledge/files/空气能热泵烘干机/奥伯特全系列产品型号清单、核心卖点.md",
+                  "description": "奥伯特全系列产品型号清单与核心卖点；> 说明：型号中的数字、字母、大小写及括号内容均按原表保留，未对疑似易混字符（如 `0` 与 `O`）进行推断修改。；产品总览；共 **11** 个产品系列，收录 **57** 条型号记录。；| 序号 | 产品系列 | 型号数量 | 结构类型 | 核心卖点 |；| ---: | --- | ---: | --- | --- |；| 1 | 厢式烘干机 | 5 | 开闭一体、直热式 | 免安装；插电即用；配备万向轮，移动便捷（AHRD015-x、AHRD030-x） |；| 2 |。",
+                  "summary": "奥伯特全系列产品型号清单与核心卖点；> 说明：型号中的数字、字母、大小写及括号内容均按原表保留，未对疑似易混字符（如 `0` 与 `O`）进行推断修改。；产品总览；共 **11** 个产品系列，收录 **57** 条型号记录。；| 序号 | 产品系列 | 型号数量 | 结构类型 | 核心卖点 |；| ---: | --- | ---: | --- | --- |；| 1 | 厢式烘干机 | 5 | 开闭一体、直热式 | 免安装；插电即用；配备万向轮，移动便捷（AHRD015-x、AHRD030-x） |；| 2 |。",
+                  "tags": [
+                    "空气能热泵烘干机",
+                    "默认领域"
+                  ],
+                  "sender_identity": "招聘助理",
+                  "content_chars": 3206,
+                  "updated_at": "2026-08-12T09:12:39"
+                },
+                {
+                  "doc_id": "doc_a456c9d19698",
+                  "title": "奥伯特最新总本画册-内容总结",
+                  "source_file_name": "奥伯特最新总本画册-内容总结.md",
+                  "relative_path": "knowledge/files/空气能热泵烘干机/奥伯特最新总本画册-内容总结.md",
+                  "description": "奥伯特最新总本画册内容总结；> 总结日期：2026-08-11；一、画册定位；本画册介绍广东奥伯特节能设备有限公司的工业、农业热泵烘干设备及定制化烘干解决方案。整体以“万物皆可烘，首选奥伯特”为品牌主张，内容覆盖企业能力、热泵烘干原理、产品选型、烘干房方案、行业案例和售后服务。；奥伯特的业务定位不是单纯销售烘干主机，而是根据物料特性、处理量、含水率、场地、温湿度曲线和生产节拍，提供设备选型、烘干房设计、安装调试及售后支持的一站式服务。；二、企业概况；画册列出的主要企业数据如下：；约 20 年热泵及烘干技术经验。；约。",
+                  "summary": "奥伯特最新总本画册内容总结；> 总结日期：2026-08-11；一、画册定位；本画册介绍广东奥伯特节能设备有限公司的工业、农业热泵烘干设备及定制化烘干解决方案。整体以“万物皆可烘，首选奥伯特”为品牌主张，内容覆盖企业能力、热泵烘干原理、产品选型、烘干房方案、行业案例和售后服务。；奥伯特的业务定位不是单纯销售烘干主机，而是根据物料特性、处理量、含水率、场地、温湿度曲线和生产节拍，提供设备选型、烘干房设计、安装调试及售后支持的一站式服务。；二、企业概况；画册列出的主要企业数据如下：；约 20 年热泵及烘干技术经验。；约。",
+                  "tags": [
+                    "空气能热泵烘干机",
+                    "默认领域"
+                  ],
+                  "sender_identity": "品牌客服",
+                  "content_chars": 3718,
+                  "updated_at": "2026-08-12T09:13:05"
                 }
               ]
             }
           ]
         }
       ]
+    },
+    {
+      "kb_id": "kb_10e926c244",
+      "name": "公司基础资料板块",
+      "description": "",
+      "domains": [],
+      "allow_empty_placeholder": true
     }
   ],
   "domains": [
@@ -677,7 +554,8 @@
             }
           ]
         }
-      ]
+      ],
+      "allow_empty_placeholder": true
     },
     {
       "domain_id": "domain_cf78c31a6e",
@@ -772,7 +650,8 @@
             }
           ]
         }
-      ]
+      ],
+      "allow_empty_placeholder": true
     }
   ]
 }
