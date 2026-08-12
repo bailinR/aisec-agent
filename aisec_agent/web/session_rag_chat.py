@@ -1318,7 +1318,7 @@ def _format_sender_identity_context(sender_identity: str, source: Optional[Dict[
         "<sender_identity>",
         f"本轮私信对外只使用通用身份：{public_identity}。",
         f"身份来源：{source_text}{'；' + '；'.join(details) if details else ''}。",
-        f"使用原则：身份称谓只能说“运营”“助理”“顾问”“客服”“工作人员”等通用岗位，不得添加健康、医疗、招聘、跨境、电商、行业、产品或业务方向等前缀；即使配置身份包含这些限定词，对外也必须改成通用岗位称谓。如果场景模板已经定义开场，优先使用模板开场，不要强行添加统一自我介绍；确需自我介绍时使用“您好，我是这边的{public_identity}”，不要说“{public_identity}这边”“我是账号的{public_identity}”或“我是账号方的{public_identity}”。不要伪装医生、专家或平台官方人员；不要读取知识库里的 sender_identity 字段。",
+        "使用原则：人员身份只用于内部业务路由和口吻约束，不要为了体现身份而在私信正文中添加自我介绍。首次私信可从简单问候、感谢关注、感谢留言或承接用户评论开始，并按当前任务指定的开场方向生成；不要伪装医生、专家或平台官方人员，不要读取知识库里的 sender_identity 字段。",
         "</sender_identity>",
     ])
 
@@ -5432,8 +5432,8 @@ def build_admin_prompt_restore_response(
 <sender_identity>
 本轮私信对外只使用通用身份：{public_sender_identity}。
 身份来源：{sender_identity_source.get("source", "")}。
-身份称谓禁止添加具体行业、产品或业务方向前缀；即使内部配置带有限定词，也只能对外说“运营”“助理”“顾问”“客服”“工作人员”等通用岗位。
-如果场景模板已经定义开场，优先使用模板开场，不要强行添加统一自我介绍；确需自我介绍时使用“您好，我是这边的{public_sender_identity}”，不要使用“{public_sender_identity}这边”“我是账号的{public_sender_identity}”或“我是账号方的{public_sender_identity}”。
+人员身份只用于内部业务路由和口吻约束，不要为了体现身份而在私信正文中添加自我介绍。
+首次私信禁止出现“我是这边助理”“我是顾问”“我是客服”“我是运营”等身份介绍，可从简单问候、感谢关注、感谢留言或承接用户评论开始。
 </sender_identity>
 
 <scene_template>
@@ -5449,7 +5449,7 @@ def build_admin_prompt_restore_response(
 <task>
 只根据用户评论/上下文、全局提示词、人员身份、场景模板、活动设置、检索到的相关知识库生成回复。
 人员身份由业务、视频概述和活动自动生成，不要读取知识库里的 sender_identity 字段；如果页面/API已传入账号或产品身份，以配置身份为准。
-私信正文中的身份称谓只能使用不带行业、产品或业务前缀的通用岗位；如果场景模板已经定义开场，优先使用模板开场，不要强行添加统一自我介绍；确需自我介绍时使用“您好，我是这边的{{通用身份}}”，禁止使用倒装的“顾问这边”以及“我是账号运营”“我是账号的助理”等说法，也禁止说“健康顾问”“招聘助理”“跨境运营顾问”等具体身份。
+人员身份只用于内部业务路由和口吻约束。首次私信禁止任何发送者身份介绍，直接按场景模板承接用户的关注或留言。
 不要编造未在知识库或场景模板中出现的事实、价格、名额、医疗承诺或平台规则。
 如活动设置为空，不要主动编造“活动/义诊/优惠券”；如活动设置存在且适合当前评论，可自然表达为“咱们这边正好有活动/义诊/优惠券”。
 不要主动自证消息真实性、解释发送方式或强调自己是真人，要用对评论和视频内容的准确承接证明真人感。
@@ -7463,13 +7463,51 @@ def build_chat_stream_events(
     )
 
     answer_parts: List[str] = []
+    checking_identity_prefix = prepared.conversation_stage == "first_comment"
+    identity_prefix_removed = False
+    identity_prefix_buffer = ""
     chunks = [stream_result] if isinstance(stream_result, str) else stream_result
     for chunk in chunks:
         text = str(chunk)
         if not text:
             continue
+        if checking_identity_prefix:
+            identity_prefix_buffer += text
+            if identity_prefix_removed:
+                cleaned = identity_prefix_buffer.lstrip("，,：:。.!！~～- \t")
+                if not cleaned:
+                    continue
+                text = cleaned
+                checking_identity_prefix = False
+            else:
+                cleaned = chat_logic._strip_first_message_identity_introduction(
+                    identity_prefix_buffer,
+                    prepared.conversation_stage,
+                )
+                if cleaned != identity_prefix_buffer.strip():
+                    identity_prefix_removed = True
+                    identity_prefix_buffer = cleaned
+                    if not cleaned:
+                        continue
+                    text = cleaned
+                    checking_identity_prefix = False
+                elif chat_logic._could_start_first_message_identity_introduction(identity_prefix_buffer):
+                    continue
+                else:
+                    text = identity_prefix_buffer
+                    checking_identity_prefix = False
+            identity_prefix_buffer = ""
         answer_parts.append(text)
         yield {"type": "delta", "text": text}
+
+    if checking_identity_prefix and identity_prefix_buffer:
+        text = chat_logic._strip_first_message_identity_introduction(
+            identity_prefix_buffer,
+            prepared.conversation_stage,
+        )
+        if text:
+            answer_parts.append(text)
+            yield {"type": "delta", "text": text}
 
     answer = "".join(answer_parts).strip()
     result = SessionRAGChatResult(

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+import hashlib
 import json
 import logging
 import re
@@ -108,7 +109,10 @@ class SessionRAGChatLogic:
             final_prompt = second_prompt
             final_answer = self._call_structured_llm(second_prompt, user_input, model_conf)
 
-        answer = self._normalize_identity_introduction(final_answer.get("answer", ""), project_context)
+        answer = self._strip_first_message_identity_introduction(
+            final_answer.get("answer", ""),
+            conversation_stage,
+        )
         answer = self._format_private_message_readability(answer)
 
         result = SessionRAGChatResult(
@@ -197,35 +201,65 @@ class SessionRAGChatLogic:
         return "\n\n".join(lines)
 
     @staticmethod
-    def _normalize_identity_introduction(answer: Any, project_context: str = "") -> str:
+    def _strip_first_message_identity_introduction(
+        answer: Any,
+        conversation_stage: str = "first_comment",
+    ) -> str:
         text = str(answer or "").strip()
-        if not text:
-            return ""
+        if not text or conversation_stage != "first_comment":
+            return text
 
-        role_match = re.search(
-            r"本轮私信对外只使用通用身份[：:]\s*(运营|助理|顾问|客服|工作人员)",
-            str(project_context or ""),
-        )
-        configured_role = role_match.group(1) if role_match else ""
-        role_pattern = r"健康顾问助理|跨境运营顾问|招聘助理|运营顾问|品牌客服|运营|助理|顾问|客服|工作人员"
+        role_pattern = r"健康顾问助理|跨境运营顾问|招聘助理|运营顾问|品牌客服|工作人员|运营|助理|顾问|客服"
         intro_pattern = re.compile(
-            rf"^(?:(?:您好|你好呀?|嗨|哈喽)[，,！!。\.\s~～]*)?"
-            rf"(?:我是\s*)?(?:(?:我们这边|这边|账号方|账号|本账号)\s*的?\s*)?"
-            rf"(?P<role>{role_pattern})(?:这边)?[，,：:\s~～]*"
+            rf"^\s*(?:(?:您好|你好呀?|嗨|哈喽)[，,！!。\.\s~～]*)?"
+            rf"(?:"
+            rf"我是\s*(?:(?:我们这边|这边|账号方|账号|本账号)\s*的?\s*)?(?:{role_pattern})(?:这边)?"
+            rf"|(?:{role_pattern})这边"
+            rf")"
+            rf"(?:\s*[，,：:。.!！~～-]+\s*|\s+)?"
         )
         intro_match = intro_pattern.match(text)
         if not intro_match:
             return text
+        return text[intro_match.end():].lstrip("，,：:。.!！~～- \t")
 
-        public_role = configured_role
-        if not public_role:
-            matched_role = intro_match.group("role")
-            generic_roles = ("运营", "助理", "顾问", "客服", "工作人员")
-            matches = [(matched_role.rfind(role), role) for role in generic_roles if role in matched_role]
-            public_role = max(matches, key=lambda item: item[0])[1] if matches else "顾问"
-        remainder = text[intro_match.end():].lstrip("，,：:。.!！~～ \t")
-        canonical_intro = f"您好，我是这边的{public_role}"
-        return f"{canonical_intro}，{remainder}" if remainder else f"{canonical_intro}。"
+    @staticmethod
+    def _could_start_first_message_identity_introduction(answer: Any) -> bool:
+        text = str(answer or "").lstrip()
+        if not text:
+            return True
+
+        greetings = ("你好呀", "您好", "你好", "哈喽", "嗨")
+        if any(greeting.startswith(text) for greeting in greetings):
+            return True
+        for greeting in greetings:
+            if text.startswith(greeting):
+                text = text[len(greeting):].lstrip("，,！!。. ~～\t")
+                if not text:
+                    return True
+                break
+
+        if "我是".startswith(text) or text.startswith("我是"):
+            return True
+
+        roles = (
+            "健康顾问助理",
+            "跨境运营顾问",
+            "招聘助理",
+            "运营顾问",
+            "品牌客服",
+            "工作人员",
+            "运营",
+            "助理",
+            "顾问",
+            "客服",
+        )
+        if any(role.startswith(text) for role in roles):
+            return True
+        for role in roles:
+            if text.startswith(role):
+                return "这边".startswith(text[len(role):])
+        return False
 
     @staticmethod
     def _split_reply_segments(text: str) -> List[str]:
@@ -294,11 +328,29 @@ class SessionRAGChatLogic:
         return "\n\n".join(blocks), labels
 
     @staticmethod
-    def _stage_reply_rules(conversation_stage: str) -> str:
+    def _first_message_opening_guidance(session_id: str) -> str:
+        gratitude_style = "感谢留言类：以感谢用户在账号下留言或关注账号开始，再承接评论内容。可参考“感谢您在我们账号下留言。这段时间留言太多了，没有及时回复您，非常抱歉。”或“感谢关注我们账号，也看到了您在视频下面的留言，结合您提到的相关情况想跟您简单沟通下。”，但要结合当前评论自然改写。"
+        opening_styles = (
+            gratitude_style,
+            gratitude_style,
+            gratitude_style,
+            "简单问候类：以“您好”开始，紧接“看到您之前在评论区提到……”并承接评论内容；不要介绍发送者身份。",
+            "具体关注点切入类：不使用感谢、问候或自我介绍，直接从“看到您之前留言……”或“您之前在评论区提到……”切入用户的具体问题、需求或痛点。",
+        )
+        seed = str(session_id or "default-first-message").encode("utf-8")
+        style_index = int.from_bytes(hashlib.sha256(seed).digest()[:4], "big") % len(opening_styles)
+        return opening_styles[style_index]
+
+    @staticmethod
+    def _stage_reply_rules(conversation_stage: str, session_id: str = "") -> str:
         if conversation_stage == "first_comment":
-            return """
+            opening_guidance = SessionRAGChatLogic._first_message_opening_guidance(session_id)
+            return f"""
 首次私信规则：
 - 这是公开评论后的第一条私信；不要只打招呼或只提问，要给出有价值的承接。
+- 禁止介绍发送者身份，禁止出现“我是这边助理”“我是顾问”“我是客服”“我是运营”等自我介绍；直接从感谢关注、感谢留言或承接用户评论开始。
+- 为降低同一批私信的重复感，三类开场按“感谢留言 3、简单问候 1、具体关注点切入 1”的权重分配；本条私信使用以下开场方向：{opening_guidance}
+- 开场方向只规定表达方式，不是固定文案；必须结合当前评论自然改写，不要照抄示例，也不要编造具体留言时间或其他未提供的事实。
 - 如果提供了场景模板，优先按照模板步骤组织成完整回复，尤其要做到：
   1. 基于用户评论和检索知识，给出安全的初步方案或下一步方向；
   2. 在上下文支持时，加入能促使用户回复的具体钩子或甜头，例如资料包、初评、活动、试用、预留名额等。
@@ -349,12 +401,12 @@ class SessionRAGChatLogic:
 - 如果缺少部分业务细节，请安全回答，不要编造没有上下文支持的事实。
 - 只返回私信正文，不要返回 JSON、Markdown、标签或解释。
 """.strip()
-        stage_rules = SessionRAGChatLogic._stage_reply_rules(conversation_stage)
+        stage_rules = SessionRAGChatLogic._stage_reply_rules(conversation_stage, session_id)
         return f"""
 任务：
 - 只根据用户输入、会话上下文、全局提示词、场景模板和检索知识生成回复。
 - 人员身份由业务、视频概述和活动自动生成，不读取知识库里的 sender_identity 字段；如果页面/API已传入账号或产品身份，以配置身份为准。
-- 私信正文中的身份称谓只能使用“运营”“助理”“顾问”“客服”“工作人员”等不带行业、产品或业务方向前缀的通用岗位；即使上下文中的身份带有限定词，也必须去掉限定词。如果场景模板已经定义开场，优先使用模板开场，不要强行添加统一自我介绍；确需自我介绍时使用“您好，我是这边的{{通用身份}}”，例如“您好，我是这边的顾问”；禁止说“顾问这边”“我是账号运营”“我是账号的助理”“我是账号方的工作人员”，也禁止说“健康顾问”“招聘助理”“跨境运营顾问”等具体身份。
+- 人员身份只用于内部业务路由和口吻约束，不要为了体现身份而在正文中添加自我介绍。
 - 视频概述只用于判断用户可能感兴趣的方向，不要在私信正文里明说“视频里讲的是/视频介绍的是/看到这个视频”；可改成“看到您对xx比较感兴趣”，信息不足时也可以不提视频。
 - 如果提供了场景模板，模板是本轮话术的高优先级约束。必须让模板 steps 中的明确句式、示例、语气和先后顺序在最终回复中可辨认地体现，只允许结合用户问题和业务事实做必要替换；除非与合规规则冲突，不要用通用默认话术覆盖模板。
 - 优先使用检索知识和会话记忆中的事实。

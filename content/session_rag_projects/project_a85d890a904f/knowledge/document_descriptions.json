@@ -1,7 +1,7 @@
 {
   "version": 1,
   "project_id": "project_a85d890a904f",
-  "updated_at": "2026-08-12T09:14:56",
+  "updated_at": "2026-08-12T22:48:19",
   "knowledge_bases": [
     {
       "kb_id": "kb_5bede326e3",
@@ -391,62 +391,12 @@
       "allow_empty_placeholder": true
     },
     {
-      "kb_id": "kb_bf41b01f15",
-      "name": "烘干设备业务板块",
-      "description": "面向农产品烘干、烘干房、整机品类、热泵烘干机结构和通用烘干方案的业务资料。",
-      "document_count": 5,
-      "domains": [
-        {
-          "domain_id": "domain_1312315cd6",
-          "name": "干燥设备细分",
-          "description": "用于整理不同干燥设备路线、适用场景、核心参数和选型差异。",
-          "sections": [],
-          "allow_empty_placeholder": true
-        },
-        {
-          "domain_id": "domain_de297fd804",
-          "name": "烘干房品类",
-          "description": "用于整理不同烘干房方案、结构配置、适用品类和交付方式。",
-          "sections": [],
-          "allow_empty_placeholder": true
-        },
-        {
-          "domain_id": "domain_f0036abd6f",
-          "name": "烘干机整机品类",
-          "description": "用于整理整机型号、规格参数、适用物料和报价说明。",
-          "sections": [],
-          "allow_empty_placeholder": true
-        },
-        {
-          "domain_id": "domain_48bb4080d2",
-          "name": "热泵烘干机结构",
-          "description": "用于整理热泵烘干机核心结构、部件组成、工作原理和卖点说明。",
-          "sections": [],
-          "allow_empty_placeholder": true
-        },
-        {
-          "domain_id": "domain_79c4e86686",
-          "name": "通用烘干大类",
-          "description": "用于整理通用烘干场景、行业分类、基础术语和标准话术。",
-          "sections": [],
-          "allow_empty_placeholder": true
-        }
-      ],
-      "allow_empty_placeholder": true
-    },
-    {
       "kb_id": "kb_9f2d412527",
       "name": "空气能热泵烘干机",
       "description": "",
       "document_count": 0,
       "allow_empty_placeholder": true,
       "domains": [
-        {
-          "domain_id": "domain_6a1730348a",
-          "name": "产品资料",
-          "sections": [],
-          "allow_empty_placeholder": true
-        },
         {
           "domain_id": "domain_e3b3efbb8a",
           "name": "默认领域",
@@ -468,7 +418,11 @@
                   ],
                   "sender_identity": "招聘助理",
                   "content_chars": 11166,
-                  "updated_at": "2026-08-12T09:12:26"
+                  "updated_at": "2026-08-12T09:12:26",
+                  "kb_id": "kb_9f2d412527",
+                  "knowledge_base": "空气能热泵烘干机",
+                  "domain": "默认领域",
+                  "section": "默认板块"
                 },
                 {
                   "doc_id": "doc_4f7a2b876801",
@@ -483,7 +437,11 @@
                   ],
                   "sender_identity": "招聘助理",
                   "content_chars": 3206,
-                  "updated_at": "2026-08-12T09:12:39"
+                  "updated_at": "2026-08-12T09:12:39",
+                  "kb_id": "kb_9f2d412527",
+                  "knowledge_base": "空气能热泵烘干机",
+                  "domain": "默认领域",
+                  "section": "默认板块"
                 },
                 {
                   "doc_id": "doc_a456c9d19698",
@@ -498,20 +456,17 @@
                   ],
                   "sender_identity": "品牌客服",
                   "content_chars": 3718,
-                  "updated_at": "2026-08-12T09:13:05"
+                  "updated_at": "2026-08-12T09:13:05",
+                  "kb_id": "kb_9f2d412527",
+                  "knowledge_base": "空气能热泵烘干机",
+                  "domain": "默认领域",
+                  "section": "默认板块"
                 }
               ]
             }
           ]
         }
       ]
-    },
-    {
-      "kb_id": "kb_10e926c244",
-      "name": "公司基础资料板块",
-      "description": "",
-      "domains": [],
-      "allow_empty_placeholder": true
     }
   ],
   "domains": [

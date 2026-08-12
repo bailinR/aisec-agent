@@ -157,6 +157,8 @@ class SessionRAGChatLogicTest(unittest.TestCase):
 
         result = logic.chat_once("这个有用吗", "sid-readable", topics=[])
 
+        self.assertNotIn("我是", result.answer)
+        self.assertTrue(result.answer.startswith("看到您对这个方向比较关注"))
         self.assertIn("\n\n", result.answer)
         self.assertLessEqual(len([line for line in result.answer.splitlines() if line.strip()]), 4)
         self.assertEqual(memory.store_calls[0][3], result.answer)
@@ -182,47 +184,83 @@ class SessionRAGChatLogicTest(unittest.TestCase):
         self.assertIn("一句话明显过长时请主动换行", prompt)
         self.assertIn("行与行之间空一行", prompt)
         self.assertIn("不要在私信正文里明说“视频里讲的是/视频介绍的是/看到这个视频”", prompt)
-        self.assertIn("身份称谓只能使用“运营”“助理”“顾问”“客服”“工作人员”", prompt)
-        self.assertIn("如果场景模板已经定义开场，优先使用模板开场", prompt)
-        self.assertIn("确需自我介绍时使用“您好，我是这边的{通用身份}”", prompt)
+        self.assertIn("人员身份只用于内部业务路由和口吻约束", prompt)
+        self.assertIn("禁止介绍发送者身份", prompt)
+        self.assertIn("直接从感谢关注、感谢留言或承接用户评论开始", prompt)
+        self.assertIn("本条私信使用以下开场方向", prompt)
+        self.assertIn("不要照抄示例", prompt)
         self.assertIn("模板是本轮话术的高优先级约束", prompt)
         self.assertIn("不要用通用默认话术覆盖模板", prompt)
-        self.assertIn("禁止说“顾问这边”“我是账号运营”“我是账号的助理”", prompt)
-        self.assertIn("禁止说“健康顾问”“招聘助理”“跨境运营顾问”", prompt)
+        self.assertNotIn("确需自我介绍", prompt)
         self.assertNotIn("You are a Douyin", prompt)
         self.assertNotIn("公司", prompt)
 
-    def test_identity_introduction_is_normalized_to_natural_word_order(self):
-        advisor_context = "本轮私信对外只使用通用身份：顾问。"
-        assistant_context = "本轮私信对外只使用通用身份：助理。"
+    def test_first_message_opening_guidance_is_stable_and_varied_by_session(self):
+        session_ids = [f"batch-task-{index}" for index in range(500)]
+        styles = [
+            SessionRAGChatLogic._first_message_opening_guidance(session_id)
+            for session_id in session_ids
+        ]
 
+        self.assertEqual(len(set(styles)), 3)
         self.assertEqual(
-            SessionRAGChatLogic._normalize_identity_introduction(
-                "顾问这边，看到您留言问为什么不放店铺。",
-                advisor_context,
-            ),
-            "您好，我是这边的顾问，看到您留言问为什么不放店铺。",
+            SessionRAGChatLogic._first_message_opening_guidance(session_ids[0]),
+            styles[0],
         )
+        self.assertTrue(all("我是" not in style for style in styles))
+        self.assertTrue(all(
+            any(label in style for label in ("感谢留言类", "简单问候类", "具体关注点切入类"))
+            for style in styles
+        ))
+        counts = {
+            label: sum(style.startswith(label) for style in styles)
+            for label in ("感谢留言类", "简单问候类", "具体关注点切入类")
+        }
+        self.assertGreater(counts["感谢留言类"], counts["简单问候类"] * 2)
+        self.assertGreater(counts["感谢留言类"], counts["具体关注点切入类"] * 2)
+
+    def test_first_message_identity_introduction_is_removed(self):
         self.assertEqual(
-            SessionRAGChatLogic._normalize_identity_introduction(
-                "你好呀，我是账号的助理～看到您评论了。",
-                assistant_context,
-            ),
-            "您好，我是这边的助理，看到您评论了。",
-        )
-        self.assertEqual(
-            SessionRAGChatLogic._normalize_identity_introduction(
-                "您好，我是健康顾问助理，看到您在评论区留言。",
-                assistant_context,
-            ),
-            "您好，我是这边的助理，看到您在评论区留言。",
-        )
-        self.assertEqual(
-            SessionRAGChatLogic._normalize_identity_introduction(
-                "看到您留言问为什么不放店铺。",
-                advisor_context,
+            SessionRAGChatLogic._strip_first_message_identity_introduction(
+                "顾问这边，看到您留言问为什么不放店铺。"
             ),
             "看到您留言问为什么不放店铺。",
+        )
+        self.assertEqual(
+            SessionRAGChatLogic._strip_first_message_identity_introduction(
+                "你好呀，我是账号的助理～看到您评论了。"
+            ),
+            "看到您评论了。",
+        )
+        self.assertEqual(
+            SessionRAGChatLogic._strip_first_message_identity_introduction(
+                "您好，我是健康顾问助理，看到您在评论区留言。"
+            ),
+            "看到您在评论区留言。",
+        )
+        self.assertEqual(
+            SessionRAGChatLogic._strip_first_message_identity_introduction(
+                "我是这边助理，感谢您关注我们的账号。"
+            ),
+            "感谢您关注我们的账号。",
+        )
+        for answer, expected in (
+            ("我是助理，看到您留言了。", "看到您留言了。"),
+            ("我是顾问，看到您留言了。", "看到您留言了。"),
+            ("我是客服，感谢您的关注。", "感谢您的关注。"),
+            ("我是运营，看到您评论了。", "看到您评论了。"),
+        ):
+            with self.subTest(answer=answer):
+                self.assertEqual(
+                    SessionRAGChatLogic._strip_first_message_identity_introduction(answer),
+                    expected,
+                )
+        self.assertEqual(
+            SessionRAGChatLogic._strip_first_message_identity_introduction(
+                "您好，我是这边的客服，看到您留言了。",
+                "private_followup",
+            ),
+            "您好，我是这边的客服，看到您留言了。",
         )
 
     def test_private_followup_prompt_keeps_conversation_stage_metadata(self):

@@ -5476,6 +5476,7 @@
           },
           async batchGenerateReply(task) {
             const projectName = String(task.project_name || this.batchSettings.default_project_name || "").trim();
+            task.session_id = task.session_id || this.uuid();
             const videoOverview = [
               String(task.video_overview || "").trim(),
               projectName ? "项目总称：" + projectName : "",
@@ -5492,7 +5493,7 @@
                 video_overview: videoOverview,
                 project_id: projectId,
                 company_id: this.currentCompanyId,
-                session_id: task.session_id || this.uuid(),
+                session_id: task.session_id,
                 conversation_stage: "first_comment",
                 source_platform: "抖音",
                 target_profile_url: task.target_profile_url,
