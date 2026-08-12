@@ -1,3 +1,7 @@
+param(
+  [int]$Port = 7860
+)
+
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
@@ -29,6 +33,50 @@ function Stop-OwnedProcess {
 Stop-OwnedProcess "web" $Python
 Stop-OwnedProcess "worker" $Python
 Stop-OwnedProcess "redis" $RedisServer
+
+$projectPrefix = "$ProjectRoot*"
+$allProcesses = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+$targetIds = [System.Collections.Generic.HashSet[int]]::new()
+foreach ($process in $allProcesses) {
+  if ($process.Name -notin @("python.exe", "pythonw.exe")) { continue }
+  $isAisecProcess =
+    $process.CommandLine -like "*aisec_agent.web*" -or
+    $process.CommandLine -like "*aisec_agent.worker.douyin_dm_worker*"
+  $isProjectProcess =
+    $process.ExecutablePath -eq $Python -or
+    $process.CommandLine -like "*$projectPrefix*"
+  if ($isAisecProcess -and $isProjectProcess) {
+    [void]$targetIds.Add([int]$process.ProcessId)
+  }
+}
+do {
+  $added = $false
+  foreach ($process in $allProcesses) {
+    if (
+      $process.Name -in @("python.exe", "pythonw.exe") -and
+      $targetIds.Contains([int]$process.ParentProcessId) -and
+      (
+        $process.CommandLine -like "*aisec_agent.web*" -or
+        $process.CommandLine -like "*aisec_agent.worker.douyin_dm_worker*"
+      )
+    ) {
+      if ($targetIds.Add([int]$process.ProcessId)) { $added = $true }
+    }
+  }
+} while ($added)
+$legacyProcesses = @($allProcesses | Where-Object { $targetIds.Contains([int]$_.ProcessId) })
+foreach ($legacyProcess in $legacyProcesses) {
+  Stop-Process -Id $legacyProcess.ProcessId -Force -ErrorAction SilentlyContinue
+  try { Wait-Process -Id $legacyProcess.ProcessId -Timeout 10 -ErrorAction SilentlyContinue } catch {}
+}
+
+$redisProcesses = Get-CimInstance Win32_Process -Filter "Name = 'redis-server.exe'" -ErrorAction SilentlyContinue |
+  Where-Object { $_.ExecutablePath -eq $RedisServer }
+foreach ($redisProcess in $redisProcesses) {
+  Stop-Process -Id $redisProcess.ProcessId -Force -ErrorAction SilentlyContinue
+  try { Wait-Process -Id $redisProcess.ProcessId -Timeout 10 -ErrorAction SilentlyContinue } catch {}
+}
+
 Remove-Item -LiteralPath (Join-Path $StateRoot "redis.port") -Force -ErrorAction SilentlyContinue
 
 # Persistent Playwright contexts can outlive their parent after a forced stop.

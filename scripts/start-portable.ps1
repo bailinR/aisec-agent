@@ -61,6 +61,86 @@ function Stop-OwnedProcess {
   Remove-Item -LiteralPath (Join-Path $StateRoot "$Name.pid") -Force -ErrorAction SilentlyContinue
 }
 
+function Stop-LegacyAisecProcesses {
+  param([int]$WebPort)
+
+  $projectPrefix = "$ProjectRoot*"
+  $allProcesses = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+  $targetIds = [System.Collections.Generic.HashSet[int]]::new()
+
+  foreach ($process in $allProcesses) {
+    if ($process.Name -notin @("python.exe", "pythonw.exe")) { continue }
+    $isAisecProcess =
+      $process.CommandLine -like "*aisec_agent.web*" -or
+      $process.CommandLine -like "*aisec_agent.worker.douyin_dm_worker*"
+    $isProjectProcess =
+      $process.ExecutablePath -eq $Python -or
+      $process.CommandLine -like "*$projectPrefix*"
+    if ($isAisecProcess -and $isProjectProcess) {
+      [void]$targetIds.Add([int]$process.ProcessId)
+    }
+  }
+
+  do {
+    $added = $false
+    foreach ($process in $allProcesses) {
+      if (
+        $process.Name -in @("python.exe", "pythonw.exe") -and
+        $targetIds.Contains([int]$process.ParentProcessId) -and
+        (
+          $process.CommandLine -like "*aisec_agent.web*" -or
+          $process.CommandLine -like "*aisec_agent.worker.douyin_dm_worker*"
+        )
+      ) {
+        if ($targetIds.Add([int]$process.ProcessId)) { $added = $true }
+      }
+    }
+  } while ($added)
+
+  $targets = @($allProcesses | Where-Object { $targetIds.Contains([int]$_.ProcessId) })
+
+  foreach ($target in $targets) {
+    Write-Host "Stopping legacy aisec-agent process PID $($target.ProcessId): $($target.CommandLine)" -ForegroundColor Yellow
+    Stop-Process -Id $target.ProcessId -Force -ErrorAction SilentlyContinue
+    try { Wait-Process -Id $target.ProcessId -Timeout 10 -ErrorAction SilentlyContinue } catch {}
+  }
+
+  $remainingListener = Get-NetTCPConnection -LocalPort $WebPort -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($remainingListener) {
+    $remainingProcess = Get-CimInstance Win32_Process -Filter "ProcessId = $($remainingListener.OwningProcess)" -ErrorAction SilentlyContinue
+    $remainingDetail = if ($remainingProcess) { "$($remainingProcess.Name) $($remainingProcess.CommandLine)" } else { "unknown process" }
+    throw "Port $WebPort is occupied by a process that was not identified as this project's Web service. PID $($remainingListener.OwningProcess): $remainingDetail"
+  }
+}
+
+function Stop-ProjectRedisProcesses {
+  $targets = Get-CimInstance Win32_Process -Filter "Name = 'redis-server.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.ExecutablePath -eq $RedisServer }
+  foreach ($target in $targets) {
+    Write-Host "Stopping project Redis PID $($target.ProcessId)." -ForegroundColor Yellow
+    Stop-Process -Id $target.ProcessId -Force -ErrorAction SilentlyContinue
+    try { Wait-Process -Id $target.ProcessId -Timeout 10 -ErrorAction SilentlyContinue } catch {}
+  }
+}
+
+function Wait-PortReleased {
+  param([int]$LocalPort, [int]$TimeoutSeconds = 15)
+
+  $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+  do {
+    $listener = Get-NetTCPConnection -LocalPort $LocalPort -State Listen -ErrorAction SilentlyContinue
+    if (-not $listener) {
+      return
+    }
+    Start-Sleep -Milliseconds 250
+  } while ([DateTime]::UtcNow -lt $deadline)
+
+  $listener = Get-NetTCPConnection -LocalPort $LocalPort -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+  $process = if ($listener) { Get-CimInstance Win32_Process -Filter "ProcessId = $($listener.OwningProcess)" -ErrorAction SilentlyContinue } else { $null }
+  $detail = if ($process) { "$($process.Name) $($process.CommandLine)" } else { "unknown process" }
+  throw "Port $LocalPort was not released. PID $($listener.OwningProcess): $detail"
+}
+
 function Assert-PortAvailable {
   param([int]$LocalPort, [string]$ServiceName)
 
@@ -89,7 +169,10 @@ if ($Restart) {
   Stop-OwnedProcess "web" $Python
   Stop-OwnedProcess "worker" $Python
   Stop-OwnedProcess "redis" $RedisServer
+  Stop-LegacyAisecProcesses -WebPort $Port
+  Stop-ProjectRedisProcesses
   Remove-Item -LiteralPath (Join-Path $StateRoot "redis.port") -Force -ErrorAction SilentlyContinue
+  Wait-PortReleased -LocalPort $Port
 }
 
 $requestedRedisPort = $RedisPort
