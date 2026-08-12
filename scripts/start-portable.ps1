@@ -61,24 +61,29 @@ function Stop-OwnedProcess {
   Remove-Item -LiteralPath (Join-Path $StateRoot "$Name.pid") -Force -ErrorAction SilentlyContinue
 }
 
+function Get-AisecServiceProcesses {
+  $projectPrefix = "$ProjectRoot*"
+  @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue) |
+    Where-Object {
+      $_.Name -in @("python.exe", "pythonw.exe") -and
+      (
+        $_.CommandLine -like "*aisec_agent.web*" -or
+        $_.CommandLine -like "*aisec_agent.worker.douyin_dm_worker*"
+      ) -and (
+        $_.ExecutablePath -eq $Python -or
+        $_.CommandLine -like "*$projectPrefix*"
+      )
+    }
+}
+
 function Stop-LegacyAisecProcesses {
   param([int]$WebPort)
 
-  $projectPrefix = "$ProjectRoot*"
   $allProcesses = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
   $targetIds = [System.Collections.Generic.HashSet[int]]::new()
 
-  foreach ($process in $allProcesses) {
-    if ($process.Name -notin @("python.exe", "pythonw.exe")) { continue }
-    $isAisecProcess =
-      $process.CommandLine -like "*aisec_agent.web*" -or
-      $process.CommandLine -like "*aisec_agent.worker.douyin_dm_worker*"
-    $isProjectProcess =
-      $process.ExecutablePath -eq $Python -or
-      $process.CommandLine -like "*$projectPrefix*"
-    if ($isAisecProcess -and $isProjectProcess) {
-      [void]$targetIds.Add([int]$process.ProcessId)
-    }
+  foreach ($process in @(Get-AisecServiceProcesses)) {
+    [void]$targetIds.Add([int]$process.ProcessId)
   }
 
   do {
@@ -98,13 +103,16 @@ function Stop-LegacyAisecProcesses {
   } while ($added)
 
   $targets = @($allProcesses | Where-Object { $targetIds.Contains([int]$_.ProcessId) })
-
   foreach ($target in $targets) {
     Write-Host "Stopping legacy aisec-agent process PID $($target.ProcessId): $($target.CommandLine)" -ForegroundColor Yellow
     Stop-Process -Id $target.ProcessId -Force -ErrorAction SilentlyContinue
+  }
+  foreach ($target in $targets) {
     try { Wait-Process -Id $target.ProcessId -Timeout 10 -ErrorAction SilentlyContinue } catch {}
   }
 
+  Remove-Item -LiteralPath (Join-Path $StateRoot "web.pid") -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath (Join-Path $StateRoot "worker.pid") -Force -ErrorAction SilentlyContinue
   $remainingListener = Get-NetTCPConnection -LocalPort $WebPort -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($remainingListener) {
     $remainingProcess = Get-CimInstance Win32_Process -Filter "ProcessId = $($remainingListener.OwningProcess)" -ErrorAction SilentlyContinue
@@ -141,6 +149,44 @@ function Wait-PortReleased {
   throw "Port $LocalPort was not released. PID $($listener.OwningProcess): $detail"
 }
 
+function Disable-LegacyDmWatchdog {
+  $taskName = "AisecDmWatchdog"
+  $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+  if (-not $task) { return }
+
+  $watchdogScripts = @(
+    $task.Actions |
+      ForEach-Object {
+        if ($_.Arguments -match '(?i)-File\s+(?:"([^"]+)"|([^\s]+))') {
+          if ($Matches[1]) { $Matches[1] } else { $Matches[2] }
+        }
+      } |
+      Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+  )
+
+  if ($task.State -ne "Disabled") {
+    try {
+      Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+      Disable-ScheduledTask -TaskName $taskName -ErrorAction Stop | Out-Null
+    } catch {
+      throw "Scheduled task $taskName is still enabled and could not be disabled. Run this startup once as Administrator to prevent recurring PowerShell windows. $($_.Exception.Message)"
+    }
+  }
+
+  if ($watchdogScripts.Count -gt 0) {
+    $watchdogProcesses = Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction SilentlyContinue |
+      Where-Object {
+        $commandLine = $_.CommandLine
+        @($watchdogScripts | Where-Object { $commandLine -like "*$_*" }).Count -gt 0
+      }
+    foreach ($watchdogProcess in $watchdogProcesses) {
+      Stop-Process -Id $watchdogProcess.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+  }
+
+  Write-Host "Legacy scheduled task $taskName is disabled; recurring PowerShell windows are prevented." -ForegroundColor Green
+}
+
 function Assert-PortAvailable {
   param([int]$LocalPort, [string]$ServiceName)
 
@@ -164,6 +210,8 @@ function Find-AvailablePort {
   }
   throw "No available Redis port was found between $PreferredPort and $($PreferredPort + $MaximumAttempts - 1)."
 }
+
+Disable-LegacyDmWatchdog
 
 if ($Restart) {
   Stop-OwnedProcess "web" $Python
@@ -294,10 +342,26 @@ if (-not $healthReady) {
   throw "Health check failed: $healthUrl"
 }
 
+$serviceProcesses = @(Get-AisecServiceProcesses)
+$webProcesses = @($serviceProcesses | Where-Object { $_.CommandLine -like "*aisec_agent.web*" })
+$workerProcesses = @($serviceProcesses | Where-Object { $_.CommandLine -like "*douyin_dm_worker*" })
+$webListeners = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
+$listenerPids = @($webListeners | Select-Object -ExpandProperty OwningProcess -Unique)
+
+if ($webProcesses.Count -ne 1 -or $workerProcesses.Count -ne 1) {
+  Stop-LegacyAisecProcesses -WebPort $Port
+  throw "Single-instance verification failed. Web=$($webProcesses.Count), worker=$($workerProcesses.Count)."
+}
+if ($listenerPids.Count -ne 1 -or $listenerPids[0] -ne $webProcess.Id) {
+  Stop-LegacyAisecProcesses -WebPort $Port
+  throw "Port verification failed. Port $Port is not owned exclusively by the new Web process."
+}
+
 Write-Host "aisec-agent portable runtime started." -ForegroundColor Green
 Write-Host "Web:     http://127.0.0.1:$Port"
 Write-Host "Health:  $healthUrl"
 Write-Host "Redis:   127.0.0.1:$RedisPort (project-local)"
+Write-Host "Workers: 1"
 Write-Host "Logs:    $LogRoot"
 if ($HostAddress -eq "0.0.0.0") {
   $ips = Get-NetIPAddress -AddressFamily IPv4 |

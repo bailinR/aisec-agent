@@ -16,7 +16,7 @@ git switch show
 
 然后双击 `部署并启动.cmd`。
 
-以后更新可直接双击 `更新并启动.cmd`。该脚本只执行快进更新，并在本地提交与远程当前分支提交完全一致后启动项目；存在未提交文件时会停止，不会覆盖本地修改。
+以后更新可直接双击 `更新并启动.cmd`。该脚本会安全保存本地已暂存、未暂存和未跟踪文件，再执行快进更新，并在本地提交与远程当前分支提交完全一致后重启项目。本地修改不会自动合并回新代码，脚本结束时会显示对应的 stash 名称和恢复命令。
 
 ## 2. 首次运行
 
@@ -43,6 +43,21 @@ git fetch --prune origin
 git pull --ff-only origin <当前分支>
 ```
 
+如果工作区有本地修改，拉取前还会自动执行：
+
+```powershell
+git stash push --include-untracked --message "automatic backup before updating ..."
+```
+
+更新后使用脚本输出的 stash 提交 SHA 检查或恢复，例如：
+
+```powershell
+git stash show --stat <stash提交SHA>
+git stash apply <stash提交SHA>
+```
+
+脚本不会自动执行 `stash pop`，避免把旧修改合并进刚拉取的新代码。确认不再需要后，可根据脚本显示的 stash 名称手动删除。
+
 脚本随后比较：
 
 ```powershell
@@ -55,8 +70,12 @@ git rev-parse origin/<当前分支>
 ## 4. 启动内容
 
 - Redis：默认 `127.0.0.1:6389`，数据库 `11`；端口已被其他程序占用时，启动脚本会自动选择后续空闲端口，并让 Web 与 worker 使用同一地址。
-- Web：`0.0.0.0:7860`。
-- worker：`aisec_agent.worker.douyin_dm_worker --mode send`。
+- Web：固定为 `0.0.0.0:7860`；端口被非本项目进程占用时停止启动，不会自动换到其他 Web 端口。
+- worker：只保留一个 `aisec_agent.worker.douyin_dm_worker --mode send` 实例。
+
+每次带 `-Restart` 启动时，脚本会先清理遗留的 Web 和 worker 进程，再校验最终只有一个 Web 监听进程和一个 worker。Redis 仍使用仅本机可访问的内部端口，默认是 `127.0.0.1:6389`。
+
+启动脚本还会停止并禁用旧的 `AisecDmWatchdog` 每分钟计划任务。该旧任务以交互方式启动 PowerShell，会导致窗口每分钟弹出；当前 Web 和 worker 已由项目启动脚本直接管理，不再依赖此 watchdog。
 
 停止全部服务时双击 `停止项目.cmd`。
 
