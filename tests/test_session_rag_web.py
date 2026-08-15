@@ -58,6 +58,9 @@ from aisec_agent.web.session_rag_chat import (
     _dm_message_page,
     _dm_persistent_context_alive,
     _dm_collect_message_bubble_matches,
+    _dm_detect_send_failure_notice,
+    _dm_failure_metadata,
+    _dm_infer_failure_code,
     _dm_message_editor_text,
     _dm_should_retry_browser_closed,
     _dm_should_keep_browser_open_on_failure,
@@ -1194,6 +1197,61 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertIn("发送", status["result"]["failure_reason"])
         self.assertIn("message send was not confirmed", status["result"]["failure_step_detail"])
 
+    def test_douyin_dm_recipient_privacy_failure_is_final_without_retry_or_manual_queue(self):
+        redis = FakeRedis()
+        build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_recipient_privacy_001",
+                "video_info": "video",
+                "account_cookie": "cookie",
+                "comment_info": "comment",
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+        failing_demo_result = {
+            "success": False,
+            "opened": True,
+            "prefilled": True,
+            "sent": False,
+            "resolved_browser": "edge",
+            "engine": "playwright",
+            "failure_screenshot_path": str(DM_DEBUG_ARTIFACT_DIR / "dm_recipient_privacy_001.png"),
+            "steps": [
+                {"name": "open_profile", "ok": True, "detail": "opened"},
+                {"name": "playwright_error", "ok": False, "detail": "recipient_privacy_restriction: 对方设置仅允许互关的人发消息"},
+            ],
+            "error": "recipient_privacy_restriction: 对方设置仅允许互关的人发消息",
+        }
+        with patch(
+            "aisec_agent.web.session_rag_chat.build_public_private_message_response",
+            return_value={"reply": "hello"},
+        ), patch(
+            "aisec_agent.web.session_rag_chat.build_douyin_private_message_demo_response",
+            return_value=failing_demo_result,
+        ):
+            processed = process_douyin_dm_task_once(redis_client=redis, mode="send", block_timeout=1)
+
+        self.assertEqual(processed["status"], "failed")
+        self.assertEqual(processed["queue_status"], "dead_letter")
+        self.assertTrue(processed["result_ready"])
+        self.assertEqual(processed["failure_code"], "recipient_privacy_restriction")
+        self.assertEqual(processed["failure_stage"], "send_confirm")
+        self.assertEqual(processed["failure_category"], "recipient")
+        self.assertFalse(processed["manual_required"])
+        self.assertTrue(processed["dead_letter"])
+        self.assertEqual(processed["next_retry_at"], "")
+        self.assertEqual(redis.zcard(DM_REDIS_RETRY_ZSET), 0)
+        self.assertNotIn("dm_recipient_privacy_001", redis.lists.get(DM_REDIS_MANUAL_QUEUE, []))
+        self.assertIn("dm_recipient_privacy_001", redis.lists.get(DM_REDIS_DEAD_LETTER_QUEUE, []))
+
+        status = build_douyin_dm_task_status_response("dm_recipient_privacy_001", redis_client=redis)
+        self.assertEqual(status["result"]["failure_code"], "recipient_privacy_restriction")
+        self.assertEqual(status["result"]["failure_stage"], "send_confirm")
+        self.assertEqual(status["result"]["failure_category"], "recipient")
+        self.assertNotIn("D:\\", status["result"]["failure_screenshot_url"])
+
     def test_douyin_dm_send_process_accepts_cookie_object(self):
         redis = FakeRedis()
         cookie_object = {
@@ -1401,6 +1459,86 @@ class SessionRAGWebTest(unittest.TestCase):
 
         self.assertIn("message send was not confirmed", str(ctx.exception))
 
+    def test_douyin_dm_detects_recipient_privacy_notice(self):
+        notice = {
+            "signature": "对方设置仅允许互关的人发消息|500|120|300|48",
+            "text": "对方设置仅允许互关的人发消息",
+            "x": 500,
+            "y": 120,
+            "width": 300,
+            "height": 48,
+            "score": 80,
+        }
+
+        class DummyPage:
+            def evaluate(self, *_args, **_kwargs):
+                return [notice]
+
+        page = DummyPage()
+        detected = _dm_detect_send_failure_notice(page)
+
+        self.assertEqual(detected["failure_code"], "recipient_privacy_restriction")
+        self.assertEqual(detected["message"], notice["text"])
+        self.assertIsNone(
+            _dm_detect_send_failure_notice(
+                page,
+                baseline=[notice["signature"]],
+                previous=[notice["signature"]],
+            )
+        )
+        self.assertEqual(
+            _dm_detect_send_failure_notice(
+                page,
+                baseline=[notice["signature"]],
+                previous=[],
+            )["failure_code"],
+            "recipient_privacy_restriction",
+        )
+
+    def test_douyin_dm_wait_message_sent_raises_recipient_privacy_notice(self):
+        notice = {
+            "signature": "notice|500|120|300|48",
+            "text": "由于对方的隐私设置，你无法向对方发送消息",
+            "x": 500,
+            "y": 120,
+            "width": 300,
+            "height": 48,
+            "score": 80,
+        }
+
+        class DummyPage:
+            def evaluate(self, *_args, **_kwargs):
+                return [notice]
+
+            def wait_for_timeout(self, *_args, **_kwargs):
+                return None
+
+        page = DummyPage()
+        with patch(
+            "aisec_agent.web.session_rag_chat._dm_collect_message_bubble_matches",
+            return_value=[],
+        ), patch(
+            "aisec_agent.web.session_rag_chat._dm_message_editor_text",
+            return_value="",
+        ):
+            with self.assertRaisesRegex(RuntimeError, "recipient_privacy_restriction"):
+                _dm_wait_message_sent(page, "hello", timeout_ms=500, notice_baseline=[])
+
+    def test_douyin_dm_recipient_privacy_failure_metadata_and_inference(self):
+        self.assertEqual(
+            _dm_infer_failure_code("", "当前用户无法给对方发送消息"),
+            "recipient_privacy_restriction",
+        )
+        metadata = _dm_failure_metadata(
+            "recipient_privacy_restriction",
+            "final",
+            "recipient_privacy_restriction: 当前用户无法给对方发送消息",
+        )
+        self.assertEqual(metadata["failure_code"], "recipient_privacy_restriction")
+        self.assertEqual(metadata["failure_stage"], "send_confirm")
+        self.assertEqual(metadata["failure_category"], "recipient")
+        self.assertTrue(metadata["failure_summary"].startswith("对方设置了仅互关用户可发送私信"))
+
     def test_douyin_dm_send_and_confirm_uses_enter_before_click_fallback(self):
         class DummyKeyboard:
             def __init__(self):
@@ -1416,7 +1554,7 @@ class SessionRAGWebTest(unittest.TestCase):
         page = DummyPage()
         wait_calls = []
 
-        def fake_wait(_page, _message, timeout_ms=8000, baseline=None):
+        def fake_wait(_page, _message, timeout_ms=8000, baseline=None, notice_baseline=None):
             wait_calls.append(list(baseline or []))
             if len(wait_calls) == 1:
                 raise RuntimeError("message send was not confirmed; editor still contains: hello")
@@ -1461,7 +1599,7 @@ class SessionRAGWebTest(unittest.TestCase):
         page = DummyPage()
         wait_calls = []
 
-        def fake_wait(_page, _message, timeout_ms=8000, baseline=None):
+        def fake_wait(_page, _message, timeout_ms=8000, baseline=None, notice_baseline=None):
             wait_calls.append(list(baseline or []))
             if len(wait_calls) == 1:
                 raise RuntimeError("link preview opened; send was not confirmed")
@@ -1615,6 +1753,42 @@ class SessionRAGWebTest(unittest.TestCase):
             response["failure_screenshot_url"],
             "/api/v1/douyin/private-message/artifacts/dm_send_fail_001.png",
         )
+
+    def test_douyin_private_message_demo_exposes_recipient_privacy_failure(self):
+        def failing_executor(profile_url, message, browser, auto_send, options):
+            return {
+                "success": False,
+                "opened": True,
+                "prefilled": True,
+                "sent": False,
+                "resolved_browser": browser,
+                "engine": "playwright",
+                "steps": [
+                    {"name": "open_profile", "ok": True, "detail": "opened"},
+                    {
+                        "name": "playwright_error",
+                        "ok": False,
+                        "detail": "recipient_privacy_restriction: 对方设置仅允许互关的人发消息",
+                    },
+                ],
+                "error": "recipient_privacy_restriction: 对方设置仅允许互关的人发消息",
+            }
+
+        response = build_douyin_private_message_demo_response(
+            {
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "reply": "hello",
+                "browser_name": "edge",
+                "auto_send": True,
+            },
+            executor=failing_executor,
+        )
+
+        self.assertFalse(response["success"])
+        self.assertEqual(response["failure_code"], "recipient_privacy_restriction")
+        self.assertEqual(response["failure_stage"], "send_confirm")
+        self.assertEqual(response["failure_category"], "recipient")
+        self.assertIn("对方设置了仅互关用户可发送私信", response["failure_summary"])
 
     def test_douyin_private_message_demo_prefills_by_default(self):
         response = build_douyin_private_message_demo_response(

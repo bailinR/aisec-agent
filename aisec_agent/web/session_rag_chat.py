@@ -8841,6 +8841,12 @@ DM_FAILURE_PROFILES = {
         "reason": "已点击发送，但页面未确认消息已发出",
         "hint": "请检查是否被风控、页面结构变化、消息回显延迟，或人工确认是否真的发送成功",
     },
+    "recipient_privacy_restriction": {
+        "stage": "send_confirm",
+        "category": "recipient",
+        "reason": "对方设置了仅互关用户可发送私信",
+        "hint": "该用户当前不可接收本账号私信，无需重试或冷却发送账号",
+    },
     "login_required": {
         "stage": "browser_login",
         "category": "account",
@@ -9562,8 +9568,174 @@ def _dm_collect_message_bubble_matches(page: Any, message: str) -> List[Dict[str
     return result
 
 
-def _dm_wait_message_sent(page: Any, message: str, timeout_ms: int = 8000, baseline: Optional[Iterable[str]] = None) -> Dict[str, Any]:
+def _dm_normalize_send_failure_notice_text(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def _dm_send_failure_notice_code(text: Any) -> str:
+    normalized = _dm_normalize_send_failure_notice_text(text)
+    if not normalized:
+        return ""
+    compact = re.sub(r"[\s，。！？、:：；;（）()【】\[\]]+", "", normalized).lower()
+    if "recipient_privacy_restriction" in compact:
+        return "recipient_privacy_restriction"
+    if any(
+        marker in compact
+        for marker in (
+            "对方设置仅允许互关的人发消息",
+            "对方仅允许互关的人发消息",
+            "由于对方的隐私设置你无法向对方发送消息",
+            "当前用户无法给对方发送消息",
+        )
+    ):
+        return "recipient_privacy_restriction"
+    if "暂时无法给该用户发送消息" in compact and any(
+        marker in compact for marker in ("对方", "隐私", "接收方", "仅互关")
+    ):
+        return "recipient_privacy_restriction"
+    return ""
+
+
+def _dm_collect_send_failure_notice_candidates(page: Any) -> List[Dict[str, Any]]:
+    script = """
+    () => {
+      const selectors = [
+        '[role="alert"]', '[role="status"]', '[aria-live="polite"]', '[aria-live="assertive"]',
+        '[class*="toast"]', '[class*="Toast"]', '[class*="notice"]', '[class*="Notice"]',
+        '[class*="warning"]', '[class*="Warning"]', '[class*="error"]', '[class*="Error"]',
+        '[class*="tip"]', '[class*="Tip"]'
+      ];
+      const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+      const visible = (el) => {
+        if (!el || !el.getBoundingClientRect) return false;
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width >= 30 && rect.height >= 16 && rect.right > 0 && rect.bottom > 0 &&
+          style.visibility !== 'hidden' && style.display !== 'none' && style.opacity !== '0';
+      };
+      const editors = Array.from(document.querySelectorAll('[contenteditable="true"], textarea, .public-DraftEditor-content'))
+        .filter(visible);
+      const nearEditor = (rect) => editors.some((editor) => {
+        const editorRect = editor.getBoundingClientRect();
+        return Math.abs(rect.left - editorRect.left) < Math.max(editorRect.width, 520) &&
+          Math.abs(rect.top - editorRect.top) < Math.max(editorRect.height * 5, 360);
+      });
+      const looksLikeRecipientFailure = (text) => [
+        '仅允许互关的人发消息', '隐私设置', '无法向对方发送消息',
+        '无法给对方发送消息', '暂时无法给该用户发送消息'
+      ].some((marker) => text.includes(marker));
+      const seen = new Set();
+      const candidates = [];
+      for (const selector of selectors) {
+        for (const el of document.querySelectorAll(selector)) {
+          if (!visible(el) || seen.has(el) || editors.some((editor) => editor === el || editor.contains(el) || el.contains(editor))) continue;
+          seen.add(el);
+          const text = normalize(el.innerText || el.textContent || '');
+          if (!text || text.length > 240) continue;
+          const rect = el.getBoundingClientRect();
+          const style = window.getComputedStyle(el);
+          let score = 0;
+          if (el.getAttribute('role') === 'alert' || el.getAttribute('role') === 'status') score += 40;
+          if (el.hasAttribute('aria-live')) score += 30;
+          if (nearEditor(rect)) score += 20;
+          if (style.position === 'fixed' || style.position === 'absolute') score += 10;
+          if (looksLikeRecipientFailure(text)) score += 100;
+          candidates.push({
+            signature: `${text.slice(0, 160)}|${Math.round(rect.left)}|${Math.round(rect.top)}|${Math.round(rect.width)}|${Math.round(rect.height)}`,
+            text: text.slice(0, 240),
+            x: Math.round(rect.left),
+            y: Math.round(rect.top),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+            score,
+          });
+        }
+      }
+      for (const el of document.querySelectorAll('div, span, p')) {
+        if (!visible(el) || seen.has(el) || editors.some((editor) => editor === el || editor.contains(el) || el.contains(editor))) continue;
+        const text = normalize(el.innerText || el.textContent || '');
+        if (!text || text.length > 240 || !looksLikeRecipientFailure(text)) continue;
+        seen.add(el);
+        const rect = el.getBoundingClientRect();
+        if (rect.width > window.innerWidth * 0.9 || rect.height > window.innerHeight * 0.5) continue;
+        let score = 100;
+        if (nearEditor(rect)) score += 20;
+        candidates.push({
+          signature: `${text.slice(0, 160)}|${Math.round(rect.left)}|${Math.round(rect.top)}|${Math.round(rect.width)}|${Math.round(rect.height)}`,
+          text: text.slice(0, 240),
+          x: Math.round(rect.left),
+          y: Math.round(rect.top),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          score,
+        });
+      }
+      candidates.sort((a, b) => b.score - a.score || a.y - b.y);
+      return candidates.slice(0, 24);
+    }
+    """
+    try:
+        raw = page.evaluate(script) or []
+    except Exception:
+        raw = []
+    if not isinstance(raw, list):
+        return []
+    result: List[Dict[str, Any]] = []
+    for item in raw[:24]:
+        if not isinstance(item, dict):
+            continue
+        signature = str(item.get("signature") or "").strip()
+        text = _dm_normalize_send_failure_notice_text(item.get("text"))
+        if not signature or not text:
+            continue
+        result.append({
+            "signature": signature,
+            "text": text,
+            "x": int(item.get("x") or 0),
+            "y": int(item.get("y") or 0),
+            "width": int(item.get("width") or 0),
+            "height": int(item.get("height") or 0),
+            "score": int(item.get("score") or 0),
+        })
+    return result
+
+
+def _dm_detect_send_failure_notice(
+    page: Any,
+    baseline: Optional[Iterable[str]] = None,
+    previous: Optional[Iterable[str]] = None,
+) -> Optional[Dict[str, str]]:
     baseline_signatures = {str(item).strip() for item in (baseline or []) if str(item).strip()}
+    previous_signatures = {str(item).strip() for item in (previous or []) if str(item).strip()}
+    for candidate in _dm_collect_send_failure_notice_candidates(page):
+        text = str(candidate.get("text") or "")
+        failure_code = _dm_send_failure_notice_code(text)
+        if not failure_code:
+            continue
+        signature = str(candidate.get("signature") or "")
+        if signature in baseline_signatures and signature in previous_signatures:
+            continue
+        return {
+            "failure_code": failure_code,
+            "message": text,
+        }
+    return None
+
+
+def _dm_wait_message_sent(
+    page: Any,
+    message: str,
+    timeout_ms: int = 8000,
+    baseline: Optional[Iterable[str]] = None,
+    notice_baseline: Optional[Iterable[str]] = None,
+) -> Dict[str, Any]:
+    baseline_signatures = {str(item).strip() for item in (baseline or []) if str(item).strip()}
+    if notice_baseline is None:
+        initial_notices = _dm_collect_send_failure_notice_candidates(page)
+        notice_baseline_signatures = {str(item.get("signature") or "").strip() for item in initial_notices if item.get("signature")}
+    else:
+        notice_baseline_signatures = {str(item).strip() for item in notice_baseline if str(item).strip()}
+    previous_notice_signatures = set(notice_baseline_signatures)
     deadline = time.time() + max(1, timeout_ms / 1000)
     last_text = ""
     editor_cleared = False
@@ -9579,6 +9751,21 @@ def _dm_wait_message_sent(page: Any, message: str, timeout_ms: int = 8000, basel
                     "ok": True,
                     "detail": f"outgoing bubble confirmed at {match['x']},{match['y']}",
                 }
+        failure_notice = _dm_detect_send_failure_notice(
+            page,
+            baseline=notice_baseline_signatures,
+            previous=previous_notice_signatures,
+        )
+        current_notices = _dm_collect_send_failure_notice_candidates(page)
+        previous_notice_signatures = {
+            str(item.get("signature") or "").strip()
+            for item in current_notices
+            if item.get("signature")
+        }
+        if failure_notice:
+            raise RuntimeError(
+                f"{failure_notice['failure_code']}: {failure_notice['message']}"
+            )
         try:
             page.wait_for_timeout(250)
         except Exception:
@@ -9978,6 +10165,8 @@ def _dm_send_and_confirm_current_message(
 ) -> List[Dict[str, Any]]:
     baseline_matches = _dm_collect_message_bubble_matches(page, message)
     baseline = [match.get("signature") for match in baseline_matches]
+    notice_baseline_matches = _dm_collect_send_failure_notice_candidates(page)
+    notice_baseline = [match.get("signature") for match in notice_baseline_matches]
     steps: List[Dict[str, Any]] = []
 
     try:
@@ -9986,8 +10175,17 @@ def _dm_send_and_confirm_current_message(
     except Exception as exc:
         steps.append({"name": "press_enter_send", "ok": False, "detail": str(exc)})
 
+    def wait_for_sent() -> Dict[str, Any]:
+        return _dm_wait_message_sent(
+            page,
+            message,
+            timeout_ms=timeout_ms,
+            baseline=baseline,
+            notice_baseline=notice_baseline,
+        )
+
     try:
-        steps.append(_dm_wait_message_sent(page, message, timeout_ms=timeout_ms, baseline=baseline))
+        steps.append(wait_for_sent())
         return steps
     except RuntimeError as exc:
         last_text = _dm_message_editor_text(page)
@@ -10000,7 +10198,7 @@ def _dm_send_and_confirm_current_message(
             page.keyboard.press("Enter")
             steps.append({"name": "press_enter_retry_send", "ok": True, "detail": "pressed Enter again for link preview"})
             try:
-                steps.append(_dm_wait_message_sent(page, message, timeout_ms=timeout_ms, baseline=baseline))
+                steps.append(wait_for_sent())
                 return steps
             except RuntimeError as exc:
                 steps.append({"name": "press_enter_retry_unconfirmed", "ok": False, "detail": str(exc)})
@@ -10009,7 +10207,7 @@ def _dm_send_and_confirm_current_message(
 
     click_step = _dm_send_current_message(page, timeout_ms=timeout_ms)
     steps.append(click_step)
-    steps.append(_dm_wait_message_sent(page, message, timeout_ms=timeout_ms, baseline=baseline))
+    steps.append(wait_for_sent())
     return steps
 
 
@@ -10698,7 +10896,10 @@ def _dm_demo_failure_context(demo_result: Dict[str, Any]) -> Dict[str, Any]:
     last_failed = failed_steps[-1] if failed_steps else (steps[-1] if steps else {})
     last_name = str(last_failed.get("name") or "")
     last_detail = str(last_failed.get("detail") or "")
-    if last_name == "playwright_error" and "message send was not confirmed" in last_detail.lower():
+    if last_name == "playwright_error" and (
+        "message send was not confirmed" in last_detail.lower()
+        or _dm_send_failure_notice_code(last_detail) == "recipient_privacy_restriction"
+    ):
         last_name = "send_message"
     trace = []
     for index, step in enumerate(steps, 1):
@@ -10797,6 +10998,8 @@ def _dm_failure_from_demo_result(demo_result: Dict[str, Any]) -> Optional[Except
             json.dumps(result, ensure_ascii=False),
         ]
     ).lower()
+    if _dm_send_failure_notice_code(text) == "recipient_privacy_restriction":
+        return RuntimeError("recipient_privacy_restriction: 对方设置仅互关用户可发送私信")
     if trace.get("requires_login") or any(marker in text for marker in ["login", "二次验证", "second_verify", "verification"]):
         return RuntimeError("verification required")
     if any(marker in text for marker in ["风控", "risk", "blocked", "限制", "permission"]):
@@ -10830,6 +11033,8 @@ def _dm_infer_failure_code(error_code: str, error_text: str, detail: Optional[An
 
     if "missing config: api_key" in text or "no saved key" in text or "/api/v1/model/config/save" in text:
         return "missing_model_api_key"
+    if _dm_send_failure_notice_code(text) == "recipient_privacy_restriction":
+        return "recipient_privacy_restriction"
     if "message send was not confirmed" in text:
         return "message_send_unconfirmed"
     if "no module named 'playwright'" in text or 'no module named "playwright"' in text or ("playwrightcontextmanager" in text and "_playwright" in text):
@@ -10861,7 +11066,11 @@ def _dm_failure_metadata(error_code: str, failure_type: str, error_text: str, de
     failure_step = str(trace.get("failure_step") or "")
     failure_step_detail = str(trace.get("failure_step_detail") or "")
     failure_reason = str(profile.get("reason") or error_text or "")
-    if trace.get("requires_login") and resolved_code not in {"login_required", "verification_required"}:
+    if trace.get("requires_login") and resolved_code not in {
+        "login_required",
+        "verification_required",
+        "recipient_privacy_restriction",
+    }:
         failure_reason = "抖音登录态失效或需要人工验证"
     if failure_type == "manual" and resolved_code == "message_send_unconfirmed" and not failure_step_detail:
         failure_step_detail = str(error_text or "")
@@ -11778,7 +11987,12 @@ def process_douyin_dm_task_once(
         lower = error_text.lower()
         retry_count = int(_payload_float(task, "retry_count", 0)) + 1
         max_retries = max(0, int(_payload_float(task, "max_retries", DM_REDIS_DEFAULT_MAX_RETRIES)))
-        if "missing config: api_key" in lower or "no saved key" in lower:
+        if _dm_send_failure_notice_code(lower) == "recipient_privacy_restriction":
+            error_code = "recipient_privacy_restriction"
+            failure_type = "final"
+            retryable = False
+            manual_required = False
+        elif "missing config: api_key" in lower or "no saved key" in lower:
             error_code = "missing_model_api_key"
             failure_type = "final"
             retryable = False
@@ -11840,6 +12054,11 @@ def process_douyin_dm_task_once(
             error_text,
             detail=demo_result if isinstance(demo_result, dict) else None,
         )
+        if error_code == "recipient_privacy_restriction":
+            try:
+                redis_conn.zrem(DM_REDIS_RETRY_ZSET, task_id)
+            except Exception:
+                pass
         if retryable and retry_count <= max_retries:
             delay_seconds = DM_REDIS_RETRY_DELAYS_SECONDS[min(retry_count - 1, len(DM_REDIS_RETRY_DELAYS_SECONDS) - 1)]
             next_retry_ts = time.time() + delay_seconds
@@ -11961,6 +12180,7 @@ def process_douyin_dm_task_once(
             "dead_letter": dead_letter,
             "retry_count": retry_count,
             "max_retries": max_retries,
+            "next_retry_at": "",
             "first_private_message": False,
             "first_private_message_status": final_queue_status,
         }
