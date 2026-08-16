@@ -73,8 +73,10 @@ from aisec_agent.web.session_rag_chat import (
     _dm_send_and_confirm_current_message,
     _dm_send_current_message,
     _dm_wait_message_sent,
+    _douyin_private_message_playwright_executor,
     _format_sender_identity_context,
     process_douyin_dm_task_once,
+    reconcile_douyin_dm_queue_state,
     parse_topics,
     parse_uploaded_file,
 )
@@ -232,6 +234,9 @@ class FakeRedis:
     def zrem(self, key, member):
         self.zsets.setdefault(key, {}).pop(member, None)
         return 1
+
+    def zscore(self, key, member):
+        return self.zsets.get(key, {}).get(member)
 
     def zrange(self, key, start, end):
         items = list(self.zsets.get(key, {}).keys())
@@ -572,8 +577,117 @@ class SessionRAGWebTest(unittest.TestCase):
 
         snapshot = build_douyin_dm_task_list_response(redis_client=redis)
         self.assertEqual(snapshot["counts"]["pending"], 0)
+        self.assertEqual(snapshot["counts"]["auto_pending"], 0)
+        self.assertEqual(snapshot["counts"]["processing"], 0)
         self.assertEqual(snapshot["counts"]["done"], 1)
         self.assertEqual(snapshot["tasks"]["done"][0]["task_id"], "dm_test_001")
+
+    def test_douyin_dm_worker_claim_clears_all_pending_references(self):
+        redis = FakeRedis()
+        submit = build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_auto_claim_001",
+                "video_info": "video",
+                "account_cookie": "cookie",
+                "comment_info": "comment",
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+        account_key = submit["account_queues"][0]
+
+        processed = process_douyin_dm_task_once(
+            redis_client=redis,
+            mode="dry_run",
+            queue_name=DM_REDIS_AUTO_PENDING_QUEUE,
+            block_timeout=1,
+        )
+
+        self.assertEqual(processed["queue_status"], "done")
+        self.assertEqual(redis.lrange(DM_REDIS_PENDING_QUEUE, 0, -1), [])
+        self.assertEqual(redis.lrange(DM_REDIS_AUTO_PENDING_QUEUE, 0, -1), [])
+        self.assertEqual(redis.lrange(_dm_pending_queue_for_account(account_key), 0, -1), [])
+        self.assertEqual(redis.zrange(DM_REDIS_PROCESSING_ZSET, 0, -1), [])
+
+    def test_douyin_dm_worker_runs_sync_playwright_on_stable_thread(self):
+        redis = FakeRedis()
+        build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_threaded_playwright_001",
+                "video_info": "video",
+                "account_cookie": "cookie",
+                "comment_info": "comment",
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+        demo_result = {
+            "success": True,
+            "opened": True,
+            "prefilled": True,
+            "sent": True,
+            "steps": [],
+        }
+
+        with patch(
+            "aisec_agent.web.session_rag_chat.build_public_private_message_response",
+            return_value={"reply": "hello"},
+        ), patch(
+            "aisec_agent.web.session_rag_chat._run_web_playwright_call",
+            return_value=demo_result,
+        ) as threaded_call:
+            processed = process_douyin_dm_task_once(redis_client=redis, mode="send", block_timeout=1)
+
+        self.assertTrue(processed["sent"])
+        self.assertEqual(threaded_call.call_count, 1)
+        self.assertIs(threaded_call.call_args.args[0], _douyin_private_message_playwright_executor)
+
+    def test_douyin_dm_reconcile_removes_terminal_processing_residue_only(self):
+        redis = FakeRedis()
+        terminal_id = "dm_terminal_residue_001"
+        running_id = "dm_running_001"
+        stale_id = "dm_stale_running_001"
+        terminal_account = "account_terminal"
+        for queue in (DM_REDIS_PENDING_QUEUE, DM_REDIS_AUTO_PENDING_QUEUE):
+            redis.rpush(queue, terminal_id)
+            redis.rpush(queue, running_id)
+            redis.rpush(queue, stale_id)
+        redis.rpush(_dm_pending_queue_for_account(terminal_account), terminal_id)
+        _dm_redis_hash_set(redis, f"dm:task:{terminal_id}", {
+            "task_id": terminal_id,
+            "account_key": terminal_account,
+            "status": "success",
+            "queue_status": "done",
+            "sent": "true",
+        })
+        _dm_redis_hash_set(redis, f"dm:task:{running_id}", {
+            "task_id": running_id,
+            "status": "running",
+            "queue_status": "processing",
+        })
+        _dm_redis_hash_set(redis, f"dm:task:{stale_id}", {
+            "task_id": stale_id,
+            "status": "running",
+            "queue_status": "processing",
+            "sent": "false",
+        })
+        redis.zadd(DM_REDIS_PROCESSING_ZSET, {terminal_id: 1, running_id: 10**12, stale_id: 2})
+
+        result = reconcile_douyin_dm_queue_state(redis_client=redis)
+
+        self.assertEqual(result["processing_checked"], 3)
+        self.assertEqual(result["processing_removed"], 2)
+        self.assertEqual(result["stale_moved_to_manual"], 1)
+        self.assertEqual(redis.zrange(DM_REDIS_PROCESSING_ZSET, 0, -1), [running_id])
+        self.assertEqual(redis.lrange(DM_REDIS_PENDING_QUEUE, 0, -1), [running_id])
+        self.assertEqual(redis.lrange(DM_REDIS_AUTO_PENDING_QUEUE, 0, -1), [running_id])
+        self.assertEqual(redis.lrange(_dm_pending_queue_for_account(terminal_account), 0, -1), [])
+        self.assertEqual(redis.lrange(DM_REDIS_MANUAL_QUEUE, 0, -1), [stale_id])
+        stale_task = redis.hgetall(f"dm:task:{stale_id}")
+        self.assertEqual(stale_task["status"], "manual_required")
+        self.assertEqual(stale_task["failure_code"], "stale_processing_unconfirmed")
 
     def test_douyin_dm_task_submit_supports_legacy_hset(self):
         redis = LegacyHsetRedis()
@@ -953,6 +1067,7 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(processed["error_code"], "model_timeout")
         self.assertEqual(processed["failure_type"], "retryable")
         self.assertEqual(redis.zrange(DM_REDIS_RETRY_ZSET, 0, -1), ["dm_retry_001"])
+        self.assertEqual(redis.zrange(DM_REDIS_PROCESSING_ZSET, 0, -1), [])
 
         status = build_douyin_dm_task_status_response("dm_retry_001", redis_client=redis)
         self.assertEqual(status["result"]["queue_status"], "retry_wait")
@@ -986,6 +1101,7 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(processed["error_code"], "invalid_profile_url")
         self.assertTrue(processed["dead_letter"])
         self.assertEqual(redis.lrange(DM_REDIS_DEAD_LETTER_QUEUE, 0, -1), ["dm_dead_001"])
+        self.assertEqual(redis.zrange(DM_REDIS_PROCESSING_ZSET, 0, -1), [])
 
         status = build_douyin_dm_task_status_response("dm_dead_001", redis_client=redis)
         self.assertEqual(status["result"]["failure_type"], "final")
@@ -1029,6 +1145,7 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(processed["error_code"], "verification_required")
         self.assertTrue(processed["manual_required"])
         self.assertEqual(redis.lrange(DM_REDIS_MANUAL_QUEUE, 0, -1), ["dm_manual_001"])
+        self.assertEqual(redis.zrange(DM_REDIS_PROCESSING_ZSET, 0, -1), [])
 
         status = build_douyin_dm_task_status_response("dm_manual_001", redis_client=redis)
         self.assertEqual(status["result"]["failure_type"], "manual")

@@ -8810,6 +8810,7 @@ DM_REDIS_ACCOUNT_SET = "dm:accounts"
 DM_REDIS_TASK_TTL_SECONDS = 7 * 24 * 3600
 DM_REDIS_DEFAULT_MAX_RETRIES = 1
 DM_REDIS_RETRY_DELAYS_SECONDS = [10, 30, 120]
+DM_REDIS_STALE_PROCESSING_SECONDS = 30 * 60
 DM_DEBUG_ARTIFACT_DIR = Path(__file__).resolve().parents[2] / "content" / "douyin_dm_artifacts"
 DM_DEBUG_ARTIFACT_URL_PREFIX = "/api/v1/douyin/private-message/artifacts"
 DM_DEFAULT_VIEWPORT_WIDTH = 1440
@@ -8840,6 +8841,12 @@ DM_FAILURE_PROFILES = {
         "category": "automation",
         "reason": "已点击发送，但页面未确认消息已发出",
         "hint": "请检查是否被风控、页面结构变化、消息回显延迟，或人工确认是否真的发送成功",
+    },
+    "stale_processing_unconfirmed": {
+        "stage": "worker_runtime",
+        "category": "runtime",
+        "reason": "worker stopped before the private-message result was recorded",
+        "hint": "verify the target conversation manually before deciding whether to submit a new task",
     },
     "login_required": {
         "stage": "browser_login",
@@ -10643,6 +10650,98 @@ def _dm_remove_task_from_queues(redis_conn: Any, task_id: str, account_key: Any 
             pass
 
 
+def _dm_remove_task_from_pending_queues(redis_conn: Any, task_id: str, account_key: Any = "") -> None:
+    clean_task_id = str(task_id or "").strip()
+    if not clean_task_id:
+        return
+    for queue in (DM_REDIS_PENDING_QUEUE, DM_REDIS_AUTO_PENDING_QUEUE):
+        try:
+            redis_conn.lrem(queue, 0, clean_task_id)
+        except Exception:
+            pass
+    account_keys = account_key if isinstance(account_key, (list, tuple, set)) else [account_key]
+    for item in account_keys:
+        clean_account_key = str(item or "").strip()
+        if not clean_account_key:
+            continue
+        try:
+            redis_conn.lrem(_dm_pending_queue_for_account(clean_account_key), 0, clean_task_id)
+        except Exception:
+            pass
+
+
+def reconcile_douyin_dm_queue_state(
+    redis_client: Optional[Any] = None,
+    stale_after_seconds: int = DM_REDIS_STALE_PROCESSING_SECONDS,
+) -> Dict[str, int]:
+    redis_conn = _redis_conn(redis_client)
+    try:
+        processing_ids = [
+            _dm_decode_scalar(task_id)
+            for task_id in (redis_conn.zrange(DM_REDIS_PROCESSING_ZSET, 0, -1) or [])
+        ]
+    except Exception:
+        processing_ids = []
+
+    terminal_queue_statuses = {"done", "failed", "retry_wait", "manual_required", "dead_letter"}
+    removed = 0
+    missing = 0
+    stale = 0
+    stale_before = time.time() - max(1, int(stale_after_seconds))
+    for task_id in processing_ids:
+        task = _dm_redis_hash_all(redis_conn, _dm_task_key(task_id))
+        queue_status = str(task.get("queue_status") or "").strip().lower()
+        try:
+            processing_started = float(redis_conn.zscore(DM_REDIS_PROCESSING_ZSET, task_id) or 0)
+        except Exception:
+            processing_started = 0
+        is_stale_processing = bool(
+            task
+            and queue_status == "processing"
+            and processing_started
+            and processing_started <= stale_before
+        )
+        if task and queue_status not in terminal_queue_statuses and not is_stale_processing:
+            continue
+        if is_stale_processing:
+            now = _dm_now()
+            failure_state = _dm_task_failure_fields(
+                "stale_processing_unconfirmed",
+                "manual",
+                "worker stopped before the private-message result was recorded",
+            )
+            _dm_redis_hash_set(redis_conn, _dm_task_key(task_id), {
+                "status": "manual_required",
+                "queue_status": "manual_required",
+                **failure_state,
+                "manual_required": "true",
+                "dead_letter": "false",
+                "result_ready": "true",
+                "task_cleared": "true",
+                "updated_at": now,
+                "finished_at": now,
+            })
+            try:
+                redis_conn.lrem(DM_REDIS_MANUAL_QUEUE, 0, task_id)
+                redis_conn.rpush(DM_REDIS_MANUAL_QUEUE, task_id)
+            except Exception:
+                pass
+            stale += 1
+        _dm_remove_task_from_pending_queues(redis_conn, task_id, task.get("account_key") if task else "")
+        try:
+            removed += int(redis_conn.zrem(DM_REDIS_PROCESSING_ZSET, task_id) or 0)
+        except Exception:
+            pass
+        if not task:
+            missing += 1
+    return {
+        "processing_checked": len(processing_ids),
+        "processing_removed": removed,
+        "missing_task_hashes": missing,
+        "stale_moved_to_manual": stale,
+    }
+
+
 def _dm_redact_task(task: Dict[str, Any]) -> Dict[str, Any]:
     redacted = dict(task or {})
     for key in ("account_cookie", "account_cookies", "cookie", "cookies"):
@@ -11567,6 +11666,7 @@ def process_douyin_dm_task_once(
     key = _dm_task_key(task_id)
     task = _dm_redis_hash_all(redis_conn, key)
     if not task:
+        _dm_remove_task_from_pending_queues(redis_conn, task_id)
         redis_conn.rpush(DM_REDIS_FAILED_QUEUE, task_id)
         return {"task_id": task_id, "status": "failed", "error": "task hash not found", "queue_status": "failed"}
 
@@ -11579,6 +11679,12 @@ def process_douyin_dm_task_once(
     if runtime_updates:
         _dm_redis_hash_set(redis_conn, key, runtime_updates)
         task.update(runtime_updates)
+
+    _dm_remove_task_from_pending_queues(
+        redis_conn,
+        task_id,
+        {task.get("account_key"), requested_account_key},
+    )
 
     run_mode = str(mode or task.get("run_mode") or "generate").strip().lower()
     if run_mode not in {"dry_run", "generate", "prefill", "send"}:
@@ -11672,7 +11778,7 @@ def process_douyin_dm_task_once(
                 "followup_message": followup_message,
                 "account_cookies": task_account_cookies,
                 "screenshot_prefix": task_id,
-            }, executor=_douyin_private_message_playwright_executor)
+            }, executor=_web_douyin_private_message_playwright_executor)
             sent = bool(demo_result.get("sent"))
             prefilled = bool(demo_result.get("prefilled"))
             if run_mode == "send" and not sent:
@@ -11964,6 +12070,11 @@ def process_douyin_dm_task_once(
             "first_private_message": False,
             "first_private_message_status": final_queue_status,
         }
+    finally:
+        try:
+            redis_conn.zrem(DM_REDIS_PROCESSING_ZSET, task_id)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

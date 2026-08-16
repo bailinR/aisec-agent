@@ -12,6 +12,7 @@ from aisec_agent.web.session_rag_chat import (
     PlaceholderKnowledgeLogic,
     SimpleLLMChatTools,
     process_douyin_dm_task_once,
+    reconcile_douyin_dm_queue_state,
 )
 
 
@@ -35,6 +36,9 @@ def main(argv=None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     logic = build_logic()
     project_store = ProjectMaterialStore()
+    repair = reconcile_douyin_dm_queue_state()
+    if repair["processing_removed"]:
+        logging.info("cleaned stale terminal DM queue references: %s", repair)
     logging.info("Douyin DM worker started: mode=%s once=%s", args.mode, args.once)
 
     while True:

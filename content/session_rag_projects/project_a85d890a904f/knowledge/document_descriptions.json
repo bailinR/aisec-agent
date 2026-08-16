@@ -1,7 +1,7 @@
 {
   "version": 1,
   "project_id": "project_a85d890a904f",
-  "updated_at": "2026-08-12T22:48:19",
+  "updated_at": "2026-08-14T15:03:50",
   "knowledge_bases": [
     {
       "kb_id": "kb_5bede326e3",
@@ -46,7 +46,8 @@
                   "updated_at": "2026-07-17T18:48:35",
                   "content_chars": 304
                 }
-              ]
+              ],
+              "allow_empty_placeholder": true
             }
           ],
           "allow_empty_placeholder": true
@@ -142,7 +143,45 @@
                   "updated_at": "2026-07-17T18:48:35",
                   "content_chars": 324
                 }
-              ]
+              ],
+              "allow_empty_placeholder": true
+            },
+            {
+              "section_id": "section_8625cbc879",
+              "name": "默认板块",
+              "documents": [
+                {
+                  "doc_id": "admin_7b1f1d2f81b9",
+                  "title": "_销售专家填写模板",
+                  "kb_id": "kb_12e7d5bbbc",
+                  "knowledge_base": "AI技术与私信自动化业务板块",
+                  "domain": "自动私信引流系统",
+                  "section": "默认板块",
+                  "source_file_name": "sales_expert_fill_template.md",
+                  "relative_path": "knowledge/files/AI技术与私信自动化业务板块/自动私信引流系统/默认板块/sales_expert_fill_template.md",
+                  "description": "销售专家填写私信知识库模板，可直接在后台编辑丰富",
+                  "summary": "【项目名称】私信知识库填写模板；> 使用说明（给销售专家）：；> 1. 复制本文件，改名为「【项目名】私信资料.md」，例如「大健康睡眠初评私信资料.md」。；> 2. 只填你真正确认过的内容；不确定就写「待确认」，不要编造。；> 3. 用口语、短句、真实成交话术；避免空泛广告词。；> 4. 价格、效果、名额、时间承诺，没有书面依据就不要写死。；> 5. 填完后告诉运营/研发：业务别名、建议私信身份、必读合规文档。；--；0. 文档元信息；| 字段 | 填写内容 |；| --- | --- |；| 项目正式名称 |。",
+                  "tags": [
+                    "定位",
+                    "大健康",
+                    "医疗",
+                    "AI",
+                    "私信",
+                    "跨境",
+                    "体验",
+                    "草料码",
+                    "话术",
+                    "合规",
+                    "sales",
+                    "expert"
+                  ],
+                  "sender_identity": "健康顾问助理",
+                  "content_chars": 4779,
+                  "chunk_count": 7,
+                  "updated_at": "2026-08-14T15:02:42"
+                }
+              ],
+              "allow_empty_placeholder": true
             }
           ],
           "allow_empty_placeholder": true
@@ -220,7 +259,8 @@
                   "updated_at": "2026-07-17T18:48:35",
                   "content_chars": 203
                 }
-              ]
+              ],
+              "allow_empty_placeholder": true
             }
           ],
           "allow_empty_placeholder": true
@@ -289,7 +329,8 @@
                   "updated_at": "2026-07-17T18:48:35",
                   "content_chars": 327
                 }
-              ]
+              ],
+              "allow_empty_placeholder": true
             }
           ],
           "allow_empty_placeholder": true
@@ -340,7 +381,8 @@
                   "updated_at": "2026-07-17T18:48:35",
                   "content_chars": 350
                 }
-              ]
+              ],
+              "allow_empty_placeholder": true
             }
           ],
           "allow_empty_placeholder": true
@@ -382,7 +424,8 @@
                   "updated_at": "2026-07-17T18:48:35",
                   "content_chars": 317
                 }
-              ]
+              ],
+              "allow_empty_placeholder": true
             }
           ],
           "allow_empty_placeholder": true
@@ -462,9 +505,11 @@
                   "domain": "默认领域",
                   "section": "默认板块"
                 }
-              ]
+              ],
+              "allow_empty_placeholder": true
             }
-          ]
+          ],
+          "allow_empty_placeholder": true
         }
       ]
     }
@@ -507,7 +552,8 @@
               "updated_at": "2026-07-17T18:48:35",
               "content_chars": 304
             }
-          ]
+          ],
+          "allow_empty_placeholder": true
         }
       ],
       "allow_empty_placeholder": true
@@ -603,7 +649,45 @@
               "updated_at": "2026-07-17T18:48:35",
               "content_chars": 324
             }
-          ]
+          ],
+          "allow_empty_placeholder": true
+        },
+        {
+          "section_id": "section_8625cbc879",
+          "name": "默认板块",
+          "documents": [
+            {
+              "doc_id": "admin_7b1f1d2f81b9",
+              "title": "_销售专家填写模板",
+              "kb_id": "kb_12e7d5bbbc",
+              "knowledge_base": "AI技术与私信自动化业务板块",
+              "domain": "自动私信引流系统",
+              "section": "默认板块",
+              "source_file_name": "sales_expert_fill_template.md",
+              "relative_path": "knowledge/files/AI技术与私信自动化业务板块/自动私信引流系统/默认板块/sales_expert_fill_template.md",
+              "description": "销售专家填写私信知识库模板，可直接在后台编辑丰富",
+              "summary": "【项目名称】私信知识库填写模板；> 使用说明（给销售专家）：；> 1. 复制本文件，改名为「【项目名】私信资料.md」，例如「大健康睡眠初评私信资料.md」。；> 2. 只填你真正确认过的内容；不确定就写「待确认」，不要编造。；> 3. 用口语、短句、真实成交话术；避免空泛广告词。；> 4. 价格、效果、名额、时间承诺，没有书面依据就不要写死。；> 5. 填完后告诉运营/研发：业务别名、建议私信身份、必读合规文档。；--；0. 文档元信息；| 字段 | 填写内容 |；| --- | --- |；| 项目正式名称 |。",
+              "tags": [
+                "定位",
+                "大健康",
+                "医疗",
+                "AI",
+                "私信",
+                "跨境",
+                "体验",
+                "草料码",
+                "话术",
+                "合规",
+                "sales",
+                "expert"
+              ],
+              "sender_identity": "健康顾问助理",
+              "content_chars": 4779,
+              "chunk_count": 7,
+              "updated_at": "2026-08-14T15:02:42"
+            }
+          ],
+          "allow_empty_placeholder": true
         }
       ],
       "allow_empty_placeholder": true

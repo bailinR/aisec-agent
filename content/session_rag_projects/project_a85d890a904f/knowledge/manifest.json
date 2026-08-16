@@ -10,15 +10,29 @@
       "category": "膝骨关节评估与干细胞合规咨询",
       "sender_identity": "健康顾问助理",
       "relative_path": "knowledge/files/大健康业务板块/膝骨关节评估与干细胞合规咨询/膝骨关节项目说明.md",
-      "description": "膝骨关节项目说明；膝骨关节评估与干细胞合规咨询面向膝盖上下楼疼、久坐后起身不适、骨积液、软骨磨损、长辈膝关节退变等评论场景。私信阶段只做初步沟通、资料科普和评估预约引导，不直接判断病情，也不承诺治疗结果。；适用人群；- 膝盖上下楼疼、蹲起困难、走路久了不舒服的人群。；- 膝骨关节反复不适，想了解日常注意事项和评估路径的人群。；- 为父母或长辈咨询膝骨关节养护",
+      "description": "大健康医疗核心主业，覆盖关节健康、干细胞、PRP、产品体系、合作渠道与合规优势。",
       "keywords": [
         "大健康",
-        "膝骨关节评估与干细胞合规咨询",
-        "膝骨关节项目说明"
+        "医疗",
+        "关节",
+        "膝骨关节",
+        "骨积液",
+        "软骨修复",
+        "口服",
+        "贴剂",
+        "注射",
+        "理疗仪",
+        "非变二型骨胶原肽",
+        "干细胞",
+        "PRP",
+        "医院",
+        "门诊",
+        "诊所",
+        "康养",
+        "养老",
+        "社区健康"
       ],
-      "kb_id": "kb_7cf5474512",
-      "source_file_name": "膝骨关节项目说明.md",
-      "content_chars": 327
+      "kb_id": "kb_6b79c533ba"
     },
     {
       "doc_id": "ai_technology_hardware",
@@ -29,15 +43,30 @@
       "category": "AI内容生产与智能硬件",
       "sender_identity": "运营顾问",
       "relative_path": "knowledge/files/AI技术与私信自动化业务板块/AI内容生产与智能硬件/AI内容生产与智能硬件业务说明.md",
-      "description": "AI内容生产与智能硬件业务说明；AI 技术业务覆盖内容生产、智能硬件和自动化系统三类能力。；内容生产；可围绕文生视频、批量剪辑、自动发布、评论采集和数据统计搭建流程，适合有短视频矩阵、直播切片、达人素材或品牌内容批量生产需求的团队。；智能硬件；包括录音背夹、智能可穿戴录音设备、录音转纪要协助办公设备、远程小主机和边缘计算设备等。沟通时应先确认使用场景：会议记",
+      "description": "AI内容生产、智能硬件、私信引流、舆论管控、数据采集和AI Agent自动化调度能力。",
       "keywords": [
-        "AI技术与私信自动化",
-        "AI内容生产与智能硬件",
-        "AI内容生产与智能硬件业务说明"
+        "AI",
+        "智能硬件",
+        "内容生产",
+        "文生视频",
+        "批量剪辑",
+        "自动发布",
+        "评论采集",
+        "数据统计",
+        "录音背夹",
+        "可穿戴",
+        "录音转纪要",
+        "远程小主机",
+        "边缘计算",
+        "私信",
+        "引私域",
+        "舆论管控",
+        "分布式爬虫",
+        "千万级数据",
+        "Agent",
+        "自动化调度"
       ],
-      "kb_id": "kb_5bede326e3",
-      "source_file_name": "AI内容生产与智能硬件业务说明.md",
-      "content_chars": 304
+      "kb_id": "kb_12e7d5bbbc"
     },
     {
       "doc_id": "cross_border_services",
@@ -48,20 +77,26 @@
       "category": "跨境电商托管",
       "sender_identity": "跨境运营顾问",
       "relative_path": "knowledge/files/跨境电商与综合服务板块/跨境电商托管/跨境电商托管服务说明.md",
-      "description": "跨境电商托管服务说明；跨境电商托管服务面向想做海外市场但缺少运营团队或内容能力的商家，提供店铺托管、AI 选品、内容托管、自动化运营和资源对接。；适用客户；- 有货源但缺跨境平台运营经验的商家。；- 想测试海外市场但不知道从哪个平台开始的团队。；- 有内容素材但缺少批量剪辑、发布和数据复盘能力的商家。；- 需要选品、店铺搭建、内容托管和运营节奏建议的客户。；",
+      "description": "跨境电商、AI选品、内容托管、自动化运营、留学移民和企业资源对接。",
       "keywords": [
-        "跨境电商与综合服务板块",
-        "跨境电商托管",
-        "跨境电商托管服务说明"
+        "跨境",
+        "综合业务",
+        "跨境电商",
+        "全平台运营",
+        "AI选品",
+        "内容托管",
+        "自动化运营",
+        "留学",
+        "移民",
+        "企业服务",
+        "资源对接"
       ],
-      "kb_id": "kb_da06906974",
-      "source_file_name": "跨境电商托管服务说明.md",
-      "content_chars": 317
+      "kb_id": "kb_ddb126b9d4"
     },
     {
       "doc_id": "doc_cdb70ee2e7d0",
       "title": "AI内容生产与智能硬件业务说明",
-      "kb_id": "kb_5bede326e3",
+      "kb_id": "kb_12e7d5bbbc",
       "knowledge_base": "AI技术与私信自动化业务板块",
       "domain": "AI内容生产与智能硬件",
       "section": "具体资料",
@@ -81,7 +116,7 @@
     {
       "doc_id": "doc_997d9098a672",
       "title": "AI私信评论样本与回复方向",
-      "kb_id": "kb_5bede326e3",
+      "kb_id": "kb_12e7d5bbbc",
       "knowledge_base": "AI技术与私信自动化业务板块",
       "domain": "自动私信引流系统",
       "section": "具体资料",
@@ -101,7 +136,7 @@
     {
       "doc_id": "doc_050ba68c097d",
       "title": "活动钩子与承接方式",
-      "kb_id": "kb_5bede326e3",
+      "kb_id": "kb_12e7d5bbbc",
       "knowledge_base": "AI技术与私信自动化业务板块",
       "domain": "自动私信引流系统",
       "section": "具体资料",
@@ -121,7 +156,7 @@
     {
       "doc_id": "doc_4e356180472a",
       "title": "自动私信引流系统说明",
-      "kb_id": "kb_5bede326e3",
+      "kb_id": "kb_12e7d5bbbc",
       "knowledge_base": "AI技术与私信自动化业务板块",
       "domain": "自动私信引流系统",
       "section": "具体资料",
@@ -139,9 +174,38 @@
       "content_chars": 324
     },
     {
+      "doc_id": "admin_7b1f1d2f81b9",
+      "title": "_销售专家填写模板",
+      "kb_id": "kb_12e7d5bbbc",
+      "knowledge_base": "AI技术与私信自动化业务板块",
+      "domain": "自动私信引流系统",
+      "section": "默认板块",
+      "category": "自动私信引流系统",
+      "sender_identity": "健康顾问助理",
+      "relative_path": "knowledge/files/AI技术与私信自动化业务板块/自动私信引流系统/默认板块/sales_expert_fill_template.md",
+      "description": "销售专家填写私信知识库模板，可直接在后台编辑丰富",
+      "keywords": [
+        "定位",
+        "大健康",
+        "医疗",
+        "AI",
+        "私信",
+        "跨境",
+        "体验",
+        "草料码",
+        "话术",
+        "合规",
+        "sales",
+        "expert"
+      ],
+      "source_file_name": "sales_expert_fill_template.md",
+      "imported_at": "2026-08-14T15:02:42",
+      "content_chars": 4779
+    },
+    {
       "doc_id": "doc_9c4549f8c7c3",
       "title": "睡眠初评服务说明",
-      "kb_id": "kb_7cf5474512",
+      "kb_id": "kb_6b79c533ba",
       "knowledge_base": "大健康业务板块",
       "domain": "睡眠初评服务",
       "section": "具体资料",
@@ -161,7 +225,7 @@
     {
       "doc_id": "doc_004cc6aca862",
       "title": "睡眠评论承接示例",
-      "kb_id": "kb_7cf5474512",
+      "kb_id": "kb_6b79c533ba",
       "knowledge_base": "大健康业务板块",
       "domain": "睡眠初评服务",
       "section": "具体资料",
@@ -181,7 +245,7 @@
     {
       "doc_id": "doc_7617b8c70997",
       "title": "大健康私信合规边界",
-      "kb_id": "kb_7cf5474512",
+      "kb_id": "kb_6b79c533ba",
       "knowledge_base": "大健康业务板块",
       "domain": "膝骨关节评估与干细胞合规咨询",
       "section": "具体资料",
@@ -201,7 +265,7 @@
     {
       "doc_id": "doc_3891c2b7659f",
       "title": "膝骨关节项目说明",
-      "kb_id": "kb_7cf5474512",
+      "kb_id": "kb_6b79c533ba",
       "knowledge_base": "大健康业务板块",
       "domain": "膝骨关节评估与干细胞合规咨询",
       "section": "具体资料",
@@ -221,7 +285,7 @@
     {
       "doc_id": "doc_43785ba9cfee",
       "title": "Temu运营常见问题",
-      "kb_id": "kb_da06906974",
+      "kb_id": "kb_ddb126b9d4",
       "knowledge_base": "跨境电商与综合服务板块",
       "domain": "Temu运营问答",
       "section": "具体资料",
@@ -241,7 +305,7 @@
     {
       "doc_id": "doc_562ebb422746",
       "title": "跨境电商托管服务说明",
-      "kb_id": "kb_da06906974",
+      "kb_id": "kb_ddb126b9d4",
       "knowledge_base": "跨境电商与综合服务板块",
       "domain": "跨境电商托管",
       "section": "具体资料",
