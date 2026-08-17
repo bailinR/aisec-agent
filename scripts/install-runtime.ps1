@@ -98,8 +98,12 @@ if (Test-RuntimeCurrent) {
 Write-Host "Preparing the project-local Windows runtime. The first install can take several minutes." -ForegroundColor Cyan
 New-Item -ItemType Directory -Force $RuntimeRoot, $CacheRoot, $DownloadRoot | Out-Null
 
-if (Test-Path (Join-Path $PSScriptRoot "stop-portable.ps1")) {
-  & (Join-Path $PSScriptRoot "stop-portable.ps1")
+$stopScript = Join-Path $PSScriptRoot "stop.ps1"
+if (-not (Test-Path $stopScript)) {
+  $stopScript = Join-Path $PSScriptRoot "stop-portable.ps1"
+}
+if (Test-Path $stopScript) {
+  & $stopScript
 }
 
 $PythonZip = Join-Path $DownloadRoot "python-$PythonVersion-embed-amd64.zip"

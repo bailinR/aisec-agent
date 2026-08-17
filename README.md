@@ -44,11 +44,11 @@
 
 ### 5. 部署与运行
 
-- Windows 全新电脑从 Git 拉取后双击部署，不要求预装 Python、Redis、pip 或 Playwright。
+- Windows 全新电脑从 Gitee 拉取后双击 `start.bat` 部署，不要求预装 Python、Redis、pip 或 Playwright。
 - 项目自动下载隔离的 Python 3.12、Redis 和 Playwright Chromium 到 `runtime/`。
 - Python 包安装不继承电脑全局 pip 镜像；阿里云失败时自动回退官方 PyPI。
 - Redis 默认使用 `6389`；端口被占用时自动选择后续空闲端口。
-- 后续更新可自动执行 `git pull --ff-only`、校验远程提交并重启。
+- 以后每次双击 `start.bat` 都会自动 `git pull --ff-only`、校验远程提交并保证只启动一个 `7860` 实例。
 - 正式服务器继续使用 Docker Web 容器 + worker 容器，不使用 systemd Python 主服务。
 
 ## 系统结构
@@ -78,25 +78,25 @@
 
 ## Windows 首次部署
 
-适用于 64 位 Windows 10/11。目标电脑只需要安装 Git for Windows，并能够访问 GitHub 和 Python 包下载地址。
+适用于 64 位 Windows 10/11。目标电脑只需要安装 Git for Windows，并能够访问 Gitee 和 Python 包下载地址。
 
 ```powershell
-git clone -b show https://github.com/bailinR/aisec-agent.git
-cd aisec-agent
+git clone https://gitee.com/bailin-a/private-message.git
+cd private-message
 ```
 
 双击：
 
 ```text
-部署并启动.cmd
+start.bat
 ```
 
-首次运行会自动：
+首次与后续启动都会自动：
 
-1. 从 `.env.example` 创建本机 `.env`。
-2. 下载项目内 Python、Redis 和 Playwright Chromium。
-3. 安装运行依赖。
-4. 启动 Redis、Web 服务和私信 worker。
+1. 从 Gitee `origin` 快进更新当前分支（有本地改动时先自动 stash）。
+2. 缺少 `.env` 时从 `.env.example` 创建本机配置。
+3. 按需下载/刷新项目内 Python、Redis 和 Playwright Chromium。
+4. 停止旧实例后，只启动一个 `7860` Web 和一个私信 worker。
 5. 调用 `/api/health` 验证服务并打开浏览器。
 
 运行成功后访问：
@@ -107,33 +107,23 @@ http://127.0.0.1:7860
 
 详细说明见 [Windows 全新电脑一键部署](docs/Windows全新电脑一键部署.md)。
 
-## Windows 后续更新
+## Windows 日常启停
 
-直接双击：
+启动 / 更新：
 
 ```text
-更新并启动.cmd
+start.bat
 ```
 
-脚本会先把本地已暂存、未暂存和未跟踪文件安全保存到 Git stash，再执行快进拉取，确认本地提交与远程当前分支一致，然后更新必要的运行依赖并重启项目。旧修改不会自动合并回新代码，脚本会显示检查和恢复命令。
+停止当前 `7860` 端口上的全部实例，以及本项目 Web、worker、Redis：
 
-重启时会清理本项目遗留的 Web 和 worker 进程，固定只启动一个 `7860` Web 监听和一个私信 worker。项目内 Redis 使用独立的本机内部端口。
+```text
+stop.bat
+```
+
+`start.bat` 会清理本项目遗留进程，并校验最终只有一个 Web 监听和一个私信 worker。项目内 Redis 使用独立的本机内部端口。
 
 脚本也会禁用旧的 `AisecDmWatchdog` 每分钟计划任务，避免交互式 PowerShell 窗口反复弹出。
-
-也可以手工执行：
-
-```powershell
-git pull --ff-only origin show
-```
-
-然后双击 `部署并启动.cmd`。
-
-停止项目：
-
-```text
-停止项目.cmd
-```
 
 ## 本地开发启动
 

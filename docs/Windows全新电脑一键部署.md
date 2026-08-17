@@ -1,26 +1,31 @@
 # Windows Git 拉取后一键部署
 
-日期：2026-08-09
+日期：2026-08-17
 
 ## 1. 使用目标
 
-项目采用“Git 管源码、项目目录管理本机运行时”的方式。目标电脑只需要安装 Git for Windows，并能访问 Python、PyPI、GitHub 和 Playwright 下载地址，不需要预装 Python、Redis、pip 或 Playwright。
+项目采用“Git 管源码、项目目录管理本机运行时”的方式。目标电脑只需要安装 Git for Windows，并能访问 Gitee、Python、PyPI 和 Playwright 下载地址，不需要预装 Python、Redis、pip 或 Playwright。
 
 首次部署：
 
 ```powershell
-git clone https://github.com/bailinR/aisec-agent.git
-cd aisec-agent
-git switch show
+git clone https://gitee.com/bailin-a/private-message.git
+cd private-message
 ```
 
-然后双击 `部署并启动.cmd`。
+然后双击 `start.bat`。
 
-以后更新可直接双击 `更新并启动.cmd`。该脚本会安全保存本地已暂存、未暂存和未跟踪文件，再执行快进更新，并在本地提交与远程当前分支提交完全一致后重启项目。本地修改不会自动合并回新代码，脚本结束时会显示对应的 stash 名称和恢复命令。
+以后每次启动也双击同一个 `start.bat`。它会：
+
+1. 从 Gitee `origin` 快进更新当前分支（有本地未提交改动时先自动 stash）。
+2. 按需安装或刷新项目内 Python / Redis / Playwright 运行时。
+3. 停止旧实例后，只启动一个 `7860` Web 和一个私信 worker。
+
+停止服务双击 `stop.bat`，会停止本项目 Web、worker、项目 Redis，并清理 `7860` 端口上的监听进程。
 
 ## 2. 首次运行
 
-`部署并启动.cmd` 会自动执行：
+`start.bat` 会自动执行：
 
 1. 缺少 `.env` 时，从 `.env.example` 创建本机配置文件。
 2. 下载官方 CPython 3.12 嵌入式运行时。
@@ -36,7 +41,7 @@ git switch show
 
 ## 3. 更新与完整性确认
 
-双击 `更新并启动.cmd` 等价于：
+双击 `start.bat` 时的代码更新等价于：
 
 ```powershell
 git fetch --prune origin
@@ -73,11 +78,11 @@ git rev-parse origin/<当前分支>
 - Web：固定为 `0.0.0.0:7860`；端口被非本项目进程占用时停止启动，不会自动换到其他 Web 端口。
 - worker：只保留一个 `aisec_agent.worker.douyin_dm_worker --mode send` 实例。
 
-每次带 `-Restart` 启动时，脚本会先清理遗留的 Web 和 worker 进程，再校验最终只有一个 Web 监听进程和一个 worker。Redis 仍使用仅本机可访问的内部端口，默认是 `127.0.0.1:6389`。
+每次启动都会先清理遗留的 Web 和 worker 进程，再校验最终只有一个 Web 监听进程和一个 worker。Redis 仍使用仅本机可访问的内部端口，默认是 `127.0.0.1:6389`。
 
 启动脚本还会停止并禁用旧的 `AisecDmWatchdog` 每分钟计划任务。该旧任务以交互方式启动 PowerShell，会导致窗口每分钟弹出；当前 Web 和 worker 已由项目启动脚本直接管理，不再依赖此 watchdog。
 
-停止全部服务时双击 `停止项目.cmd`。
+停止全部服务时双击 `stop.bat`。
 
 ## 5. 本机配置与数据
 
@@ -111,28 +116,40 @@ Douyin DM worker started: mode=send once=False
 
 ## 7. 常用命令
 
-部署并启动：
+启动（含更新与单实例校验）：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy-start.ps1 -Restart -Open
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start.ps1
 ```
 
 指定端口：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy-start.ps1 -Restart -Open -Port 7861
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start.ps1 -Port 7861
 ```
 
 只允许本机访问：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy-start.ps1 -Restart -Open -HostAddress 127.0.0.1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start.ps1 -HostAddress 127.0.0.1
+```
+
+跳过 Git 更新，仅安装运行时并重启：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start.ps1 -SkipGitUpdate
 ```
 
 强制重装运行时：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-runtime.ps1 -Force
+```
+
+停止当前端口实例：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\stop.ps1
 ```
 
 ## 8. 注意事项
@@ -142,4 +159,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-runtime.ps
 - 第一次监听 `0.0.0.0:7860` 时，Windows 防火墙可能要求确认网络权限。
 - Redis 只绑定 `127.0.0.1`，不会暴露给局域网。
 - 当前自动运行时支持 x64 Windows 10/11，不支持 32 位或 ARM64 Windows。
-- 首次安装失败后先拉取最新代码，再重新双击 `部署并启动.cmd`；已成功下载的 Python、Redis 等文件会从 `runtime/cache/downloads` 复用。
+- 首次安装失败后先确认能访问 Gitee / Python.org / PyPI，再重新双击 `start.bat`；已成功下载的 Python、Redis 等文件会从 `runtime/cache/downloads` 复用。

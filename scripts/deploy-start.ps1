@@ -6,34 +6,13 @@ param(
   [switch]$Open
 )
 
+# Compatibility wrapper. Prefer start.bat / scripts\start.ps1.
 $ErrorActionPreference = "Stop"
-$ProjectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
-$EnvFile = Join-Path $ProjectRoot ".env"
-$EnvExample = Join-Path $ProjectRoot ".env.example"
-
-if (-not [Environment]::Is64BitOperatingSystem) {
-  throw "aisec-agent requires 64-bit Windows."
-}
-
-if (-not (Test-Path $EnvFile) -and (Test-Path $EnvExample)) {
-  Copy-Item -LiteralPath $EnvExample -Destination $EnvFile
-  Write-Host "Created .env from .env.example. Fill required API credentials in .env." -ForegroundColor Yellow
-}
-
-& (Join-Path $PSScriptRoot "install-runtime.ps1")
-if ($LASTEXITCODE -ne 0) {
-  throw "Runtime installation failed."
-}
-
-$startArgs = @{
+$argsMap = @{
   HostAddress = $HostAddress
   Port = $Port
   RedisPort = $RedisPort
+  SkipGitUpdate = $true
 }
-if ($Restart) { $startArgs.Restart = $true }
-if ($Open) { $startArgs.Open = $true }
-
-& (Join-Path $PSScriptRoot "start-portable.ps1") @startArgs
-if ($LASTEXITCODE -ne 0) {
-  throw "Web, worker, or Redis startup failed."
-}
+if (-not $Open) { $argsMap.NoOpen = $true }
+& (Join-Path $PSScriptRoot "start.ps1") @argsMap
