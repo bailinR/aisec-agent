@@ -1,7 +1,7 @@
 {
   "version": 1,
   "project_id": "project_a85d890a904f",
-  "updated_at": "2026-08-12T22:48:20",
+  "updated_at": "2026-08-14T18:25:19",
   "companies": [
     {
       "company_id": "company_cf97f621f6",
@@ -56,7 +56,7 @@
       "kb_id": "kb_5bede326e3",
       "name": "AI技术与私信自动化业务板块",
       "description": "面向自动私信、评论采集、AI内容生产、智能硬件和自动化运营的业务资料。",
-      "document_count": 4
+      "document_count": 5
     },
     {
       "kb_id": "kb_7cf5474512",

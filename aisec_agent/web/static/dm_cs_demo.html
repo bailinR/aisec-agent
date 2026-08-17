@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>抖音私信 AI 客服测试</title>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --card: #fff;
+      --line: #d7e0ee;
+      --text: #152033;
+      --muted: #607087;
+      --accent: #0f766e;
+      --ok: #168a4a;
+      --err: #b42318;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", PingFang SC, "Microsoft YaHei", sans-serif;
+      background: radial-gradient(circle at top left, #e8f5f2, transparent 40%), var(--bg);
+      color: var(--text);
+    }
+    .shell { max-width: 1100px; margin: 0 auto; padding: 20px; }
+    header { margin-bottom: 16px; }
+    header h1 { margin: 0 0 6px; font-size: 24px; }
+    header p { margin: 0; color: var(--muted); font-size: 14px; }
+    .grid { display: grid; grid-template-columns: 1.05fr .95fr; gap: 14px; }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px;
+    }
+    .panel h2 { margin: 0 0 12px; font-size: 16px; }
+    label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font: inherit;
+      background: #fff;
+    }
+    textarea { min-height: 72px; resize: vertical; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .checks { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; }
+    .checks label { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text); font-size: 13px; }
+    .checks input { width: auto; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    button {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 10px;
+      padding: 10px 14px;
+      cursor: pointer;
+      font: inherit;
+    }
+    button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      background: #fbfdff;
+    }
+    .metric .k { color: var(--muted); font-size: 12px; }
+    .metric .v { margin-top: 4px; font-size: 18px; font-weight: 700; word-break: break-all; }
+    .box {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: #fbfdff;
+      min-height: 48px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin-bottom: 10px;
+    }
+    .logs {
+      max-height: 360px;
+      overflow: auto;
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .log { padding: 4px 0; border-bottom: 1px dashed #e6edf7; }
+    .log.ok { color: var(--ok); }
+    .log.error { color: var(--err); }
+    .log.warn { color: #a96b00; }
+    .toast { margin-top: 10px; color: var(--muted); font-size: 13px; min-height: 1.2em; }
+    @media (max-width: 900px) {
+      .grid, .row, .metrics { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <h1>抖音私信 AI 客服测试</h1>
+      <p>监听发送账号消息列表 → 算力池 <code>chat-pm</code> 生成回复 → 可选自动发送。默认复用本机已登录 profile。</p>
+    </header>
+
+    <div class="grid">
+      <section class="panel">
+        <h2>启动参数</h2>
+        <div class="row">
+          <div>
+            <label>account_key（优先，复用已扫码 profile）</label>
+            <input id="accountKey" value="cookie_279f894816d72ce8">
+          </div>
+          <div>
+            <label>browser_name</label>
+            <select id="browserName">
+              <option value="chrome" selected>chrome</option>
+              <option value="edge">edge</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>account_id（可选）</label>
+            <input id="accountId" value="11" placeholder="如 11">
+          </div>
+          <div>
+            <label>account_name（可选）</label>
+            <input id="accountName" value="可二（江念百货）">
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>poll_seconds</label>
+            <input id="pollSeconds" type="number" min="3" step="1" value="5">
+          </div>
+          <div>
+            <label>gpu_model</label>
+            <input id="gpuModel" value="chat-pm">
+          </div>
+        </div>
+        <label>reply_backend</label>
+        <select id="replyBackend">
+          <option value="gpu_pool" selected>gpu_pool（算力池）</option>
+          <option value="rag">rag（项目知识库链路）</option>
+        </select>
+        <div class="checks">
+          <label><input id="generateReply" type="checkbox" checked> generate_reply</label>
+          <label><input id="autoSend" type="checkbox" checked> auto_send</label>
+          <label><input id="headless" type="checkbox"> headless</label>
+        </div>
+        <label>算力池试探消息（不打开浏览器）</label>
+        <textarea id="probeMessage">你好，这个多少钱？</textarea>
+        <div class="actions">
+          <button class="primary" id="btnStart">启动客服监控</button>
+          <button id="btnStop">停止</button>
+          <button id="btnProbe">只测算力池回复</button>
+          <button id="btnRefresh">刷新状态</button>
+        </div>
+        <div class="toast" id="toast"></div>
+      </section>
+
+      <section class="panel">
+        <h2>运行状态</h2>
+        <div class="metrics">
+          <div class="metric"><div class="k">status</div><div class="v" id="mStatus">-</div></div>
+          <div class="metric"><div class="k">reply_count</div><div class="v" id="mReply">0</div></div>
+          <div class="metric"><div class="k">loop</div><div class="v" id="mLoop">0</div></div>
+          <div class="metric"><div class="k">backend</div><div class="v" id="mBackend">-</div></div>
+        </div>
+        <label>最近用户消息</label>
+        <div class="box" id="lastMessage">-</div>
+        <label>最近 AI 回复</label>
+        <div class="box" id="lastReply">-</div>
+        <label>最近错误</label>
+        <div class="box" id="lastError">-</div>
+        <label>日志</label>
+        <div class="box logs" id="logs">暂无</div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let pollTimer = null;
+    let currentAccountKey = "";
+
+    function toast(text) {
+      $("toast").textContent = text || "";
+    }
+
+    function payload() {
+      return {
+        account_key: $("accountKey").value.trim(),
+        account_id: $("accountId").value.trim(),
+        account_name: $("accountName").value.trim(),
+        browser_name: $("browserName").value,
+        poll_seconds: Number($("pollSeconds").value || 5),
+        gpu_model: $("gpuModel").value.trim() || "chat-pm",
+        reply_backend: $("replyBackend").value,
+        generate_reply: $("generateReply").checked,
+        auto_send: $("autoSend").checked,
+        headless: $("headless").checked,
+        source_platform: "抖音",
+      };
+    }
+
+    function renderMonitor(m) {
+      if (!m) {
+        $("mStatus").textContent = "-";
+        $("mReply").textContent = "0";
+        $("mLoop").textContent = "0";
+        $("mBackend").textContent = "-";
+        $("lastMessage").textContent = "-";
+        $("lastReply").textContent = "-";
+        $("lastError").textContent = "-";
+        $("logs").textContent = "暂无";
+        return;
+      }
+      $("mStatus").textContent = m.status || "-";
+      $("mReply").textContent = String(m.reply_count ?? 0);
+      $("mLoop").textContent = String(m.loop_count ?? 0);
+      $("mBackend").textContent = `${m.reply_backend || "-"} / ${m.gpu_model || "-"}`;
+      $("lastMessage").textContent = m.last_message || "-";
+      $("lastReply").textContent = m.last_reply || "-";
+      $("lastError").textContent = m.last_error || "-";
+      const logs = Array.isArray(m.logs) ? m.logs.slice().reverse() : [];
+      $("logs").innerHTML = logs.length
+        ? logs.map((item) => {
+            const level = item.level || "info";
+            return `<div class="log ${level}">[${item.time || ""}] ${item.text || ""}</div>`;
+          }).join("")
+        : "暂无";
+    }
+
+    async function api(path, options) {
+      const resp = await fetch(path, {
+        headers: { "Content-Type": "application/json" },
+        ...options,
+      });
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok || body.ok === false) {
+        throw new Error(body.error || `HTTP ${resp.status}`);
+      }
+      return body.data || body;
+    }
+
+    async function refresh() {
+      const data = await api("/api/v1/douyin/private-message/conversation-monitors");
+      const key = currentAccountKey || $("accountKey").value.trim();
+      const monitors = data.monitors || [];
+      const hit = monitors.find((m) => m.account_key === key) || monitors[0] || null;
+      if (hit) currentAccountKey = hit.account_key || currentAccountKey;
+      renderMonitor(hit);
+      return data;
+    }
+
+    async function startMonitor() {
+      const body = payload();
+      if (!body.account_key && !body.account_id) {
+        toast("请填写 account_key 或 account_id");
+        return;
+      }
+      toast("正在启动…");
+      const data = await api("/api/v1/douyin/private-message/conversation-monitors/start", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      currentAccountKey = (data.monitor && data.monitor.account_key) || body.account_key;
+      renderMonitor(data.monitor);
+      toast(data.started ? "已启动客服监控" : `未新建：${data.reason || "already_running"}`);
+      startPolling();
+    }
+
+    async function stopMonitor() {
+      const body = {
+        account_key: currentAccountKey || $("accountKey").value.trim(),
+        account_id: $("accountId").value.trim(),
+      };
+      toast("正在停止…");
+      const data = await api("/api/v1/douyin/private-message/conversation-monitors/stop", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      renderMonitor(data.monitor);
+      toast(data.stopped ? "已停止" : `停止失败：${data.reason || "not_found"}`);
+    }
+
+    async function probeReply() {
+      toast("请求算力池…");
+      const data = await api("/api/v1/douyin/private-message/conversation-monitors/probe-reply", {
+        method: "POST",
+        body: JSON.stringify({
+          message: $("probeMessage").value.trim(),
+          gpu_model: $("gpuModel").value.trim() || "chat-pm",
+        }),
+      });
+      $("lastReply").textContent = data.reply || "-";
+      toast(`算力池 OK · ${data.model} · ${data.elapsed_ms}ms`);
+    }
+
+    function startPolling() {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(() => {
+        refresh().catch(() => {});
+      }, 2500);
+    }
+
+    $("btnStart").onclick = () => startMonitor().catch((err) => toast(String(err.message || err)));
+    $("btnStop").onclick = () => stopMonitor().catch((err) => toast(String(err.message || err)));
+    $("btnProbe").onclick = () => probeReply().catch((err) => toast(String(err.message || err)));
+    $("btnRefresh").onclick = () => refresh().then(() => toast("已刷新")).catch((err) => toast(String(err.message || err)));
+
+    refresh().then(startPolling).catch((err) => toast(String(err.message || err)));
+  </script>
+</body>
+</html>

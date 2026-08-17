@@ -49,6 +49,7 @@ FILE_PARSER_HTML_FILE = STATIC_DIR / "file_parser.html"
 PROJECT_MATERIALS_HTML_FILE = STATIC_DIR / "project_materials.html"
 ADMIN_VUE_HTML_FILE = STATIC_DIR / "admin_vue.html"
 WORKSPACE_HTML_FILE = STATIC_DIR / "workspace.html"
+DM_CS_DEMO_HTML_FILE = STATIC_DIR / "dm_cs_demo.html"
 ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 DEFAULT_COMPANY_NAME = "默认公司"
 
@@ -7642,6 +7643,8 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self._audit_finish(HTTPStatus.FOUND, {"location": "/admin-vue"})
         elif path in {"/admin", "/admin-vue"}:
             self._send_html(ADMIN_VUE_HTML_FILE)
+        elif path in {"/dm-cs-demo", "/douyin-cs-demo"}:
+            self._send_html(DM_CS_DEMO_HTML_FILE)
         elif path.startswith("/static/"):
             self._send_static(path.removeprefix("/static/"))
         elif path.startswith(f"{DM_DEBUG_ARTIFACT_URL_PREFIX}/"):
@@ -7650,6 +7653,8 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self._handle_douyin_dm_task_list(parsed_url)
         elif path.startswith("/api/v1/douyin/private-message/tasks/") and not path.endswith("/clear"):
             self._handle_douyin_dm_task_status(parsed_url)
+        elif path == "/api/v1/douyin/private-message/conversation-monitors":
+            self._handle_douyin_conversation_monitor_list()
         elif path == "/api/workspace/state":
             self._handle_workspace_state(parsed_url)
         elif path == "/api/presets":
@@ -7770,6 +7775,17 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
 
         if path.startswith("/api/v1/douyin/private-message/tasks/"):
             self._handle_douyin_dm_task_status()
+            return
+
+        if path in {
+            "/api/v1/douyin/private-message/conversation-monitors/start",
+            "/api/v1/douyin/private-message/conversation-monitors/stop",
+        }:
+            self._handle_douyin_conversation_monitor_control(path.rsplit("/", 1)[-1])
+            return
+
+        if path == "/api/v1/douyin/private-message/conversation-monitors/probe-reply":
+            self._handle_douyin_conversation_monitor_probe_reply()
             return
 
         if path == "/api/files/parse":
@@ -8466,6 +8482,53 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             data = build_douyin_dm_task_clear_response(
                 redis_client=getattr(self.server, "redis_client", None),
             )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_douyin_conversation_monitor_list(self):
+        from aisec_agent.web.douyin_conversation_monitor import build_douyin_conversation_monitor_list_response
+
+        try:
+            data = build_douyin_conversation_monitor_list_response()
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_douyin_conversation_monitor_control(self, action: str):
+        from aisec_agent.web.douyin_conversation_monitor import (
+            build_douyin_conversation_monitor_start_response,
+            build_douyin_conversation_monitor_stop_response,
+        )
+
+        try:
+            payload = self._read_json()
+            if action == "start":
+                data = build_douyin_conversation_monitor_start_response(
+                    payload,
+                    logic=getattr(self.server, "logic", None),
+                    project_store=getattr(self.server, "project_store", None),
+                )
+            elif action == "stop":
+                data = build_douyin_conversation_monitor_stop_response(payload)
+            else:
+                raise WebInputError("unsupported monitor action")
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_douyin_conversation_monitor_probe_reply(self):
+        from aisec_agent.web.douyin_conversation_monitor import build_douyin_cs_probe_reply_response
+
+        try:
+            payload = self._read_json()
+            data = build_douyin_cs_probe_reply_response(payload)
             self._send_json({"ok": True, "data": data})
         except WebInputError as e:
             self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
@@ -9418,46 +9481,145 @@ def _dm_append_optional_step(steps: List[Dict[str, Any]], step: Optional[Dict[st
         steps.append(step)
 
 
-def _dm_fill_message_editor(page: Any, message: str, timeout_ms: int = 10000) -> Dict[str, Any]:
-    candidates = [
-        page.locator('[contenteditable="true"]'),
-        page.locator("textarea"),
-        page.locator(".public-DraftEditor-content"),
-        page.get_by_role("textbox"),
-    ]
-    last_error = ""
-    for locator in candidates:
+def _dm_playwright_targets(page: Any) -> List[Any]:
+    targets: List[Any] = [page]
+    try:
+        frames = list(getattr(page, "frames", []) or [])
+    except Exception:
+        frames = []
+    for frame in frames:
+        if frame is page or frame in targets:
+            continue
         try:
-            target = locator.first
-            target.wait_for(state="visible", timeout=timeout_ms)
-            target.click(timeout=timeout_ms)
-            try:
-                target.fill(message, timeout=timeout_ms)
-            except Exception:
-                page.keyboard.press("Control+A")
-                page.keyboard.press("Backspace")
-                page.keyboard.insert_text(message)
-            return {"name": "paste_message", "ok": True, "detail": "message inserted"}
+            url = str(getattr(frame, "url", "") or "")
+        except Exception:
+            url = ""
+        if url.startswith("about:") or url.startswith("chrome-error:"):
+            continue
+        targets.append(frame)
+    return targets
+
+
+def _dm_fill_message_editor(page: Any, message: str, timeout_ms: int = 10000) -> Dict[str, Any]:
+    """Fill Douyin IM composer; prefer right-side panel editors over homepage search."""
+    last_error = ""
+    selector = '[contenteditable="true"], [contenteditable="plaintext-only"], [contenteditable], textarea, [role="textbox"], .public-DraftEditor-content, [class*="DraftEditor"]'
+    for target in _dm_playwright_targets(page):
+        try:
+            locator = target.locator(selector)
+            count = int(locator.count())
         except Exception as exc:
             last_error = str(exc)
+            continue
+        ranked: List[tuple[float, int, Dict[str, Any]]] = []
+        for index in range(min(count, 12)):
+            item = locator.nth(index)
+            try:
+                if not item.is_visible(timeout=500):
+                    continue
+                box = item.bounding_box()
+                if not box or float(box.get("width") or 0) < 40 or float(box.get("height") or 0) < 16:
+                    continue
+                placeholder = ""
+                try:
+                    placeholder = str(
+                        item.get_attribute("placeholder")
+                        or item.get_attribute("data-placeholder")
+                        or item.get_attribute("aria-label")
+                        or ""
+                    )
+                except Exception:
+                    placeholder = ""
+                score = 0.0
+                left = float(box["x"])
+                top = float(box["y"])
+                width = float(box["width"])
+                height = float(box["height"])
+                # Prefer right drawer / bottom composer.
+                try:
+                    viewport = page.viewport_size or {}
+                    vw = float(viewport.get("width") or 1280)
+                    vh = float(viewport.get("height") or 800)
+                except Exception:
+                    vw, vh = 1280.0, 800.0
+                if left > vw * 0.48:
+                    score += 80
+                if top > vh * 0.45:
+                    score += 40
+                if 24 <= height <= 200:
+                    score += 20
+                if width >= 160:
+                    score += 10
+                if re.search(r"搜索|search", placeholder, re.I):
+                    score -= 140
+                if re.search(r"发送消息|输入|私信|说点什么|消息", placeholder, re.I):
+                    score += 70
+                ranked.append((score, index, {"placeholder": placeholder[:60], "x": left, "y": top, "w": width, "h": height}))
+            except Exception as exc:
+                last_error = str(exc)
+        ranked.sort(key=lambda row: row[0], reverse=True)
+        for score, index, meta in ranked:
+            if score < 30:
+                continue
+            item = locator.nth(index)
+            try:
+                item.click(timeout=min(timeout_ms, 4000))
+                filled = False
+                try:
+                    item.fill(message, timeout=timeout_ms)
+                    filled = True
+                except Exception:
+                    try:
+                        item.press("Control+A")
+                        item.press("Backspace")
+                    except Exception:
+                        page.keyboard.press("Control+A")
+                        page.keyboard.press("Backspace")
+                    try:
+                        item.type(message, delay=15, timeout=timeout_ms)
+                        filled = True
+                    except Exception:
+                        page.keyboard.insert_text(message)
+                        filled = True
+                # Verify against this same frame first.
+                try:
+                    current = str(item.inner_text(timeout=1000) or item.input_value(timeout=500) or "").strip()
+                except Exception:
+                    current = _dm_message_editor_text(page)
+                if not current:
+                    # Some editors expose value only via textContent after a beat.
+                    time.sleep(0.25)
+                    current = _dm_message_editor_text(page)
+                if current:
+                    return {
+                        "name": "paste_message",
+                        "ok": True,
+                        "detail": f"filled editor score={int(score)} via={'fill' if filled else 'type'}",
+                        "placeholder": meta.get("placeholder") or "",
+                        "frame_url": str(getattr(target, "url", "") or "")[:160],
+                    }
+                last_error = f"editor accepted input but stayed empty score={int(score)} placeholder={meta.get('placeholder')}"
+            except Exception as exc:
+                last_error = str(exc)
     raise RuntimeError(f"private chat editor not found: {last_error}")
 
 
 def _dm_visible_message_editor(page: Any, timeout_ms: int = 4000) -> Any:
-    candidates = [
-        page.locator('[contenteditable="true"]'),
-        page.locator("textarea"),
-        page.locator(".public-DraftEditor-content"),
-        page.get_by_role("textbox"),
-    ]
     last_error = ""
-    for locator in candidates:
-        try:
-            target = locator.first
-            target.wait_for(state="visible", timeout=timeout_ms)
-            return target
-        except Exception as exc:
-            last_error = str(exc)
+    for target in _dm_playwright_targets(page):
+        candidates = [
+            target.locator('[contenteditable="true"]'),
+            target.locator("textarea"),
+            target.locator(".public-DraftEditor-content"),
+            target.get_by_role("textbox"),
+        ]
+        for locator in candidates:
+            try:
+                editor = locator.first
+                editor.wait_for(state="visible", timeout=min(timeout_ms, 2500))
+                return editor
+            except Exception as exc:
+                last_error = str(exc)
     raise RuntimeError(f"private chat editor not found: {last_error}")
 
 
@@ -9475,11 +9637,15 @@ def _dm_message_editor_text(page: Any) -> str:
       return '';
     }
     """
-    try:
-        text = str(page.evaluate(script) or "")
-        return re.sub(r"[\u200b-\u200d\u2060\ufeff]", "", text).strip()
-    except Exception:
-        return ""
+    for target in _dm_playwright_targets(page):
+        try:
+            text = str(target.evaluate(script) or "")
+            text = re.sub(r"[\u200b-\u200d\u2060\ufeff]", "", text).strip()
+            if text:
+                return text
+        except Exception:
+            continue
+    return ""
 
 
 def _dm_collect_message_bubble_matches(page: Any, message: str) -> List[Dict[str, Any]]:
@@ -9562,15 +9728,27 @@ def _dm_collect_message_bubble_matches(page: Any, message: str) -> List[Dict[str
     return result
 
 
-def _dm_wait_message_sent(page: Any, message: str, timeout_ms: int = 8000, baseline: Optional[Iterable[str]] = None) -> Dict[str, Any]:
+def _dm_wait_message_sent(
+    page: Any,
+    message: str,
+    timeout_ms: int = 8000,
+    baseline: Optional[Iterable[str]] = None,
+    accept_editor_cleared: bool = False,
+) -> Dict[str, Any]:
     baseline_signatures = {str(item).strip() for item in (baseline or []) if str(item).strip()}
     deadline = time.time() + max(1, timeout_ms / 1000)
     last_text = ""
     editor_cleared = False
+    cleared_since = 0.0
     while time.time() < deadline:
         last_text = _dm_message_editor_text(page)
         if not last_text:
+            if not editor_cleared:
+                cleared_since = time.time()
             editor_cleared = True
+        else:
+            editor_cleared = False
+            cleared_since = 0.0
         matches = _dm_collect_message_bubble_matches(page, message)
         for match in matches:
             if editor_cleared and match.get("signature") not in baseline_signatures:
@@ -9579,6 +9757,12 @@ def _dm_wait_message_sent(page: Any, message: str, timeout_ms: int = 8000, basel
                     "ok": True,
                     "detail": f"outgoing bubble confirmed at {match['x']},{match['y']}",
                 }
+        if accept_editor_cleared and editor_cleared and cleared_since and (time.time() - cleared_since) >= 0.6:
+            return {
+                "name": "send_message",
+                "ok": True,
+                "detail": "editor cleared after send (bubble unconfirmed)",
+            }
         try:
             page.wait_for_timeout(250)
         except Exception:
@@ -9975,10 +10159,29 @@ def _dm_send_and_confirm_current_message(
     message: str,
     timeout_ms: int = 8000,
     retry_enter_before_click: bool = False,
+    prefer_click_send: bool = False,
+    accept_editor_cleared: bool = False,
 ) -> List[Dict[str, Any]]:
     baseline_matches = _dm_collect_message_bubble_matches(page, message)
     baseline = [match.get("signature") for match in baseline_matches]
     steps: List[Dict[str, Any]] = []
+
+    if prefer_click_send:
+        try:
+            click_step = _dm_send_current_message(page, timeout_ms=timeout_ms)
+            steps.append(click_step)
+            steps.append(
+                _dm_wait_message_sent(
+                    page,
+                    message,
+                    timeout_ms=timeout_ms,
+                    baseline=baseline,
+                    accept_editor_cleared=accept_editor_cleared,
+                )
+            )
+            return steps
+        except Exception as exc:
+            steps.append({"name": "click_send_first_unconfirmed", "ok": False, "detail": str(exc)})
 
     try:
         page.keyboard.press("Enter")
@@ -9987,12 +10190,17 @@ def _dm_send_and_confirm_current_message(
         steps.append({"name": "press_enter_send", "ok": False, "detail": str(exc)})
 
     try:
-        steps.append(_dm_wait_message_sent(page, message, timeout_ms=timeout_ms, baseline=baseline))
+        steps.append(
+            _dm_wait_message_sent(
+                page,
+                message,
+                timeout_ms=timeout_ms,
+                baseline=baseline,
+                accept_editor_cleared=accept_editor_cleared,
+            )
+        )
         return steps
     except RuntimeError as exc:
-        last_text = _dm_message_editor_text(page)
-        if not last_text and not retry_enter_before_click:
-            raise
         steps.append({"name": "press_enter_unconfirmed", "ok": False, "detail": str(exc)})
 
     if retry_enter_before_click:
@@ -10000,7 +10208,15 @@ def _dm_send_and_confirm_current_message(
             page.keyboard.press("Enter")
             steps.append({"name": "press_enter_retry_send", "ok": True, "detail": "pressed Enter again for link preview"})
             try:
-                steps.append(_dm_wait_message_sent(page, message, timeout_ms=timeout_ms, baseline=baseline))
+                steps.append(
+                    _dm_wait_message_sent(
+                        page,
+                        message,
+                        timeout_ms=timeout_ms,
+                        baseline=baseline,
+                        accept_editor_cleared=accept_editor_cleared,
+                    )
+                )
                 return steps
             except RuntimeError as exc:
                 steps.append({"name": "press_enter_retry_unconfirmed", "ok": False, "detail": str(exc)})
@@ -10009,7 +10225,15 @@ def _dm_send_and_confirm_current_message(
 
     click_step = _dm_send_current_message(page, timeout_ms=timeout_ms)
     steps.append(click_step)
-    steps.append(_dm_wait_message_sent(page, message, timeout_ms=timeout_ms, baseline=baseline))
+    steps.append(
+        _dm_wait_message_sent(
+            page,
+            message,
+            timeout_ms=timeout_ms,
+            baseline=baseline,
+            accept_editor_cleared=accept_editor_cleared,
+        )
+    )
     return steps
 
 
