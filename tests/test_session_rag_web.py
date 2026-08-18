@@ -56,6 +56,7 @@ from aisec_agent.web.session_rag_chat import (
     _dm_cleanup_closed_playwright_sessions,
     _dm_apply_page_geometry,
     _dm_browser_launch_args,
+    _dm_normalize_editor_text,
     _dm_fill_message_editor,
     _dm_close_douyin_global_message_drawer,
     _dm_click_profile_private_message,
@@ -2586,6 +2587,12 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertIn("--window-size=1440,900", args)
         self.assertIn("--window-position=0,0", args)
         self.assertIn("--force-device-scale-factor=1", args)
+        self.assertIn("--start-maximized", args)
+
+    def test_dm_browser_geometry_keeps_headless_sessions_without_window_maximize(self):
+        args = _dm_browser_launch_args({"headless": True})
+
+        self.assertNotIn("--start-maximized", args)
 
     def test_dm_browser_geometry_is_limited_to_small_windows_screen(self):
         with patch(
@@ -2665,6 +2672,12 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(result["screen_width"], 1024)
         self.assertEqual(result["screen_height"], 768)
         self.assertTrue(result["screen_limited"])
+
+    def test_dm_normalize_editor_text_ignores_layout_whitespace(self):
+        self.assertEqual(
+            _dm_normalize_editor_text("  第一行\n\n第二行\u200b "),
+            "第一行 第二行",
+        )
 
     def test_dm_cleanup_closed_playwright_sessions_stops_stale_runtime(self):
         class FakeContext:

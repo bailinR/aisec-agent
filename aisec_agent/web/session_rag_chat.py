@@ -9224,7 +9224,10 @@ def _dm_browser_launch_args(options: Dict[str, Any]) -> List[str]:
         "--window-position=0,0",
         "--force-device-scale-factor=1",
     ]
-    if geometry["screen_limited"]:
+    # Headed sessions are the operator-facing browser. Maximize them on every
+    # machine so the conversation drawer and composer are not hidden below the
+    # browser chrome; the resolved viewport still protects small screens.
+    if not bool(options.get("headless")) or geometry["screen_limited"]:
         args.append("--start-maximized")
     return args
 
@@ -9752,21 +9755,72 @@ def _dm_mark_private_message_editor(page: Any) -> Dict[str, Any]:
     return result if isinstance(result, dict) else {}
 
 
+def _dm_normalize_editor_text(value: Any) -> str:
+    text = re.sub(r"[\u200b-\u200d\u2060\ufeff]", "", str(value or ""))
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _dm_read_editor_text(target: Any) -> str:
+    try:
+        value = target.evaluate(
+            """
+            el => {
+              const values = [el.value, el.innerText, el.textContent];
+              for (const value of values) {
+                const text = String(value || '').trim();
+                if (text) return text;
+              }
+              return '';
+            }
+            """
+        )
+        return str(value or "")
+    except Exception:
+        return ""
+
+
 def _dm_fill_message_editor(page: Any, message: str, timeout_ms: int = 10000) -> Dict[str, Any]:
-    selected = _dm_mark_private_message_editor(page)
+    selected: Dict[str, Any] = {}
+    deadline = time.monotonic() + max(1, timeout_ms) / 1000.0
+    while time.monotonic() < deadline:
+        selected = _dm_mark_private_message_editor(page)
+        if selected:
+            break
+        try:
+            page.wait_for_timeout(250)
+        except Exception:
+            time.sleep(0.25)
     if not selected:
         raise RuntimeError("private chat editor not found: no trusted editor in the conversation panel")
     target = page.locator('[data-aisec-dm-editor="true"]').first
     target.wait_for(state="visible", timeout=timeout_ms)
-    target.click(timeout=timeout_ms)
     try:
-        target.fill(message, timeout=timeout_ms)
+        target.scroll_into_view_if_needed(timeout=timeout_ms)
     except Exception:
-        page.keyboard.press("Control+A")
-        page.keyboard.press("Backspace")
-        page.keyboard.insert_text(message)
-    inserted = str(target.evaluate("el => el.value || el.innerText || el.textContent || ''") or "").strip()
-    if inserted != str(message or "").strip():
+        pass
+    target.click(timeout=timeout_ms)
+    expected = _dm_normalize_editor_text(message)
+    inserted = ""
+    for attempt in range(3):
+        try:
+            target.fill(message, timeout=timeout_ms)
+        except Exception:
+            page.keyboard.press("Control+A")
+            page.keyboard.press("Backspace")
+            page.keyboard.insert_text(message)
+        try:
+            page.wait_for_timeout(150)
+        except Exception:
+            time.sleep(0.15)
+        inserted = _dm_normalize_editor_text(_dm_read_editor_text(target))
+        if inserted == expected or (expected and (expected in inserted or inserted in expected)):
+            break
+        if attempt < 2:
+            try:
+                target.click(timeout=timeout_ms)
+            except Exception:
+                pass
+    if not inserted or (expected and expected not in inserted and inserted not in expected):
         raise RuntimeError("private chat editor verification failed after inserting message")
     return {
         "name": "paste_message",
