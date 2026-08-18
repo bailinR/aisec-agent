@@ -2587,6 +2587,16 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertIn("--window-position=0,0", args)
         self.assertIn("--force-device-scale-factor=1", args)
 
+    def test_dm_browser_geometry_is_limited_to_small_windows_screen(self):
+        with patch(
+            "aisec_agent.web.session_rag_chat._dm_windows_screen_size",
+            return_value={"width": 1024, "height": 768},
+        ):
+            args = _dm_browser_launch_args({})
+
+        self.assertIn("--window-size=1024,720", args)
+        self.assertIn("--start-maximized", args)
+
     def test_dm_apply_page_geometry_sets_viewport_and_zoom(self):
         class DummyCdpSession:
             def __init__(self):
@@ -2629,6 +2639,32 @@ class SessionRAGWebTest(unittest.TestCase):
             [("Emulation.setPageScaleFactor", {"pageScaleFactor": 1.0})],
         )
         self.assertTrue(page.context.session.detached)
+
+    def test_dm_apply_page_geometry_is_limited_to_small_windows_screen(self):
+        class DummyPage:
+            context = None
+
+            def __init__(self):
+                self.viewport = None
+                self.zoom = None
+
+            def set_viewport_size(self, value):
+                self.viewport = value
+
+            def evaluate(self, _script, zoom):
+                self.zoom = zoom
+
+        page = DummyPage()
+        with patch(
+            "aisec_agent.web.session_rag_chat._dm_windows_screen_size",
+            return_value={"width": 1024, "height": 768},
+        ):
+            result = _dm_apply_page_geometry(page, {})
+
+        self.assertEqual(page.viewport, {"width": 1024, "height": 720})
+        self.assertEqual(result["screen_width"], 1024)
+        self.assertEqual(result["screen_height"], 768)
+        self.assertTrue(result["screen_limited"])
 
     def test_dm_cleanup_closed_playwright_sessions_stops_stale_runtime(self):
         class FakeContext:

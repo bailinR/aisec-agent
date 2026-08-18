@@ -8816,6 +8816,9 @@ DM_DEBUG_ARTIFACT_URL_PREFIX = "/api/v1/douyin/private-message/artifacts"
 DM_DEFAULT_VIEWPORT_WIDTH = 1440
 DM_DEFAULT_VIEWPORT_HEIGHT = 900
 DM_DEFAULT_PAGE_ZOOM_PERCENT = 100
+DM_MIN_VIEWPORT_WIDTH = 1024
+DM_MIN_VIEWPORT_HEIGHT = 720
+DM_WINDOW_CHROME_HEIGHT = 48
 DM_PLAYWRIGHT_PROFILE_ROOT = Path(os.getenv("AISEC_DM_PLAYWRIGHT_PROFILE_ROOT", Path(__file__).resolve().parents[2] / "content" / "playwright_profiles"))
 _DM_PLAYWRIGHT_SESSIONS: Dict[str, Dict[str, Any]] = {}
 # Playwright's sync API is bound to the thread that starts its greenlet.  The
@@ -9176,14 +9179,54 @@ def _dm_browser_channel(browser_name: str) -> str:
     return ""
 
 
+def _dm_windows_screen_size() -> Optional[Dict[str, int]]:
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+
+        user32 = ctypes.windll.user32
+        width = int(user32.GetSystemMetrics(0) or 0)
+        height = int(user32.GetSystemMetrics(1) or 0)
+    except Exception:
+        return None
+    if width <= 0 or height <= 0:
+        return None
+    return {"width": width, "height": height}
+
+
+def _dm_resolved_viewport(options: Dict[str, Any]) -> Dict[str, Any]:
+    width = max(DM_MIN_VIEWPORT_WIDTH, int(options.get("viewport_width") or DM_DEFAULT_VIEWPORT_WIDTH))
+    height = max(DM_MIN_VIEWPORT_HEIGHT, int(options.get("viewport_height") or DM_DEFAULT_VIEWPORT_HEIGHT))
+    screen = _dm_windows_screen_size()
+    screen_limited = False
+    if screen:
+        max_width = max(DM_MIN_VIEWPORT_WIDTH, int(screen["width"]))
+        max_height = max(DM_MIN_VIEWPORT_HEIGHT, int(screen["height"]) - DM_WINDOW_CHROME_HEIGHT)
+        resolved_width = min(width, max_width)
+        resolved_height = min(height, max_height)
+        screen_limited = resolved_width != width or resolved_height != height
+        width = resolved_width
+        height = resolved_height
+    return {
+        "width": width,
+        "height": height,
+        "screen_width": int(screen["width"]) if screen else 0,
+        "screen_height": int(screen["height"]) if screen else 0,
+        "screen_limited": screen_limited,
+    }
+
+
 def _dm_browser_launch_args(options: Dict[str, Any]) -> List[str]:
-    width = max(1024, int(options.get("viewport_width") or DM_DEFAULT_VIEWPORT_WIDTH))
-    height = max(720, int(options.get("viewport_height") or DM_DEFAULT_VIEWPORT_HEIGHT))
-    return [
-        f"--window-size={width},{height}",
+    geometry = _dm_resolved_viewport(options)
+    args = [
+        f"--window-size={geometry['width']},{geometry['height']}",
         "--window-position=0,0",
         "--force-device-scale-factor=1",
     ]
+    if geometry["screen_limited"]:
+        args.append("--start-maximized")
+    return args
 
 
 def _dm_launch_playwright_browser(playwright: Any, browser_name: str, options: Dict[str, Any]):
@@ -9306,13 +9349,14 @@ def _dm_should_keep_browser_open_on_failure(error_text: str, keep_browser_open: 
 def _dm_launch_persistent_playwright_context(playwright: Any, browser_name: str, options: Dict[str, Any]):
     user_data_dir = _dm_playwright_user_data_dir(browser_name, options)
     user_data_dir.mkdir(parents=True, exist_ok=True)
+    geometry = _dm_resolved_viewport(options)
     launch_options = {
         "headless": bool(options.get("headless")),
         "slow_mo": int(options.get("slow_mo") or 0),
         "args": _dm_browser_launch_args(options),
         "viewport": {
-            "width": int(options.get("viewport_width") or DM_DEFAULT_VIEWPORT_WIDTH),
-            "height": int(options.get("viewport_height") or DM_DEFAULT_VIEWPORT_HEIGHT),
+            "width": geometry["width"],
+            "height": geometry["height"],
         },
         "device_scale_factor": float(options.get("device_scale_factor") or 1.0),
     }
@@ -9362,12 +9406,13 @@ def _dm_get_playwright_context(sync_playwright_factory: Any, browser_name: str, 
     browser = None
     context = None
     try:
+        geometry = _dm_resolved_viewport(options)
         playwright = manager.start()
         browser = _dm_launch_playwright_browser(playwright, browser_name, options)
         context = browser.new_context(
             viewport={
-                "width": int(options.get("viewport_width") or DM_DEFAULT_VIEWPORT_WIDTH),
-                "height": int(options.get("viewport_height") or DM_DEFAULT_VIEWPORT_HEIGHT),
+                "width": geometry["width"],
+                "height": geometry["height"],
             },
             device_scale_factor=float(options.get("device_scale_factor") or 1.0),
         )
@@ -9378,8 +9423,9 @@ def _dm_get_playwright_context(sync_playwright_factory: Any, browser_name: str, 
 
 
 def _dm_apply_page_geometry(page: Any, options: Dict[str, Any]) -> Dict[str, Any]:
-    width = max(1024, int(options.get("viewport_width") or DM_DEFAULT_VIEWPORT_WIDTH))
-    height = max(720, int(options.get("viewport_height") or DM_DEFAULT_VIEWPORT_HEIGHT))
+    geometry = _dm_resolved_viewport(options)
+    width = geometry["width"]
+    height = geometry["height"]
     zoom_percent = max(50, min(200, int(options.get("page_zoom_percent") or DM_DEFAULT_PAGE_ZOOM_PERCENT)))
     try:
         page.set_viewport_size({"width": width, "height": height})
@@ -9410,6 +9456,9 @@ def _dm_apply_page_geometry(page: Any, options: Dict[str, Any]) -> Dict[str, Any
         "viewport_width": width,
         "viewport_height": height,
         "page_zoom_percent": zoom_percent,
+        "screen_width": geometry["screen_width"],
+        "screen_height": geometry["screen_height"],
+        "screen_limited": geometry["screen_limited"],
     }
 
 
