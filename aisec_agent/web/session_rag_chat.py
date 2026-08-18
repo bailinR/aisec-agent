@@ -8815,6 +8815,7 @@ DM_DEBUG_ARTIFACT_DIR = Path(__file__).resolve().parents[2] / "content" / "douyi
 DM_DEBUG_ARTIFACT_URL_PREFIX = "/api/v1/douyin/private-message/artifacts"
 DM_DEFAULT_VIEWPORT_WIDTH = 1440
 DM_DEFAULT_VIEWPORT_HEIGHT = 900
+DM_DEFAULT_PAGE_ZOOM_PERCENT = 100
 DM_PLAYWRIGHT_PROFILE_ROOT = Path(os.getenv("AISEC_DM_PLAYWRIGHT_PROFILE_ROOT", Path(__file__).resolve().parents[2] / "content" / "playwright_profiles"))
 _DM_PLAYWRIGHT_SESSIONS: Dict[str, Dict[str, Any]] = {}
 # Playwright's sync API is bound to the thread that starts its greenlet.  The
@@ -8913,6 +8914,24 @@ DM_FAILURE_PROFILES = {
         "category": "account",
         "reason": "命中平台限流、频控或验证码",
         "hint": "请降低发送频率，暂停一段时间后重试，或换一个账号再测",
+    },
+    "stranger_daily_limit": {
+        "stage": "send_confirm",
+        "category": "account_limit",
+        "reason": "给陌生人发送消息已达到今日上限",
+        "hint": "请暂停该账号的陌生人私信任务，次日再继续发送",
+    },
+    "message_send_rejected": {
+        "stage": "send_confirm",
+        "category": "platform",
+        "reason": "平台在消息气泡下方提示发送失败",
+        "hint": "请结合行内失败文案确认是否触发频控、隐私限制或账号限制",
+    },
+    "platform_busy": {
+        "stage": "send_confirm",
+        "category": "platform",
+        "reason": "抖音私信系统繁忙",
+        "hint": "请稍后重试；若页面提示重新登录，请先恢复账号登录态",
     },
     "network_timeout": {
         "stage": "network",
@@ -9157,10 +9176,21 @@ def _dm_browser_channel(browser_name: str) -> str:
     return ""
 
 
+def _dm_browser_launch_args(options: Dict[str, Any]) -> List[str]:
+    width = max(1024, int(options.get("viewport_width") or DM_DEFAULT_VIEWPORT_WIDTH))
+    height = max(720, int(options.get("viewport_height") or DM_DEFAULT_VIEWPORT_HEIGHT))
+    return [
+        f"--window-size={width},{height}",
+        "--window-position=0,0",
+        "--force-device-scale-factor=1",
+    ]
+
+
 def _dm_launch_playwright_browser(playwright: Any, browser_name: str, options: Dict[str, Any]):
     launch_options = {
         "headless": bool(options.get("headless")),
         "slow_mo": int(options.get("slow_mo") or 0),
+        "args": _dm_browser_launch_args(options),
     }
     channel = _dm_browser_channel(browser_name)
     if channel:
@@ -9279,6 +9309,7 @@ def _dm_launch_persistent_playwright_context(playwright: Any, browser_name: str,
     launch_options = {
         "headless": bool(options.get("headless")),
         "slow_mo": int(options.get("slow_mo") or 0),
+        "args": _dm_browser_launch_args(options),
         "viewport": {
             "width": int(options.get("viewport_width") or DM_DEFAULT_VIEWPORT_WIDTH),
             "height": int(options.get("viewport_height") or DM_DEFAULT_VIEWPORT_HEIGHT),
@@ -9344,6 +9375,42 @@ def _dm_get_playwright_context(sync_playwright_factory: Any, browser_name: str, 
         _dm_stop_playwright_context(context, browser, playwright)
         raise
     return playwright, context, browser, False
+
+
+def _dm_apply_page_geometry(page: Any, options: Dict[str, Any]) -> Dict[str, Any]:
+    width = max(1024, int(options.get("viewport_width") or DM_DEFAULT_VIEWPORT_WIDTH))
+    height = max(720, int(options.get("viewport_height") or DM_DEFAULT_VIEWPORT_HEIGHT))
+    zoom_percent = max(50, min(200, int(options.get("page_zoom_percent") or DM_DEFAULT_PAGE_ZOOM_PERCENT)))
+    try:
+        page.set_viewport_size({"width": width, "height": height})
+    except Exception:
+        pass
+    cdp_session = None
+    try:
+        context = getattr(page, "context", None)
+        if context is not None and callable(getattr(context, "new_cdp_session", None)):
+            cdp_session = context.new_cdp_session(page)
+            cdp_session.send("Emulation.setPageScaleFactor", {"pageScaleFactor": zoom_percent / 100.0})
+    except Exception:
+        pass
+    finally:
+        try:
+            if cdp_session is not None:
+                cdp_session.detach()
+        except Exception:
+            pass
+    try:
+        page.evaluate(
+            "zoom => { if (document.documentElement) document.documentElement.style.zoom = zoom; }",
+            f"{zoom_percent}%",
+        )
+    except Exception:
+        pass
+    return {
+        "viewport_width": width,
+        "viewport_height": height,
+        "page_zoom_percent": zoom_percent,
+    }
 
 
 def _dm_stop_playwright_context(context: Any, browser: Any, playwright: Any) -> None:
@@ -9431,61 +9498,119 @@ def _dm_append_optional_step(steps: List[Dict[str, Any]], step: Optional[Dict[st
         steps.append(step)
 
 
+def _dm_mark_private_message_editor(page: Any) -> Dict[str, Any]:
+    script = """
+    () => {
+      const marker = 'data-aisec-dm-editor';
+      for (const el of document.querySelectorAll(`[${marker}]`)) el.removeAttribute(marker);
+      const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+      const visible = (el) => {
+        if (!el || !el.getBoundingClientRect) return false;
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width >= 80 && rect.height >= 20 && rect.right > 0 && rect.bottom > 0 &&
+          style.visibility !== 'hidden' && style.display !== 'none' && style.opacity !== '0';
+      };
+      const candidates = Array.from(document.querySelectorAll(
+        '[contenteditable="true"], textarea, .public-DraftEditor-content, [role="textbox"]'
+      ));
+      const scored = [];
+      for (const el of candidates) {
+        if (!visible(el) || String(el.tagName || '').toLowerCase() === 'input') continue;
+        const rect = el.getBoundingClientRect();
+        const metadata = normalize([
+          el.getAttribute('placeholder'), el.getAttribute('aria-label'), el.getAttribute('title'),
+          el.getAttribute('role'), el.id, typeof el.className === 'string' ? el.className : '',
+          el.getAttribute('data-e2e'), el.getAttribute('data-testid')
+        ].filter(Boolean).join(' '));
+        if (/搜索|search/i.test(metadata)) continue;
+        if (rect.left < window.innerWidth * 0.4 || rect.top < window.innerHeight * 0.35) continue;
+
+        let score = 0;
+        if (el.matches('.public-DraftEditor-content')) score += 120;
+        if (el.getAttribute('contenteditable') === 'true') score += 70;
+        if (String(el.tagName || '').toLowerCase() === 'textarea') score += 50;
+        if (rect.left >= window.innerWidth * 0.55) score += 55;
+        if (rect.top >= window.innerHeight * 0.55) score += 45;
+        if (rect.bottom >= window.innerHeight * 0.72) score += 35;
+        if (rect.width >= 180 && rect.width <= window.innerWidth * 0.55) score += 25;
+
+        let node = el;
+        for (let depth = 0; node && depth < 7; depth += 1, node = node.parentElement) {
+          if (!node.getBoundingClientRect) continue;
+          const nodeRect = node.getBoundingClientRect();
+          if (nodeRect.width > window.innerWidth * 0.72 || nodeRect.height > window.innerHeight * 0.92) continue;
+          const nodeMeta = normalize([
+            node.getAttribute && node.getAttribute('aria-label'),
+            node.getAttribute && node.getAttribute('data-e2e'),
+            node.getAttribute && node.getAttribute('data-testid'),
+            typeof node.className === 'string' ? node.className : ''
+          ].filter(Boolean).join(' '));
+          const nodeText = normalize(node.innerText || node.textContent || '').slice(0, 500);
+          if (/搜索|search/i.test(nodeMeta)) score -= 220;
+          if (/私信|会话|收起会话|关闭会话|message|chat/i.test(`${nodeMeta} ${nodeText}`)) score += 30;
+          if (nodeRect.left >= window.innerWidth * 0.42 && nodeRect.width <= window.innerWidth * 0.62) score += 12;
+        }
+        scored.push({el, score, rect});
+      }
+      scored.sort((a, b) => b.score - a.score || b.rect.top - a.rect.top);
+      const selected = scored.find((item) => item.score >= 100);
+      if (!selected) return {};
+      selected.el.setAttribute(marker, 'true');
+      return {
+        score: Math.round(selected.score),
+        x: Math.round(selected.rect.left),
+        y: Math.round(selected.rect.top),
+        width: Math.round(selected.rect.width),
+        height: Math.round(selected.rect.height),
+      };
+    }
+    """
+    try:
+        result = page.evaluate(script) or {}
+    except Exception:
+        return {}
+    return result if isinstance(result, dict) else {}
+
+
 def _dm_fill_message_editor(page: Any, message: str, timeout_ms: int = 10000) -> Dict[str, Any]:
-    candidates = [
-        page.locator('[contenteditable="true"]'),
-        page.locator("textarea"),
-        page.locator(".public-DraftEditor-content"),
-        page.get_by_role("textbox"),
-    ]
-    last_error = ""
-    for locator in candidates:
-        try:
-            target = locator.first
-            target.wait_for(state="visible", timeout=timeout_ms)
-            target.click(timeout=timeout_ms)
-            try:
-                target.fill(message, timeout=timeout_ms)
-            except Exception:
-                page.keyboard.press("Control+A")
-                page.keyboard.press("Backspace")
-                page.keyboard.insert_text(message)
-            return {"name": "paste_message", "ok": True, "detail": "message inserted"}
-        except Exception as exc:
-            last_error = str(exc)
-    raise RuntimeError(f"private chat editor not found: {last_error}")
+    selected = _dm_mark_private_message_editor(page)
+    if not selected:
+        raise RuntimeError("private chat editor not found: no trusted editor in the conversation panel")
+    target = page.locator('[data-aisec-dm-editor="true"]').first
+    target.wait_for(state="visible", timeout=timeout_ms)
+    target.click(timeout=timeout_ms)
+    try:
+        target.fill(message, timeout=timeout_ms)
+    except Exception:
+        page.keyboard.press("Control+A")
+        page.keyboard.press("Backspace")
+        page.keyboard.insert_text(message)
+    inserted = str(target.evaluate("el => el.value || el.innerText || el.textContent || ''") or "").strip()
+    if inserted != str(message or "").strip():
+        raise RuntimeError("private chat editor verification failed after inserting message")
+    return {
+        "name": "paste_message",
+        "ok": True,
+        "detail": f"message inserted into trusted editor at {selected.get('x')},{selected.get('y')}",
+    }
 
 
 def _dm_visible_message_editor(page: Any, timeout_ms: int = 4000) -> Any:
-    candidates = [
-        page.locator('[contenteditable="true"]'),
-        page.locator("textarea"),
-        page.locator(".public-DraftEditor-content"),
-        page.get_by_role("textbox"),
-    ]
-    last_error = ""
-    for locator in candidates:
-        try:
-            target = locator.first
-            target.wait_for(state="visible", timeout=timeout_ms)
-            return target
-        except Exception as exc:
-            last_error = str(exc)
-    raise RuntimeError(f"private chat editor not found: {last_error}")
+    if not _dm_mark_private_message_editor(page):
+        raise RuntimeError("private chat editor not found: no trusted editor in the conversation panel")
+    target = page.locator('[data-aisec-dm-editor="true"]').first
+    target.wait_for(state="visible", timeout=timeout_ms)
+    return target
 
 
 def _dm_message_editor_text(page: Any) -> str:
+    if not _dm_mark_private_message_editor(page):
+        return ""
     script = """
     () => {
-      const items = Array.from(document.querySelectorAll('[contenteditable="true"], textarea, .public-DraftEditor-content'));
-      for (const el of items) {
-        const rect = el.getBoundingClientRect();
-        const style = window.getComputedStyle(el);
-        if (rect.width < 40 || rect.height < 20 || style.visibility === 'hidden' || style.display === 'none') continue;
-        const text = (el.value || el.innerText || el.textContent || '').trim();
-        if (text) return text;
-      }
-      return '';
+      const el = document.querySelector('[data-aisec-dm-editor="true"]');
+      return el ? (el.value || el.innerText || el.textContent || '').trim() : '';
     }
     """
     try:
@@ -9518,13 +9643,28 @@ def _dm_collect_message_bubble_matches(page: Any, message: str) -> List[Dict[str
       };
       const editors = Array.from(document.querySelectorAll('[contenteditable="true"], textarea, .public-DraftEditor-content')).filter(isVisible);
       const inEditor = (el) => editors.some((editor) => editor === el || editor.contains(el) || el.contains(editor));
+      const inSearchSurface = (el) => {
+        let node = el;
+        for (let depth = 0; node && depth < 6; depth += 1, node = node.parentElement) {
+          const metadata = normalize([
+            node.getAttribute && node.getAttribute('placeholder'),
+            node.getAttribute && node.getAttribute('aria-label'),
+            node.getAttribute && node.getAttribute('role'),
+            node.id,
+            typeof node.className === 'string' ? node.className : ''
+          ].filter(Boolean).join(' '));
+          if (/搜索|search/i.test(metadata)) return true;
+        }
+        return false;
+      };
       const matches = [];
       for (const el of document.querySelectorAll('div, span, p, li, article, section, a')) {
-        if (!isVisible(el) || inEditor(el)) continue;
+        if (!isVisible(el) || inEditor(el) || inSearchSurface(el)) continue;
         const text = normalize(el.innerText || el.textContent || '');
         if (!matchesNeedle(text)) continue;
         if (text.length > Math.max(fullNeedle.length + 240, 420)) continue;
         const rect = el.getBoundingClientRect();
+        if (rect.left < window.innerWidth * 0.42 || rect.top < 100) continue;
         if (rect.width > window.innerWidth * 0.95 || rect.height > window.innerHeight * 0.8) continue;
         if (rect.bottom > window.innerHeight - 60) continue;
         const style = window.getComputedStyle(el);
@@ -9583,23 +9723,55 @@ def _dm_send_failure_notice_code(text: Any) -> str:
     normalized = _dm_normalize_send_failure_notice_text(text)
     if not normalized:
         return ""
-    compact = re.sub(r"[\s，。！？、:：；;（）()【】\[\]]+", "", normalized).lower()
+    compact = re.sub(r"[\s，。！？、:：；;（）()【】\[\]…·]+", "", normalized).lower()
+    if (
+        "给陌生人发送消息已达到今日上限" in compact
+        or ("陌生人" in compact and "今日上限" in compact)
+        or ("陌生人" in compact and "明天再发送" in compact)
+    ):
+        return "stranger_daily_limit"
+    if any(marker in compact for marker in ("请完成下列验证后继续", "完成下方验证后继续", "滑块验证")):
+        return "verification_required"
+    if "系统繁忙" in compact and any(marker in compact for marker in ("重新登录", "再次登录", "登录后")):
+        return "login_required"
+    if "系统繁忙" in compact:
+        return "platform_busy"
+    if any(
+        marker in compact
+        for marker in (
+            "私信频繁",
+            "私信功能使用频繁",
+            "发送私信过于频繁",
+            "发送消息过于频繁",
+            "操作频繁请稍后再试",
+        )
+    ):
+        return "rate_limited"
     if "recipient_privacy_restriction" in compact:
         return "recipient_privacy_restriction"
     if any(
         marker in compact
         for marker in (
             "对方设置仅允许互关的人发消息",
+            "对方设置了仅和他互关的人可发消息",
+            "对方设置了仅和互关的人可发消息",
             "对方仅允许互关的人发消息",
+            "仅和他互关的人可发消息",
+            "仅允许互关的人发消息",
             "由于对方的隐私设置你无法向对方发送消息",
             "当前用户无法给对方发送消息",
+            "暂无法给对方发送消息",
+            "无法给对方发送消息",
+            "无法向对方发送消息",
         )
     ):
         return "recipient_privacy_restriction"
     if "暂时无法给该用户发送消息" in compact and any(
-        marker in compact for marker in ("对方", "隐私", "接收方", "仅互关")
+        marker in compact for marker in ("对方", "隐私", "接收方", "仅互关", "互关")
     ):
         return "recipient_privacy_restriction"
+    if any(marker in compact for marker in ("发送失败", "重新发送")):
+        return "message_send_rejected"
     return ""
 
 
@@ -9617,7 +9789,7 @@ def _dm_collect_send_failure_notice_candidates(page: Any) -> List[Dict[str, Any]
         if (!el || !el.getBoundingClientRect) return false;
         const rect = el.getBoundingClientRect();
         const style = window.getComputedStyle(el);
-        return rect.width >= 30 && rect.height >= 16 && rect.right > 0 && rect.bottom > 0 &&
+        return rect.width >= 20 && rect.height >= 10 && rect.right > 0 && rect.bottom > 0 &&
           style.visibility !== 'hidden' && style.display !== 'none' && style.opacity !== '0';
       };
       const editors = Array.from(document.querySelectorAll('[contenteditable="true"], textarea, .public-DraftEditor-content'))
@@ -9627,46 +9799,47 @@ def _dm_collect_send_failure_notice_candidates(page: Any) -> List[Dict[str, Any]
         return Math.abs(rect.left - editorRect.left) < Math.max(editorRect.width, 520) &&
           Math.abs(rect.top - editorRect.top) < Math.max(editorRect.height * 5, 360);
       });
-      const looksLikeRecipientFailure = (text) => [
-        '仅允许互关的人发消息', '隐私设置', '无法向对方发送消息',
-        '无法给对方发送消息', '暂时无法给该用户发送消息'
+      const outgoingBubbles = Array.from(document.querySelectorAll('div, span, p'))
+        .filter((el) => {
+          if (!visible(el)) return false;
+          const rect = el.getBoundingClientRect();
+          if (rect.left < window.innerWidth * 0.45 || rect.width > window.innerWidth * 0.7) return false;
+          if (rect.bottom > window.innerHeight - 80) return false;
+          const style = window.getComputedStyle(el);
+          const text = normalize(el.innerText || el.textContent || '');
+          if (!text || text.length > 240) return false;
+          return /right|end/i.test(String(style.textAlign || '')) ||
+            String(style.justifyContent || '').includes('flex-end') ||
+            rect.left >= window.innerWidth * 0.55;
+        })
+        .slice(-12);
+      const nearOutgoingBubble = (rect) => outgoingBubbles.some((bubble) => {
+        const bubbleRect = bubble.getBoundingClientRect();
+        const verticallyNear = rect.top >= bubbleRect.top - 8 &&
+          rect.top <= bubbleRect.bottom + 120;
+        const horizontallyNear = Math.abs(rect.left - bubbleRect.left) <= Math.max(bubbleRect.width, 360) ||
+          Math.abs(rect.right - bubbleRect.right) <= Math.max(bubbleRect.width, 360);
+        return verticallyNear && horizontallyNear;
+      });
+      const looksLikeSendFailure = (text) => [
+        '仅允许互关的人发消息', '仅和他互关的人可发消息', '隐私设置',
+        '无法向对方发送消息', '无法给对方发送消息', '暂无法给对方发送消息',
+        '暂时无法给该用户发送消息',
+        '给陌生人发送消息已达到今日上限', '今日上限', '明天再发送陌生人消息',
+        '系统繁忙', '私信频繁', '私信功能使用频繁', '发送消息过于频繁',
+        '操作频繁', '请完成下列验证后继续', '滑块验证',
+        '发送失败', '重新发送'
       ].some((marker) => text.includes(marker));
       const seen = new Set();
       const candidates = [];
-      for (const selector of selectors) {
-        for (const el of document.querySelectorAll(selector)) {
-          if (!visible(el) || seen.has(el) || editors.some((editor) => editor === el || editor.contains(el) || el.contains(editor))) continue;
-          seen.add(el);
-          const text = normalize(el.innerText || el.textContent || '');
-          if (!text || text.length > 240) continue;
-          const rect = el.getBoundingClientRect();
-          const style = window.getComputedStyle(el);
-          let score = 0;
-          if (el.getAttribute('role') === 'alert' || el.getAttribute('role') === 'status') score += 40;
-          if (el.hasAttribute('aria-live')) score += 30;
-          if (nearEditor(rect)) score += 20;
-          if (style.position === 'fixed' || style.position === 'absolute') score += 10;
-          if (looksLikeRecipientFailure(text)) score += 100;
-          candidates.push({
-            signature: `${text.slice(0, 160)}|${Math.round(rect.left)}|${Math.round(rect.top)}|${Math.round(rect.width)}|${Math.round(rect.height)}`,
-            text: text.slice(0, 240),
-            x: Math.round(rect.left),
-            y: Math.round(rect.top),
-            width: Math.round(rect.width),
-            height: Math.round(rect.height),
-            score,
-          });
-        }
-      }
-      for (const el of document.querySelectorAll('div, span, p')) {
-        if (!visible(el) || seen.has(el) || editors.some((editor) => editor === el || editor.contains(el) || el.contains(editor))) continue;
-        const text = normalize(el.innerText || el.textContent || '');
-        if (!text || text.length > 240 || !looksLikeRecipientFailure(text)) continue;
+      const pushCandidate = (el, text, baseScore) => {
+        if (!text || text.length > 240 || seen.has(el)) return;
         seen.add(el);
         const rect = el.getBoundingClientRect();
-        if (rect.width > window.innerWidth * 0.9 || rect.height > window.innerHeight * 0.5) continue;
-        let score = 100;
+        if (rect.width > window.innerWidth * 0.9 || rect.height > window.innerHeight * 0.5) return;
+        let score = baseScore;
         if (nearEditor(rect)) score += 20;
+        if (nearOutgoingBubble(rect)) score += 50;
         candidates.push({
           signature: `${text.slice(0, 160)}|${Math.round(rect.left)}|${Math.round(rect.top)}|${Math.round(rect.width)}|${Math.round(rect.height)}`,
           text: text.slice(0, 240),
@@ -9676,6 +9849,26 @@ def _dm_collect_send_failure_notice_candidates(page: Any) -> List[Dict[str, Any]
           height: Math.round(rect.height),
           score,
         });
+      };
+      for (const selector of selectors) {
+        for (const el of document.querySelectorAll(selector)) {
+          if (!visible(el) || editors.some((editor) => editor === el || editor.contains(el) || el.contains(editor))) continue;
+          const text = normalize(el.innerText || el.textContent || '');
+          if (!text || text.length > 240) continue;
+          const style = window.getComputedStyle(el);
+          let score = 0;
+          if (el.getAttribute('role') === 'alert' || el.getAttribute('role') === 'status') score += 40;
+          if (el.hasAttribute('aria-live')) score += 30;
+          if (style.position === 'fixed' || style.position === 'absolute') score += 10;
+          if (looksLikeSendFailure(text)) score += 100;
+          pushCandidate(el, text, score);
+        }
+      }
+      for (const el of document.querySelectorAll('div, span, p')) {
+        if (!visible(el) || editors.some((editor) => editor === el || editor.contains(el) || el.contains(editor))) continue;
+        const text = normalize(el.innerText || el.textContent || '');
+        if (!text || text.length > 240 || !looksLikeSendFailure(text)) continue;
+        pushCandidate(el, text, 100);
       }
       candidates.sort((a, b) => b.score - a.score || a.y - b.y);
       return candidates.slice(0, 24);
@@ -9714,6 +9907,16 @@ def _dm_detect_send_failure_notice(
 ) -> Optional[Dict[str, str]]:
     baseline_signatures = {str(item).strip() for item in (baseline or []) if str(item).strip()}
     previous_signatures = {str(item).strip() for item in (previous or []) if str(item).strip()}
+    ranked: List[Dict[str, str]] = []
+    specificity = {
+        "stranger_daily_limit": 100,
+        "recipient_privacy_restriction": 95,
+        "verification_required": 90,
+        "login_required": 85,
+        "rate_limited": 80,
+        "platform_busy": 75,
+        "message_send_rejected": 40,
+    }
     for candidate in _dm_collect_send_failure_notice_candidates(page):
         text = str(candidate.get("text") or "")
         failure_code = _dm_send_failure_notice_code(text)
@@ -9722,11 +9925,19 @@ def _dm_detect_send_failure_notice(
         signature = str(candidate.get("signature") or "")
         if signature in baseline_signatures and signature in previous_signatures:
             continue
-        return {
+        ranked.append({
             "failure_code": failure_code,
             "message": text,
-        }
-    return None
+            "score": int(candidate.get("score") or 0) + int(specificity.get(failure_code, 0)),
+        })
+    if not ranked:
+        return None
+    ranked.sort(key=lambda item: int(item.get("score") or 0), reverse=True)
+    best = ranked[0]
+    return {
+        "failure_code": str(best["failure_code"]),
+        "message": str(best["message"]),
+    }
 
 
 def _dm_wait_message_sent(
@@ -9750,14 +9961,6 @@ def _dm_wait_message_sent(
         last_text = _dm_message_editor_text(page)
         if not last_text:
             editor_cleared = True
-        matches = _dm_collect_message_bubble_matches(page, message)
-        for match in matches:
-            if editor_cleared and match.get("signature") not in baseline_signatures:
-                return {
-                    "name": "send_message",
-                    "ok": True,
-                    "detail": f"outgoing bubble confirmed at {match['x']},{match['y']}",
-                }
         failure_notice = _dm_detect_send_failure_notice(
             page,
             baseline=notice_baseline_signatures,
@@ -9773,6 +9976,14 @@ def _dm_wait_message_sent(
             raise RuntimeError(
                 f"{failure_notice['failure_code']}: {failure_notice['message']}"
             )
+        matches = _dm_collect_message_bubble_matches(page, message)
+        for match in matches:
+            if editor_cleared and match.get("signature") not in baseline_signatures:
+                return {
+                    "name": "send_message",
+                    "ok": True,
+                    "detail": f"outgoing bubble confirmed at {match['x']},{match['y']}",
+                }
         try:
             page.wait_for_timeout(250)
         except Exception:
@@ -9783,18 +9994,7 @@ def _dm_wait_message_sent(
 def _dm_editor_send_click_point(page: Any) -> Optional[Dict[str, float]]:
     script = """
     () => {
-      const items = Array.from(document.querySelectorAll('[contenteditable="true"], textarea, .public-DraftEditor-content'));
-      const visible = items.filter((el) => {
-        const rect = el.getBoundingClientRect();
-        const style = window.getComputedStyle(el);
-        const text = (el.value || el.innerText || el.textContent || '').trim();
-        return text && rect.width >= 40 && rect.height >= 20 && style.visibility !== 'hidden' && style.display !== 'none';
-      });
-      const editor = visible[0] || items.find((el) => {
-        const rect = el.getBoundingClientRect();
-        const style = window.getComputedStyle(el);
-        return rect.width >= 40 && rect.height >= 20 && style.visibility !== 'hidden' && style.display !== 'none';
-      });
+      const editor = document.querySelector('[data-aisec-dm-editor="true"]');
       if (!editor) return null;
       const candidates = [];
       let node = editor;
@@ -9827,7 +10027,6 @@ def _dm_editor_send_click_point(page: Any) -> Optional[Dict[str, float]]:
 def _dm_click_editor_send_icon(page: Any) -> Optional[str]:
     script = """
     () => {
-      const items = Array.from(document.querySelectorAll('[contenteditable="true"], textarea, .public-DraftEditor-content'));
       const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
       const isVisible = (el) => {
         if (!el || !el.getBoundingClientRect) return false;
@@ -9860,13 +10059,7 @@ def _dm_click_editor_send_icon(page: Any) -> Optional[str]:
         if (label && label.querySelector && label.querySelector('input[type="file"]')) return true;
         return false;
       };
-      const visible = items.filter((el) => {
-        const rect = el.getBoundingClientRect();
-        const style = window.getComputedStyle(el);
-        const text = (el.value || el.innerText || el.textContent || '').trim();
-        return text && rect.width >= 40 && rect.height >= 20 && style.visibility !== 'hidden' && style.display !== 'none';
-      });
-      const editor = visible[0];
+      const editor = document.querySelector('[data-aisec-dm-editor="true"]');
       if (!editor) return '';
       const editorRect = editor.getBoundingClientRect();
       const panelRects = [];
@@ -10040,13 +10233,7 @@ def _dm_click_editor_send_button(page: Any) -> Optional[str]:
         if (label && label.querySelector && label.querySelector('input[type="file"]')) return true;
         return false;
       };
-      const editors = Array.from(document.querySelectorAll('[contenteditable="true"], textarea, .public-DraftEditor-content'));
-      const editor = editors.find((el) => {
-        const rect = el.getBoundingClientRect();
-        const style = window.getComputedStyle(el);
-        const text = (el.value || el.innerText || el.textContent || '').trim();
-        return text && rect.width >= 40 && rect.height >= 20 && style.visibility !== 'hidden' && style.display !== 'none';
-      }) || editors.find(isVisible) || null;
+      const editor = document.querySelector('[data-aisec-dm-editor="true"]');
       if (!editor) return '';
 
       const editorRect = editor.getBoundingClientRect();
@@ -10135,22 +10322,12 @@ def _dm_click_editor_send_button(page: Any) -> Optional[str]:
 
 
 def _dm_send_current_message(page: Any, timeout_ms: int = 8000) -> Dict[str, Any]:
+    last_error = ""
     try:
         _dm_visible_message_editor(page, timeout_ms=min(timeout_ms, 4000))
         clicked_at = _dm_click_editor_send_button(page)
         if clicked_at:
             return {"name": "click_send", "ok": True, "detail": f"clicked editor send button at {clicked_at}"}
-    except Exception:
-        pass
-    candidates = [
-        page.get_by_role("button", name=re.compile(r"发送|Send", re.I)),
-        page.locator("button:has-text('发送')"),
-        page.locator("[role=button]:has-text('发送')"),
-        page.locator("text=发送"),
-    ]
-    last_error = ""
-    try:
-        return _dm_click_first(page, candidates, "click_send", timeout_ms=timeout_ms)
     except Exception as exc:
         last_error = str(exc)
     try:
@@ -10160,7 +10337,7 @@ def _dm_send_current_message(page: Any, timeout_ms: int = 8000) -> Dict[str, Any
             return {"name": "click_send", "ok": True, "detail": f"clicked editor send icon at {clicked_at}"}
         raise RuntimeError("trusted editor send control not found")
     except Exception as exc:
-        last_error = f"{last_error}; {exc}"
+        last_error = f"{last_error}; {exc}" if last_error else str(exc)
     raise RuntimeError(f"send button not found: {last_error}")
 
 
@@ -10533,12 +10710,22 @@ def _douyin_private_message_playwright_executor(
                 context.add_cookies(cookies)
                 steps.append({"name": "apply_account_cookies", "ok": True, "detail": f"{len(cookies)} cookies"})
             page = _dm_message_page(context, profile_url)
+            _dm_apply_page_geometry(page, options)
             page.goto(profile_url, wait_until="domcontentloaded", timeout=timeout_ms)
             steps.append({"name": "open_profile", "ok": True, "detail": "opened"})
             try:
                 page.wait_for_load_state("networkidle", timeout=min(timeout_ms, 12000))
             except Exception:
                 pass
+            geometry = _dm_apply_page_geometry(page, options)
+            steps.append({
+                "name": "normalize_page_geometry",
+                "ok": True,
+                "detail": (
+                    f"viewport {geometry['viewport_width']}x{geometry['viewport_height']} "
+                    f"zoom {geometry['page_zoom_percent']}%"
+                ),
+            })
             _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page))
             private_message_label = "\u79c1\u4fe1"
             send_private_message_label = "\u53d1\u79c1\u4fe1"
@@ -10670,6 +10857,7 @@ def _douyin_account_cookie_playwright_executor(raw_cookies: str, browser_name: s
             page = context.pages[0]
         else:
             page = context.new_page()
+        _dm_apply_page_geometry(page, options)
         if cookies:
             try:
                 context.add_cookies(cookies)
@@ -10688,6 +10876,15 @@ def _douyin_account_cookie_playwright_executor(raw_cookies: str, browser_name: s
             page.wait_for_load_state("networkidle", timeout=min(timeout_ms, 12000))
         except Exception:
             pass
+        geometry = _dm_apply_page_geometry(page, options)
+        steps.append({
+            "name": "normalize_page_geometry",
+            "ok": True,
+            "detail": (
+                f"viewport {geometry['viewport_width']}x{geometry['viewport_height']} "
+                f"zoom {geometry['page_zoom_percent']}%"
+            ),
+        })
         _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page))
         profile_surface = _douyin_open_profile_surface(page)
         if profile_surface.get("clicked"):
@@ -10997,7 +11194,7 @@ def _dm_demo_failure_context(demo_result: Dict[str, Any]) -> Dict[str, Any]:
     last_detail = str(last_failed.get("detail") or "")
     if last_name == "playwright_error" and (
         "message send was not confirmed" in last_detail.lower()
-        or _dm_send_failure_notice_code(last_detail) == "recipient_privacy_restriction"
+        or bool(_dm_send_failure_notice_code(last_detail))
     ):
         last_name = "send_message"
     trace = []
@@ -11097,8 +11294,9 @@ def _dm_failure_from_demo_result(demo_result: Dict[str, Any]) -> Optional[Except
             json.dumps(result, ensure_ascii=False),
         ]
     ).lower()
-    if _dm_send_failure_notice_code(text) == "recipient_privacy_restriction":
-        return RuntimeError("recipient_privacy_restriction: 对方设置仅互关用户可发送私信")
+    notice_code = _dm_send_failure_notice_code(text)
+    if notice_code:
+        return RuntimeError(f"{notice_code}: {trace.get('failure_step_detail') or result.get('error') or notice_code}")
     if trace.get("requires_login") or any(marker in text for marker in ["login", "二次验证", "second_verify", "verification"]):
         return RuntimeError("verification required")
     if any(marker in text for marker in ["风控", "risk", "blocked", "限制", "permission"]):
@@ -11132,8 +11330,9 @@ def _dm_infer_failure_code(error_code: str, error_text: str, detail: Optional[An
 
     if "missing config: api_key" in text or "no saved key" in text or "/api/v1/model/config/save" in text:
         return "missing_model_api_key"
-    if _dm_send_failure_notice_code(text) == "recipient_privacy_restriction":
-        return "recipient_privacy_restriction"
+    notice_code = _dm_send_failure_notice_code(text)
+    if notice_code:
+        return notice_code
     if "message send was not confirmed" in text:
         return "message_send_unconfirmed"
     if "no module named 'playwright'" in text or 'no module named "playwright"' in text or ("playwrightcontextmanager" in text and "_playwright" in text):
@@ -11583,6 +11782,7 @@ def build_douyin_private_message_demo_response(
         "viewport_width": viewport_width,
         "viewport_height": viewport_height,
         "device_scale_factor": _payload_float(normalized, "device_scale_factor", 1.0),
+        "page_zoom_percent": int(_payload_float(normalized, "page_zoom_percent", DM_DEFAULT_PAGE_ZOOM_PERCENT)),
         "screenshot_on_failure": _dm_bool_text(normalized.get("screenshot_on_failure", True)),
         "screenshot_dir": str(normalized.get("screenshot_dir") or DM_DEBUG_ARTIFACT_DIR),
         "screenshot_prefix": str(normalized.get("screenshot_prefix") or normalized.get("task_id") or "dm"),
@@ -11679,6 +11879,7 @@ def build_douyin_account_cookie_apply_response(
         "viewport_width": viewport_width,
         "viewport_height": viewport_height,
         "device_scale_factor": _payload_float(normalized, "device_scale_factor", 1.0),
+        "page_zoom_percent": int(_payload_float(normalized, "page_zoom_percent", DM_DEFAULT_PAGE_ZOOM_PERCENT)),
         "screenshot_on_failure": _dm_bool_text(normalized.get("screenshot_on_failure", True)),
         "screenshot_dir": str(normalized.get("screenshot_dir") or DM_DEBUG_ARTIFACT_DIR),
         "screenshot_prefix": str(normalized.get("screenshot_prefix") or normalized.get("task_id") or "dm"),
@@ -12093,11 +12294,49 @@ def process_douyin_dm_task_once(
         lower = error_text.lower()
         retry_count = int(_payload_float(task, "retry_count", 0)) + 1
         max_retries = max(0, int(_payload_float(task, "max_retries", DM_REDIS_DEFAULT_MAX_RETRIES)))
-        if _dm_send_failure_notice_code(lower) == "recipient_privacy_restriction":
+        notice_code = _dm_send_failure_notice_code(lower)
+        retry_delay_override_seconds: Optional[int] = None
+        if notice_code == "recipient_privacy_restriction":
             error_code = "recipient_privacy_restriction"
             failure_type = "final"
             retryable = False
             manual_required = False
+        elif notice_code == "stranger_daily_limit":
+            error_code = "stranger_daily_limit"
+            failure_type = "retryable"
+            retryable = True
+            manual_required = False
+            now_ts = time.time()
+            next_day_ts = datetime.fromtimestamp(now_ts).replace(
+                hour=0,
+                minute=5,
+                second=0,
+                microsecond=0,
+            ).timestamp()
+            if next_day_ts <= now_ts:
+                next_day_ts += 24 * 60 * 60
+            retry_delay_override_seconds = max(60, int(next_day_ts - now_ts))
+        elif notice_code == "platform_busy":
+            error_code = "platform_busy"
+            failure_type = "retryable"
+            retryable = True
+            manual_required = False
+        elif notice_code == "rate_limited":
+            error_code = "rate_limited"
+            failure_type = "retryable"
+            retryable = True
+            manual_required = False
+            retry_delay_override_seconds = 30 * 60
+        elif notice_code == "message_send_rejected":
+            error_code = "message_send_rejected"
+            failure_type = "final"
+            retryable = False
+            manual_required = False
+        elif notice_code in {"login_required", "verification_required"}:
+            error_code = notice_code
+            failure_type = "manual"
+            retryable = False
+            manual_required = True
         elif "missing config: api_key" in lower or "no saved key" in lower:
             error_code = "missing_model_api_key"
             failure_type = "final"
@@ -12166,7 +12405,9 @@ def process_douyin_dm_task_once(
             except Exception:
                 pass
         if retryable and retry_count <= max_retries:
-            delay_seconds = DM_REDIS_RETRY_DELAYS_SECONDS[min(retry_count - 1, len(DM_REDIS_RETRY_DELAYS_SECONDS) - 1)]
+            delay_seconds = retry_delay_override_seconds or DM_REDIS_RETRY_DELAYS_SECONDS[
+                min(retry_count - 1, len(DM_REDIS_RETRY_DELAYS_SECONDS) - 1)
+            ]
             next_retry_ts = time.time() + delay_seconds
             next_retry_at = datetime.fromtimestamp(next_retry_ts).strftime("%Y-%m-%d %H:%M:%S")
             try:

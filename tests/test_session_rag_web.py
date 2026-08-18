@@ -54,7 +54,11 @@ from aisec_agent.web.session_rag_chat import (
     _douyin_account_profile,
     _DM_PLAYWRIGHT_SESSIONS,
     _dm_cleanup_closed_playwright_sessions,
+    _dm_apply_page_geometry,
+    _dm_browser_launch_args,
+    _dm_fill_message_editor,
     _dm_get_playwright_context,
+    _dm_mark_private_message_editor,
     _dm_message_page,
     _dm_persistent_context_alive,
     _dm_collect_message_bubble_matches,
@@ -75,6 +79,7 @@ from aisec_agent.web.session_rag_chat import (
     _dm_redis_hash_set,
     _dm_send_and_confirm_current_message,
     _dm_send_current_message,
+    _dm_send_failure_notice_code,
     _dm_wait_message_sent,
     _douyin_private_message_playwright_executor,
     _format_sender_identity_context,
@@ -280,7 +285,8 @@ class FakeRedis:
             deleted += int(existed)
         return deleted
 
-    def scan_iter(self, pattern="*"):
+    def scan_iter(self, pattern="*", match=None, **_kwargs):
+        pattern = match if match is not None else pattern
         prefix = pattern[:-1] if pattern.endswith("*") else pattern
         for key in list(self.hashes) + list(self.lists) + list(self.zsets) + list(self.sets):
             if pattern == "*" or key.startswith(prefix):
@@ -1255,8 +1261,8 @@ class SessionRAGWebTest(unittest.TestCase):
 
     def test_douyin_dm_task_clear_response_handles_byte_keys(self):
         class ByteScanRedis(FakeRedis):
-            def scan_iter(self, pattern="*"):
-                for key in super().scan_iter(pattern):
+            def scan_iter(self, pattern="*", match=None, **kwargs):
+                for key in super().scan_iter(pattern=pattern, match=match, **kwargs):
                     yield key.encode("utf-8") if isinstance(key, str) else key
 
         redis = ByteScanRedis()
@@ -1369,6 +1375,34 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(status["result"]["failure_category"], "recipient")
         self.assertNotIn("D:\\", status["result"]["failure_screenshot_url"])
 
+    def test_douyin_dm_stranger_daily_limit_waits_until_next_day(self):
+        redis = FakeRedis()
+        build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_stranger_daily_limit_001",
+                "video_info": "video",
+                "account_cookie": "cookie",
+                "comment_info": "comment",
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+        with patch(
+            "aisec_agent.web.session_rag_chat.build_public_private_message_response",
+            return_value={"reply": "hello"},
+        ), patch(
+            "aisec_agent.web.session_rag_chat.build_douyin_private_message_demo_response",
+            side_effect=RuntimeError("给陌生人发送消息已达到今日上限，请明天再发送陌生人消息"),
+        ):
+            processed = process_douyin_dm_task_once(redis_client=redis, mode="send", block_timeout=1)
+
+        self.assertEqual(processed["status"], "retry_wait")
+        self.assertEqual(processed["failure_code"], "stranger_daily_limit")
+        self.assertEqual(processed["failure_category"], "account_limit")
+        self.assertTrue(processed["next_retry_at"])
+        self.assertEqual(redis.zcard(DM_REDIS_RETRY_ZSET), 1)
+
     def test_douyin_dm_send_process_accepts_cookie_object(self):
         redis = FakeRedis()
         cookie_object = {
@@ -1443,6 +1477,69 @@ class SessionRAGWebTest(unittest.TestCase):
         dom_click.assert_called_once()
         generic_click.assert_not_called()
         coordinate_click.assert_not_called()
+
+    def test_douyin_dm_fill_message_uses_only_marked_conversation_editor(self):
+        class DummyKeyboard:
+            def press(self, *_args, **_kwargs):
+                raise AssertionError("keyboard fallback should not be used")
+
+            def insert_text(self, *_args, **_kwargs):
+                raise AssertionError("keyboard fallback should not be used")
+
+        class DummyTarget:
+            def __init__(self):
+                self.value = ""
+
+            def wait_for(self, **_kwargs):
+                return None
+
+            def click(self, **_kwargs):
+                return None
+
+            def fill(self, message, **_kwargs):
+                self.value = message
+
+            def evaluate(self, *_args, **_kwargs):
+                return self.value
+
+        class DummyLocator:
+            def __init__(self, target):
+                self.first = target
+
+        class DummyPage:
+            def __init__(self):
+                self.keyboard = DummyKeyboard()
+                self.target = DummyTarget()
+                self.locator_calls = []
+
+            def evaluate(self, *_args, **_kwargs):
+                return {"score": 180, "x": 980, "y": 720, "width": 360, "height": 80}
+
+            def locator(self, selector):
+                self.locator_calls.append(selector)
+                return DummyLocator(self.target)
+
+            def get_by_role(self, *_args, **_kwargs):
+                raise AssertionError("global textbox lookup must not be used")
+
+        page = DummyPage()
+        result = _dm_fill_message_editor(page, "hello", timeout_ms=1)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(page.target.value, "hello")
+        self.assertEqual(page.locator_calls, ['[data-aisec-dm-editor="true"]'])
+
+    def test_douyin_dm_fill_message_rejects_page_without_trusted_editor(self):
+        class DummyPage:
+            def evaluate(self, *_args, **_kwargs):
+                return {}
+
+            def locator(self, *_args, **_kwargs):
+                raise AssertionError("untrusted page must not be queried for a fallback textbox")
+
+        self.assertEqual(_dm_mark_private_message_editor(DummyPage()), {})
+        with self.assertRaisesRegex(RuntimeError, "no trusted editor"):
+            _dm_fill_message_editor(DummyPage(), "hello", timeout_ms=1)
 
     def test_douyin_dm_message_editor_treats_zero_width_residue_as_empty(self):
         class DummyPage:
@@ -1575,6 +1672,92 @@ class SessionRAGWebTest(unittest.TestCase):
                 _dm_wait_message_sent(page, "new outgoing message", timeout_ms=500, baseline=[])
 
         self.assertIn("message send was not confirmed", str(ctx.exception))
+
+    def test_douyin_dm_failure_notice_codes_cover_inline_platform_messages(self):
+        self.assertEqual(
+            _dm_send_failure_notice_code("给陌生人发送消息已达到今日上限，请明天再发送陌生人消息"),
+            "stranger_daily_limit",
+        )
+        self.assertEqual(
+            _dm_send_failure_notice_code(
+                "对方设置了仅和他互关的人可发消息，暂无法给对方发送消息"
+            ),
+            "recipient_privacy_restriction",
+        )
+        self.assertEqual(_dm_send_failure_notice_code("发送失败"), "message_send_rejected")
+        self.assertEqual(_dm_send_failure_notice_code("重新发送"), "message_send_rejected")
+        self.assertEqual(_dm_send_failure_notice_code("系统繁忙，重新登录后可以正常使用私信功能"), "login_required")
+        self.assertEqual(_dm_send_failure_notice_code("系统繁忙，请稍后再试"), "platform_busy")
+        self.assertEqual(_dm_send_failure_notice_code("私信功能使用频繁，请稍后再试"), "rate_limited")
+        self.assertEqual(_dm_send_failure_notice_code("请完成下列验证后继续"), "verification_required")
+
+    def test_douyin_dm_detect_prefers_specific_inline_failure_over_resend_label(self):
+        notices = [
+            {
+                "signature": "发送失败|900|560|80|24",
+                "text": "发送失败",
+                "x": 900,
+                "y": 560,
+                "width": 80,
+                "height": 24,
+                "score": 150,
+            },
+            {
+                "signature": "给陌生人发送消息已达到今日上限，请明天再发送陌生人消息|880|590|360|40",
+                "text": "给陌生人发送消息已达到今日上限，请明天再发送陌生人消息",
+                "x": 880,
+                "y": 590,
+                "width": 360,
+                "height": 40,
+                "score": 150,
+            },
+        ]
+
+        class DummyPage:
+            def evaluate(self, *_args, **_kwargs):
+                return notices
+
+        detected = _dm_detect_send_failure_notice(DummyPage())
+        self.assertEqual(detected["failure_code"], "stranger_daily_limit")
+        self.assertIn("今日上限", detected["message"])
+
+    def test_douyin_dm_wait_message_sent_prefers_inline_failure_over_new_bubble(self):
+        class DummyPage:
+            def evaluate(self, *_args, **_kwargs):
+                return []
+
+            def wait_for_timeout(self, *_args, **_kwargs):
+                return None
+
+        page = DummyPage()
+        new_match = {
+            "signature": "new|900|500|320|128",
+            "text": "new outgoing message",
+            "x": 900,
+            "y": 500,
+            "width": 320,
+            "height": 128,
+            "score": 80,
+        }
+        failure_notice = {
+            "failure_code": "stranger_daily_limit",
+            "message": "给陌生人发送消息已达到今日上限，请明天再发送陌生人消息",
+        }
+        with patch(
+            "aisec_agent.web.session_rag_chat._dm_message_editor_text",
+            return_value="",
+        ), patch(
+            "aisec_agent.web.session_rag_chat._dm_detect_send_failure_notice",
+            return_value=failure_notice,
+        ), patch(
+            "aisec_agent.web.session_rag_chat._dm_collect_send_failure_notice_candidates",
+            return_value=[],
+        ), patch(
+            "aisec_agent.web.session_rag_chat._dm_collect_message_bubble_matches",
+            return_value=[new_match],
+        ):
+            with self.assertRaisesRegex(RuntimeError, "stranger_daily_limit"):
+                _dm_wait_message_sent(page, "new outgoing message", timeout_ms=500, notice_baseline=[])
 
     def test_douyin_dm_detects_recipient_privacy_notice(self):
         notice = {
@@ -1947,6 +2130,7 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(response["seen"]["options"]["cdp_url"], "")
         self.assertEqual(response["seen"]["options"]["viewport_width"], 1440)
         self.assertEqual(response["seen"]["options"]["viewport_height"], 900)
+        self.assertEqual(response["seen"]["options"]["page_zoom_percent"], 100)
         self.assertTrue(response["seen"]["options"]["screenshot_on_failure"])
         self.assertIn("douyin_dm_artifacts", response["seen"]["options"]["screenshot_dir"])
 
@@ -2132,6 +2316,7 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(response["seen"]["options"]["cdp_url"], "")
         self.assertEqual(response["seen"]["options"]["viewport_width"], 1440)
         self.assertEqual(response["seen"]["options"]["viewport_height"], 900)
+        self.assertEqual(response["seen"]["options"]["page_zoom_percent"], 100)
         self.assertTrue(response["seen"]["options"]["screenshot_on_failure"])
         self.assertNotIn("SECRET_COOKIE", str(response))
         self.assertNotIn("ANOTHER_SECRET", str(response))
@@ -2335,6 +2520,56 @@ class SessionRAGWebTest(unittest.TestCase):
 
         self.assertIs(page, context.created_page)
         self.assertEqual(context.new_page_calls, 1)
+
+    def test_dm_browser_geometry_defaults_are_fixed(self):
+        args = _dm_browser_launch_args({})
+
+        self.assertIn("--window-size=1440,900", args)
+        self.assertIn("--window-position=0,0", args)
+        self.assertIn("--force-device-scale-factor=1", args)
+
+    def test_dm_apply_page_geometry_sets_viewport_and_zoom(self):
+        class DummyCdpSession:
+            def __init__(self):
+                self.calls = []
+                self.detached = False
+
+            def send(self, method, payload):
+                self.calls.append((method, payload))
+
+            def detach(self):
+                self.detached = True
+
+        class DummyContext:
+            def __init__(self):
+                self.session = DummyCdpSession()
+
+            def new_cdp_session(self, _page):
+                return self.session
+
+        class DummyPage:
+            def __init__(self):
+                self.context = DummyContext()
+                self.viewport = None
+                self.zoom = None
+
+            def set_viewport_size(self, value):
+                self.viewport = value
+
+            def evaluate(self, _script, zoom):
+                self.zoom = zoom
+
+        page = DummyPage()
+        result = _dm_apply_page_geometry(page, {})
+
+        self.assertEqual(page.viewport, {"width": 1440, "height": 900})
+        self.assertEqual(page.zoom, "100%")
+        self.assertEqual(result["page_zoom_percent"], 100)
+        self.assertEqual(
+            page.context.session.calls,
+            [("Emulation.setPageScaleFactor", {"pageScaleFactor": 1.0})],
+        )
+        self.assertTrue(page.context.session.detached)
 
     def test_dm_cleanup_closed_playwright_sessions_stops_stale_runtime(self):
         class FakeContext:
