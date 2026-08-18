@@ -9498,8 +9498,65 @@ def _dm_append_optional_step(steps: List[Dict[str, Any]], step: Optional[Dict[st
         steps.append(step)
 
 
+def _dm_close_douyin_global_message_drawer(page: Any, timeout_ms: int = 2500) -> Dict[str, Any]:
+    """Close a stale right-side message drawer before opening a profile chat."""
+    script = """
+    () => {
+      const visible = (el) => {
+        if (!el || !el.getBoundingClientRect) return false;
+        const rect = el.getBoundingClientRect();
+        const style = getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && rect.right > innerWidth * 0.7 &&
+          style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+      };
+      const closeRe = /^(关闭|close|×|✕|x)$/i;
+      const candidates = [];
+      for (const el of document.querySelectorAll('button,[role="button"],a')) {
+        if (!visible(el)) continue;
+        const label = String(el.getAttribute('aria-label') || el.getAttribute('title') ||
+          el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim();
+        const rect = el.getBoundingClientRect();
+        const geometryClose = !label && rect.right > innerWidth * 0.96 && rect.top < 130 &&
+          rect.width >= 20 && rect.width <= 64 && rect.height >= 20 && rect.height <= 64;
+        if (!closeRe.test(label) && !geometryClose) continue;
+        let node = el;
+        let drawer = false;
+        for (let depth = 0; node && depth < 8; depth += 1, node = node.parentElement) {
+          const rect = node.getBoundingClientRect();
+          const style = getComputedStyle(node);
+          if (rect.width > innerWidth * 0.22 && rect.right > innerWidth * 0.9 &&
+              (style.position === 'fixed' || style.position === 'absolute')) {
+            drawer = true;
+            break;
+          }
+        }
+        if (drawer) candidates.push(el);
+      }
+      const target = candidates[0];
+      if (!target) return {closed: false};
+      target.click();
+      return {closed: true, label: String(target.getAttribute('aria-label') || target.innerText || '')};
+    }
+    """
+    try:
+        result = page.evaluate(script) or {}
+    except Exception:
+        result = {}
+    if result.get("closed"):
+        try:
+            page.wait_for_timeout(min(timeout_ms, 500))
+        except Exception:
+            pass
+    return {
+        "name": "close_global_message_drawer",
+        "ok": bool(result.get("closed")),
+        "detail": f"closed {result.get('label') or 'drawer'}" if result.get("closed") else "drawer not present",
+    }
+
+
 def _dm_click_profile_private_message(page: Any, timeout_ms: int = 12000) -> Dict[str, Any]:
     """Click the target profile's DM action, never the global message drawer."""
+    _dm_close_douyin_global_message_drawer(page)
     try:
         # A persistent Playwright profile can retain the global message drawer
         # from the previous task. Escape closes it before inspecting the profile.
@@ -10802,7 +10859,19 @@ def _douyin_private_message_playwright_executor(
             _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page))
             steps.append(_dm_click_profile_private_message(page, timeout_ms=min(timeout_ms, 12000)))
             _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page, timeout_ms=1200))
-            steps.append(_dm_fill_message_editor(page, message, timeout_ms=min(timeout_ms, 12000)))
+            try:
+                steps.append(_dm_fill_message_editor(page, message, timeout_ms=min(timeout_ms, 12000)))
+            except RuntimeError as exc:
+                if "no trusted editor" not in str(exc).lower():
+                    raise
+                recovery = _dm_close_douyin_global_message_drawer(page)
+                recovery["name"] = "recover_close_global_message_drawer"
+                steps.append(recovery)
+                retry_open = _dm_click_profile_private_message(page, timeout_ms=min(timeout_ms, 12000))
+                retry_open["name"] = "retry_open_private_message"
+                steps.append(retry_open)
+                _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page, timeout_ms=1200))
+                steps.append(_dm_fill_message_editor(page, message, timeout_ms=min(timeout_ms, 12000)))
             sent = False
             followup_private_message = False
             followup_private_message_status = "skipped"

@@ -57,6 +57,7 @@ from aisec_agent.web.session_rag_chat import (
     _dm_apply_page_geometry,
     _dm_browser_launch_args,
     _dm_fill_message_editor,
+    _dm_close_douyin_global_message_drawer,
     _dm_click_profile_private_message,
     _dm_get_playwright_context,
     _dm_mark_private_message_editor,
@@ -1580,6 +1581,24 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(page.keyboard.presses, ["Escape", "Escape"])
         self.assertEqual(page.locator_calls, ['[data-aisec-dm-profile-action="true"]'])
+
+    def test_douyin_dm_closes_stale_global_message_drawer(self):
+        class DummyPage:
+            def __init__(self):
+                self.waits = []
+
+            def evaluate(self, _script):
+                return {"closed": True, "label": "关闭"}
+
+            def wait_for_timeout(self, timeout_ms):
+                self.waits.append(timeout_ms)
+
+        page = DummyPage()
+        result = _dm_close_douyin_global_message_drawer(page, timeout_ms=2500)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["detail"], "closed 关闭")
+        self.assertEqual(page.waits, [500])
 
     def test_douyin_dm_message_editor_treats_zero_width_residue_as_empty(self):
         class DummyPage:
