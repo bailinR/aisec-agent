@@ -57,6 +57,7 @@ from aisec_agent.web.session_rag_chat import (
     _dm_apply_page_geometry,
     _dm_browser_launch_args,
     _dm_fill_message_editor,
+    _dm_click_profile_private_message,
     _dm_get_playwright_context,
     _dm_mark_private_message_editor,
     _dm_message_page,
@@ -1540,6 +1541,45 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(_dm_mark_private_message_editor(DummyPage()), {})
         with self.assertRaisesRegex(RuntimeError, "no trusted editor"):
             _dm_fill_message_editor(DummyPage(), "hello", timeout_ms=1)
+
+    def test_douyin_dm_profile_private_message_uses_scoped_action(self):
+        class DummyKeyboard:
+            def __init__(self):
+                self.presses = []
+
+            def press(self, key):
+                self.presses.append(key)
+
+        class DummyTarget:
+            def wait_for(self, **_kwargs):
+                return None
+
+            def click(self, **_kwargs):
+                return None
+
+        class DummyLocator:
+            def __init__(self, target):
+                self.first = target
+
+        class DummyPage:
+            def __init__(self):
+                self.keyboard = DummyKeyboard()
+                self.target = DummyTarget()
+                self.locator_calls = []
+
+            def evaluate(self, _script):
+                return {"score": 160, "label": "私信", "x": 900, "y": 120}
+
+            def locator(self, selector):
+                self.locator_calls.append(selector)
+                return DummyLocator(self.target)
+
+        page = DummyPage()
+        result = _dm_click_profile_private_message(page, timeout_ms=1)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(page.keyboard.presses, ["Escape", "Escape"])
+        self.assertEqual(page.locator_calls, ['[data-aisec-dm-profile-action="true"]'])
 
     def test_douyin_dm_message_editor_treats_zero_width_residue_as_empty(self):
         class DummyPage:

@@ -9498,6 +9498,79 @@ def _dm_append_optional_step(steps: List[Dict[str, Any]], step: Optional[Dict[st
         steps.append(step)
 
 
+def _dm_click_profile_private_message(page: Any, timeout_ms: int = 12000) -> Dict[str, Any]:
+    """Click the target profile's DM action, never the global message drawer."""
+    try:
+        # A persistent Playwright profile can retain the global message drawer
+        # from the previous task. Escape closes it before inspecting the profile.
+        page.keyboard.press("Escape")
+        page.keyboard.press("Escape")
+    except Exception:
+        pass
+
+    marker = "data-aisec-dm-profile-action"
+    script = f"""
+    () => {{
+      const marker = '{marker}';
+      for (const el of document.querySelectorAll(`[${{marker}}]`)) el.removeAttribute(marker);
+      const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+      const visible = (el) => {{
+        if (!el || !el.getBoundingClientRect) return false;
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width >= 36 && rect.height >= 24 && rect.right > 0 && rect.bottom > 0 &&
+          style.visibility !== 'hidden' && style.display !== 'none' && style.opacity !== '0';
+      }};
+      const candidates = [];
+      for (const el of document.querySelectorAll('button, a, [role="button"]')) {{
+        if (!visible(el)) continue;
+        const rect = el.getBoundingClientRect();
+        if (rect.top > window.innerHeight * 0.55 || rect.left < window.innerWidth * 0.18) continue;
+        let fixedAncestor = false;
+        let node = el;
+        for (let depth = 0; node && depth < 6; depth += 1, node = node.parentElement) {{
+          const style = window.getComputedStyle(node);
+          if (style.position === 'fixed') {{ fixedAncestor = true; break; }}
+        }}
+        if (fixedAncestor) continue;
+        const label = normalize(el.innerText || el.textContent || el.getAttribute('aria-label') || '');
+        if (!/^(私信|发私信|聊天|message|chat)$/i.test(label)) continue;
+        if (/消息|通知|搜索|search/i.test(label)) continue;
+        let score = 100;
+        if (/^发私信$/i.test(label)) score += 45;
+        if (/^私信$/i.test(label)) score += 35;
+        if (rect.top < window.innerHeight * 0.35) score += 25;
+        if (rect.left > window.innerWidth * 0.45) score += 20;
+        candidates.push({{el, score, rect, label}});
+      }}
+      candidates.sort((a, b) => b.score - a.score || a.rect.left - b.rect.left);
+      const selected = candidates[0];
+      if (!selected) return {{}};
+      selected.el.setAttribute(marker, 'true');
+      return {{
+        score: Math.round(selected.score),
+        label: selected.label,
+        x: Math.round(selected.rect.left),
+        y: Math.round(selected.rect.top),
+      }};
+    }}
+    """
+    try:
+        selected = page.evaluate(script) or {}
+    except Exception:
+        selected = {}
+    if not isinstance(selected, dict) or not selected:
+        raise RuntimeError("private message button not found in target profile header")
+    target = page.locator(f'[{marker}="true"]').first
+    target.wait_for(state="visible", timeout=timeout_ms)
+    target.click(timeout=timeout_ms)
+    return {
+        "name": "open_private_message",
+        "ok": True,
+        "detail": f"clicked profile {selected.get('label') or 'private message'} action",
+    }
+
+
 def _dm_mark_private_message_editor(page: Any) -> Dict[str, Any]:
     script = """
     () => {
@@ -10727,18 +10800,7 @@ def _douyin_private_message_playwright_executor(
                 ),
             })
             _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page))
-            private_message_label = "\u79c1\u4fe1"
-            send_private_message_label = "\u53d1\u79c1\u4fe1"
-            chat_label = "\u804a\u5929"
-            steps.append(_dm_click_first(page, [
-                page.get_by_role("button", name=re.compile(f"{private_message_label}|{send_private_message_label}|{chat_label}|Message", re.I)),
-                page.locator(f"button:has-text('{private_message_label}')"),
-                page.locator(f"[role=button]:has-text('{private_message_label}')"),
-                page.locator(f"a:has-text('{private_message_label}')"),
-                page.locator(f"text={private_message_label}"),
-                page.locator(f"text={send_private_message_label}"),
-                page.locator(f"text={chat_label}"),
-            ], "open_private_message", timeout_ms=min(timeout_ms, 12000)))
+            steps.append(_dm_click_profile_private_message(page, timeout_ms=min(timeout_ms, 12000)))
             _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page, timeout_ms=1200))
             steps.append(_dm_fill_message_editor(page, message, timeout_ms=min(timeout_ms, 12000)))
             sent = False
