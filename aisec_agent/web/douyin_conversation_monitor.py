@@ -37,6 +37,52 @@ CS_SYSTEM_PROMPT = (
 )
 _DM_ACCOUNT_CONTROLLERS: Dict[str, Any] = {}
 _DM_ACCOUNT_CONTROLLERS_LOCK = threading.RLock()
+_PEER_TIME_RE = re.compile(
+    r"^(?P<name>.{1,32}?)\s+(?:刚刚|\d+\s*秒前|\d+\s*分钟前|\d+\s*小时前|昨天|\d{1,2}:\d{2}|周[一二三四五六日])\b"
+)
+_GROUP_OR_SYSTEM_RE = re.compile(
+    r"群聊|群公告|进群|入群|被设置为管理员|群成员|无法查看历史|v\.douyin\.com/group"
+)
+
+
+def _dm_normalize_text(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def _dm_peer_key_from_row(detail: str, preview: str = "") -> str:
+    """Stable nickname from a conversation-row, not the preview/message body."""
+    raw = _dm_normalize_text(detail)
+    preview_text = _dm_normalize_text(preview)
+    match = _PEER_TIME_RE.match(raw)
+    if match:
+        name = _dm_normalize_text(match.group("name"))
+        if name and name != preview_text[: len(name)]:
+            return name[:32]
+    token = raw.split(" ")[0].strip("·-—") if raw else ""
+    if not token or token == preview_text or re.fullmatch(r"\d+", token):
+        return ""
+    if len(token) > 24:
+        return ""
+    return token
+
+
+def _dm_is_group_or_system_chat(*parts: Any) -> bool:
+    blob = " ".join(_dm_normalize_text(part) for part in parts if part)
+    return bool(_GROUP_OR_SYSTEM_RE.search(blob))
+
+
+def _dm_is_own_outbound(text: str, last_reply: str) -> bool:
+    left = _dm_normalize_text(text)
+    right = _dm_normalize_text(last_reply)
+    if not left or not right:
+        return False
+    if left == right:
+        return True
+    return left in right or right in left
+
+
+def _dm_inbound_fingerprint(text: str) -> str:
+    return _dm_normalize_text(text)[-180:]
 
 
 def _sr() -> Any:
@@ -432,73 +478,131 @@ def _dm_open_douyin_messages_surface(page: Any, timeout_ms: int = 12000) -> List
 
 
 def _dm_scan_inbox_summary(page: Any) -> Dict[str, Any]:
-    """Summarize Douyin private-message panel unread badges without clicking rows."""
+    """Summarize Douyin private-message unread without clicking rows.
+
+    Detects both numeric badges and red-dot markers inside the IM panel, and
+    also the top-right 「消息」entry badge as a fallback.
+    """
     script = """
     () => {
       const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
-      const isVisible = (el) => {
+      const isVisible = (el, minW = 4, minH = 4) => {
         if (!el || !el.getBoundingClientRect) return false;
         const rect = el.getBoundingClientRect();
         const style = window.getComputedStyle(el);
-        return rect.width >= 36 && rect.height >= 24 && rect.right > 0 && rect.bottom > 0 &&
-          style.visibility !== 'hidden' && style.display !== 'none' && style.opacity !== '0';
+        return rect.width >= minW && rect.height >= minH && rect.right > 0 && rect.bottom > 0 &&
+          style.visibility !== 'hidden' && style.display !== 'none' && Number(style.opacity || '1') > 0.05;
       };
-      const allVisible = Array.from(document.querySelectorAll('div, section, aside, ul, li, a, button, span')).filter(isVisible);
-      const panelCandidates = allVisible
+      const isRedish = (style) => {
+        const colors = [style.backgroundColor, style.color, style.borderColor].join(' ');
+        const m = colors.match(/rgba?\\((\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)/i);
+        if (!m) return /#f{0,1}[ef].{0,1}[0-4]|#e[0-9a-f]{2}[0-4]|red|tomato|crimson/i.test(colors);
+        const r = Number(m[1]), g = Number(m[2]), b = Number(m[3]);
+        return r >= 180 && g <= 120 && b <= 120 && (r - g) >= 50;
+      };
+      const parseBadgeCount = (text) => {
+        const t = normalize(text);
+        if (!t) return 1; // red-dot without number => at least 1
+        if (/^99\\+?$/.test(t)) return 99;
+        if (/^[1-9]\\d?$/.test(t)) return Number(t);
+        const m = t.match(/(?:未读)?([1-9]\\d?)\\+?/);
+        return m ? Number(m[1]) : 0;
+      };
+
+      const allNodes = Array.from(document.querySelectorAll(
+        'div, section, aside, ul, li, a, button, span, i, em, b, strong, [class*=badge], [class*=Badge], [class*=unread], [class*=Unread], [class*=dot], [class*=Dot], [class*=red]'
+      ));
+      const panelCandidates = allNodes
+        .filter((el) => isVisible(el, 36, 24))
         .map((el) => {
           const rect = el.getBoundingClientRect();
           const text = normalize(el.innerText || el.textContent || '');
           const style = window.getComputedStyle(el);
-          const rightSide = rect.left > window.innerWidth * 0.48 && rect.right > window.innerWidth * 0.72;
-          const panelSize = rect.width >= 240 && rect.width <= window.innerWidth * 0.6 &&
-            rect.height >= 260 && rect.height <= window.innerHeight * 0.98;
-          const hasPrivateHeader = /(消息|私信)/.test(text.slice(0, 80)) ||
-            /im-dialog|imContainer|imSaas|im-saas|imDark|semi-always-dark/i.test(String(el.className || ''));
+          const rightSide = rect.left > window.innerWidth * 0.42 && rect.right > window.innerWidth * 0.62;
+          const panelSize = rect.width >= 220 && rect.width <= window.innerWidth * 0.72 &&
+            rect.height >= 220 && rect.height <= window.innerHeight * 0.99;
+          const cls = String(el.className || '');
+          const hasPrivateHeader = /(消息|私信)/.test(text.slice(0, 120)) ||
+            /im-dialog|imContainer|imSaas|im-saas|imDark|semi-always-dark|conversation|Message/i.test(cls);
           if (!rightSide || !panelSize || !hasPrivateHeader || style.visibility === 'hidden' ||
               style.display === 'none' || style.opacity === '0') return null;
           return {el, rect, text, score: 100 + rect.width - rect.height / 1000};
         })
         .filter(Boolean)
         .sort((a, b) => b.score - a.score || a.rect.left - b.rect.left);
-      const panel = panelCandidates[0];
-      if (!panel) return {ok: false, detail: 'private message panel not found', unreadCount: 0, unreadPeople: 0};
+      const panel = panelCandidates[0] || null;
 
-      const panelRect = panel.rect;
-      const withinPanel = (el) => {
-        const rect = el.getBoundingClientRect();
-        return rect.left >= panelRect.left - 4 && rect.right <= panelRect.right + 4 &&
-          rect.top >= panelRect.top + 40 && rect.bottom <= panelRect.bottom + 4;
-      };
-      const badges = allVisible
-        .filter((el) => withinPanel(el))
-        .map((el) => {
+      const collectBadges = (predicate) => {
+        const badges = [];
+        for (const el of allNodes) {
+          if (!isVisible(el, 4, 4) || !predicate(el)) continue;
           const rect = el.getBoundingClientRect();
+          const style = window.getComputedStyle(el);
           const text = normalize(el.innerText || el.textContent || '');
-          const compact = rect.width <= 42 && rect.height <= 42;
-          const numeric = /^[1-9][0-9]?$/.test(text);
-          if (!numeric || !compact) return null;
-          return {rect, text, count: Number(text)};
-        })
-        .filter(Boolean);
+          const cls = String(el.className || '') + ' ' + String(el.getAttribute('aria-label') || '');
+          const compact = rect.width <= 48 && rect.height <= 48 && rect.width >= 5 && rect.height >= 5;
+          if (!compact) continue;
+          const numeric = /^[1-9]\\d?$|^99\\+?$/.test(text);
+          const named = /badge|unread|red-?dot|未读/i.test(cls + ' ' + text);
+          const redDot = (!text || text.length <= 3) && isRedish(style) && rect.width <= 28 && rect.height <= 28;
+          if (!(numeric || named || redDot)) continue;
+          const count = numeric || /\\d/.test(text) ? parseBadgeCount(text) : 1;
+          if (!count) continue;
+          badges.push({
+            rect: {left: rect.left, top: rect.top, width: rect.width, height: rect.height},
+            text: text || '(dot)',
+            count,
+            kind: numeric ? 'num' : (redDot ? 'dot' : 'named'),
+          });
+        }
+        const unique = [];
+        for (const badge of badges) {
+          const cx = badge.rect.left + badge.rect.width / 2;
+          const cy = badge.rect.top + badge.rect.height / 2;
+          const dup = unique.some((item) => {
+            const ix = item.rect.left + item.rect.width / 2;
+            const iy = item.rect.top + item.rect.height / 2;
+            return Math.abs(ix - cx) < 14 && Math.abs(iy - cy) < 14;
+          });
+          if (!dup) unique.push(badge);
+        }
+        return unique;
+      };
 
-      // Deduplicate badges that share nearly the same center (nested nodes).
-      const unique = [];
-      for (const badge of badges) {
-        const cx = badge.rect.left + badge.rect.width / 2;
-        const cy = badge.rect.top + badge.rect.height / 2;
-        const dup = unique.some((item) => {
-          const ix = item.rect.left + item.rect.width / 2;
-          const iy = item.rect.top + item.rect.height / 2;
-          return Math.abs(ix - cx) < 12 && Math.abs(iy - cy) < 12;
+      let unique = [];
+      let source = 'none';
+      if (panel) {
+        const panelRect = panel.rect;
+        unique = collectBadges((el) => {
+          const rect = el.getBoundingClientRect();
+          return rect.left >= panelRect.left - 8 && rect.right <= panelRect.right + 8 &&
+            rect.top >= panelRect.top + 24 && rect.bottom <= panelRect.bottom + 8;
         });
-        if (!dup) unique.push(badge);
+        source = 'panel';
       }
+
+      // Fallback: top-right 「消息」entry badge (global unread).
+      if (!unique.length) {
+        unique = collectBadges((el) => {
+          const rect = el.getBoundingClientRect();
+          return rect.top >= 0 && rect.top < 220 && rect.left > window.innerWidth * 0.55;
+        }).filter((b) => {
+          // Prefer badges near a 消息/私信 control.
+          return true;
+        });
+        if (unique.length) source = 'top_entry';
+      }
+
       const unreadCount = unique.reduce((sum, item) => sum + (Number(item.count) || 0), 0);
       return {
         ok: true,
-        detail: 'scanned private message badges',
+        detail: panel
+          ? (`scanned ${source}; panel=` + normalize(panel.text).slice(0, 40))
+          : (`scanned ${source}; panel missing`),
         unreadCount,
         unreadPeople: unique.length,
+        badgeSample: unique.slice(0, 8).map((b) => ({text: b.text, count: b.count, kind: b.kind})),
+        panelFound: Boolean(panel),
       };
     }
     """
@@ -518,6 +622,8 @@ def _dm_scan_inbox_summary(page: Any) -> Dict[str, Any]:
         "detail": str(data.get("detail") or ""),
         "unread_count": int(data.get("unreadCount") or 0),
         "unread_people": int(data.get("unreadPeople") or 0),
+        "badge_sample": data.get("badgeSample") or [],
+        "panel_found": bool(data.get("panelFound")),
     }
 
 
@@ -852,6 +958,7 @@ class DouyinConversationMonitor:
         gpu_model: str = DEFAULT_GPU_POOL_MODEL,
         gpu_base_url: str = DEFAULT_GPU_POOL_BASE_URL,
         gpu_api_key: str = DEFAULT_GPU_POOL_API_KEY,
+        max_auto_replies_before_peer: int = 2,
         logic: Optional[SessionRAGChatLogic] = None,
         project_store: Optional[ProjectMaterialStore] = None,
     ):
@@ -871,6 +978,10 @@ class DouyinConversationMonitor:
         self.gpu_model = str(gpu_model or DEFAULT_GPU_POOL_MODEL).strip() or DEFAULT_GPU_POOL_MODEL
         self.gpu_base_url = str(gpu_base_url or DEFAULT_GPU_POOL_BASE_URL).rstrip("/") or DEFAULT_GPU_POOL_BASE_URL
         self.gpu_api_key = str(gpu_api_key or DEFAULT_GPU_POOL_API_KEY)
+        try:
+            self.max_auto_replies_before_peer = max(1, int(max_auto_replies_before_peer or 2))
+        except (TypeError, ValueError):
+            self.max_auto_replies_before_peer = 2
         self.logic = logic
         self.project_store = project_store
         self.stop_event = threading.Event()
@@ -894,6 +1005,10 @@ class DouyinConversationMonitor:
         self.logs: List[Dict[str, Any]] = []
         self.histories: Dict[str, List[Dict[str, str]]] = {}
         self.send_failed_signatures: Dict[str, int] = {}
+        # 每个对方：自其上次发言后，已连续自动回复条数（达到上限则等对方再回）
+        self.peer_auto_replies_since_peer: Dict[str, int] = {}
+        self.peer_last_inbound_signature: Dict[str, str] = {}
+        self.peer_last_outbound: Dict[str, str] = {}
 
     def log(self, text: str, level: str = "info", extra: Optional[Dict[str, Any]] = None) -> None:
         item = {
@@ -947,6 +1062,7 @@ class DouyinConversationMonitor:
                 "alive": alive,
                 "auto_send": self.auto_send,
                 "generate_reply": self.generate_reply,
+                "max_auto_replies_before_peer": self.max_auto_replies_before_peer,
                 "reply_backend": self.reply_backend,
                 "gpu_model": self.gpu_model,
                 "account_cookie_loaded": bool(cookie_text),
@@ -1042,10 +1158,24 @@ class DouyinConversationMonitor:
                 self.inbox_unread_count = int(inbox.get("unread_count") or 0)
                 self.inbox_unread_people = int(inbox.get("unread_people") or 0)
                 self.inbox_summary_updated_at = sr._dm_now()
+            sample = inbox.get("badge_sample") or []
+            sample_text = ",".join(
+                f"{item.get('kind')}:{item.get('text')}x{item.get('count')}"
+                for item in sample[:4]
+                if isinstance(item, dict)
+            )
             self.log(
-                f"收件箱摘要：未读{self.inbox_unread_count}，未读会话{self.inbox_unread_people}",
+                f"收件箱摘要：未读{self.inbox_unread_count}，未读会话{self.inbox_unread_people}"
+                + (f"（{inbox.get('detail') or ''}）" if inbox.get("detail") else "")
+                + (f" badges=[{sample_text}]" if sample_text else ""),
                 "info",
             )
+        else:
+            self.log("收件箱摘要失败：" + str(inbox.get("detail") or "unknown"), "warn")
+        # 盯号模式（不生成/不发送）：只扫收件箱角标，禁止点开会话。
+        # 点开后抖音会清未读，中台气泡会被实时同步成长期 00/00。
+        if not self.generate_reply:
+            return
         detect = _dm_detect_latest_douyin_message(page)
         # Always prefer an unread/recent conversation row first; staying in an old
         # open chat would otherwise skip new inbound messages.
@@ -1075,27 +1205,58 @@ class DouyinConversationMonitor:
         if re.fullmatch(r"[1-9]\d?", message) and not preview_text:
             self.log("忽略疑似未读角标文本：" + message, "info")
             return
-        signature = f"{detect.get('url')}|{message[-180:]}"
+        peer_key = _dm_peer_key_from_row(
+            str(click_step.get("detail") or ""),
+            preview_text or message,
+        )
+        inbound = _dm_inbound_fingerprint(message)
+        signature = f"{peer_key}|{inbound}"
         pending_retry = signature in self.send_failed_signatures and self.auto_send and self.generate_reply
         if signature == self.last_seen_signature and not pending_retry:
             return
         with self.lock:
             self.last_seen_signature = signature
             self.last_message = message
+            self.last_peer = peer_key
             self.updated_at = sr._dm_now()
-        self.log("识别到新消息：" + message[:120], "ok")
-        if self.last_reply and message.strip() == self.last_reply.strip():
+        self.log("识别到新消息：" + message[:120], "ok", {"peer": peer_key or ""})
+        last_reply = str(self.last_reply or "").strip()
+        if peer_key:
+            last_reply = str(self.peer_last_outbound.get(peer_key) or last_reply).strip() or last_reply
+        if last_reply and _dm_is_own_outbound(message, last_reply):
             self.log("忽略与最近自动回复相同的文本，避免自回环", "info")
+            return
+        if preview_text and last_reply and _dm_is_own_outbound(preview_text, last_reply):
+            self.log("会话预览仍是我方上次回复，对方尚未新回复，跳过", "info")
             return
         if not self.generate_reply:
             with self.lock:
                 self.last_reply = ""
             self.log("已记录新私信；回复生成已关闭", "info")
             return
-        peer = ""
-        if click_step.get("ok"):
-            peer = str(click_step.get("detail") or "").split(" ")[0].strip()
-        peer_key = peer or "default"
+        if _dm_is_group_or_system_chat(click_step.get("detail"), preview_text, message):
+            self.log("跳过群聊/系统会话，避免对未回复客户群发：" + (peer_key or message[:40]), "warn")
+            return
+        if self.auto_send and not click_step.get("unread"):
+            self.log("无未读角标，不主动给未回复客户发私信：" + (peer_key or "unknown"), "info")
+            return
+        if self.auto_send and not peer_key:
+            self.log("无法识别会话对方，已停止自动发送以免误发", "warn")
+            return
+        peer_key = peer_key or "unknown"
+        with self.lock:
+            last_inbound = str(self.peer_last_inbound_signature.get(peer_key) or "")
+            if inbound and inbound != last_inbound and not _dm_is_own_outbound(inbound, last_reply):
+                self.peer_last_inbound_signature[peer_key] = inbound
+                self.peer_auto_replies_since_peer[peer_key] = 0
+            streak = int(self.peer_auto_replies_since_peer.get(peer_key) or 0)
+        if streak >= self.max_auto_replies_before_peer:
+            self.log(
+                f"对方未回复前已达自动回复上限 {self.max_auto_replies_before_peer} 条，等待对方回复："
+                + peer_key,
+                "warn",
+            )
+            return
         history = list(self.histories.get(peer_key) or [])[-8:]
         # Reuse previous generated reply when retrying a failed send.
         reply = ""
@@ -1182,10 +1343,25 @@ class DouyinConversationMonitor:
             return
         with self.lock:
             self.reply_count += 1
+            self.last_peer = peer_key
+            self.peer_last_outbound[peer_key] = reply
+            self.peer_auto_replies_since_peer[peer_key] = int(
+                self.peer_auto_replies_since_peer.get(peer_key) or 0
+            ) + 1
             self.send_failed_signatures.pop(signature, None)
             # Avoid treating the just-sent reply as a new inbound next loop.
-            self.last_seen_signature = f"{detect.get('url')}|{reply[-180:]}"
-        self.log("已自动回复：" + reply[:120], "ok", {"steps": send_steps, "peer": peer_key})
+            self.last_seen_signature = f"{peer_key}|{_dm_inbound_fingerprint(reply)}"
+            self.last_reply = reply
+        self.log(
+            "已自动回复：" + reply[:120],
+            "ok",
+            {
+                "steps": send_steps,
+                "peer": peer_key,
+                "auto_replies_since_peer": self.peer_auto_replies_since_peer.get(peer_key),
+                "max_auto_replies_before_peer": self.max_auto_replies_before_peer,
+            },
+        )
 
     def _maybe_capture_diagnostic(self, page: Any, reason: str) -> Dict[str, Any]:
         now = time.time()
@@ -1239,14 +1415,21 @@ def _dm_controller_from_payload(payload: Dict[str, Any]) -> DouyinConversationMo
         project_id=str(normalized.get("project_id") or "").strip(),
         company_id=str(normalized.get("company_id") or "").strip(),
         source_platform=str(normalized.get("source_platform") or "抖音").strip() or "抖音",
-        auto_send=sr._dm_bool_text(normalized.get("auto_send", True)),
-        generate_reply=sr._dm_bool_text(normalized.get("generate_reply", True)),
+        auto_send=sr._dm_bool_text(normalized.get("auto_send", False)),
+        generate_reply=sr._dm_bool_text(
+            normalized.get("generate_reply", normalized.get("auto_send", False))
+        ),
         poll_seconds=sr._payload_float(normalized, "poll_seconds", 8),
         reply_backend=str(normalized.get("reply_backend") or "gpu_pool").strip().lower() or "gpu_pool",
         gpu_model=str(normalized.get("gpu_model") or DEFAULT_GPU_POOL_MODEL).strip() or DEFAULT_GPU_POOL_MODEL,
         gpu_base_url=str(normalized.get("gpu_base_url") or DEFAULT_GPU_POOL_BASE_URL).rstrip("/")
         or DEFAULT_GPU_POOL_BASE_URL,
         gpu_api_key=str(normalized.get("gpu_api_key") or DEFAULT_GPU_POOL_API_KEY),
+        max_auto_replies_before_peer=int(
+            normalized.get("max_auto_replies_before_peer")
+            or normalized.get("max_auto_replies")
+            or 2
+        ),
         logic=normalized.get("_logic"),
         project_store=normalized.get("_project_store"),
     )
@@ -1305,8 +1488,9 @@ def build_douyin_conversation_monitor_list_response() -> Dict[str, Any]:
             "gpu_model": DEFAULT_GPU_POOL_MODEL,
             "gpu_base_url": DEFAULT_GPU_POOL_BASE_URL,
             "poll_seconds": 5,
-            "generate_reply": True,
-            "auto_send": True,
+            "generate_reply": False,
+            "auto_send": False,
+            "max_auto_replies_before_peer": 2,
         },
     }
 

@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, patch
 from aisec_agent.web.douyin_conversation_monitor import (
     DouyinConversationMonitor,
     _dm_account_browser_user_data_dir,
+    _dm_is_group_or_system_chat,
+    _dm_peer_key_from_row,
     build_douyin_conversation_monitor_list_response,
     build_douyin_conversation_monitor_start_response,
     build_douyin_conversation_monitor_stop_response,
@@ -100,7 +102,7 @@ class DouyinConversationMonitorTests(unittest.TestCase):
             self.assertTrue(stopped["stopped"])
             self.assertEqual(stopped["monitor"]["status"], "stopped")
 
-    def test_tick_records_message_without_reply_when_generate_disabled(self):
+    def test_tick_watch_only_does_not_open_or_reply(self):
         monitor = DouyinConversationMonitor(
             account_id="acc_1",
             account_name="发送账号",
@@ -120,20 +122,16 @@ class DouyinConversationMonitorTests(unittest.TestCase):
             "aisec_agent.web.douyin_conversation_monitor._dm_open_douyin_messages_surface",
             return_value=[{"name": "detect_message_surface", "ok": True}],
         ), patch(
-            "aisec_agent.web.douyin_conversation_monitor._dm_detect_latest_douyin_message",
-            return_value={
-                "url": "https://www.douyin.com/",
-                "has_editor": True,
-                "latest_text": "你好，想了解一下",
-                "error": "",
-            },
-        ):
+            "aisec_agent.web.douyin_conversation_monitor._dm_scan_inbox_summary",
+            return_value={"ok": True, "unread_count": 1, "unread_people": 1, "detail": "scanned"},
+        ), patch(
+            "aisec_agent.web.douyin_conversation_monitor._dm_click_unread_or_latest_chat",
+        ) as mock_click:
             monitor._tick(page)
 
-        self.assertEqual(monitor.last_message, "你好，想了解一下")
         self.assertEqual(monitor.last_reply, "")
         self.assertEqual(monitor.reply_count, 0)
-        self.assertTrue(any("识别到新消息" in item["text"] for item in monitor.logs))
+        mock_click.assert_not_called()
 
     def test_tick_gpu_pool_generates_and_sends(self):
         monitor = DouyinConversationMonitor(
@@ -166,7 +164,7 @@ class DouyinConversationMonitorTests(unittest.TestCase):
             },
         ), patch(
             "aisec_agent.web.douyin_conversation_monitor._dm_click_unread_or_latest_chat",
-            return_value={"ok": True, "detail": "用户甲 unread", "preview_text": "多少钱"},
+            return_value={"ok": True, "unread": True, "detail": "用户甲 刚刚 多少钱", "preview_text": "多少钱"},
         ), patch(
             "aisec_agent.web.douyin_conversation_monitor._gpu_pool_chat_reply",
             return_value="亲，具体看规格哈，方便说下需求吗？",
@@ -215,6 +213,121 @@ class DouyinConversationMonitorTests(unittest.TestCase):
         finally:
             # leave directory; harmless under content/playwright_profiles
             pass
+
+    def test_peer_key_and_group_detection(self):
+        self.assertEqual(_dm_peer_key_from_row("yang 12分钟前 好的，可以给预估价", "好的，可以给预估价"), "yang")
+        self.assertEqual(_dm_peer_key_from_row("用户甲 刚刚 多少钱", "多少钱"), "用户甲")
+        self.assertTrue(_dm_is_group_or_system_chat("进群", "https://v.douyin.com/group/287976598570"))
+        self.assertFalse(_dm_is_group_or_system_chat("用户甲 刚刚 多少钱"))
+
+    def _make_send_monitor(self):
+        return DouyinConversationMonitor(
+            account_id="acc_1",
+            account_name="发送账号",
+            account_key="cookie_testkey",
+            account_cookies="",
+            browser_name="chrome",
+            headless=True,
+            project_id="",
+            company_id="",
+            source_platform="抖音",
+            auto_send=True,
+            generate_reply=True,
+            poll_seconds=5,
+            reply_backend="gpu_pool",
+            gpu_model="chat-pm",
+            max_auto_replies_before_peer=2,
+        )
+
+    def test_does_not_auto_send_without_unread_badge(self):
+        monitor = self._make_send_monitor()
+        page = MagicMock()
+        with patch(
+            "aisec_agent.web.douyin_conversation_monitor._dm_open_douyin_messages_surface",
+            return_value=[{"name": "detect_message_surface", "ok": True}],
+        ), patch(
+            "aisec_agent.web.douyin_conversation_monitor._dm_scan_inbox_summary",
+            return_value={"ok": True, "unread_count": 0, "unread_people": 0},
+        ), patch(
+            "aisec_agent.web.douyin_conversation_monitor._dm_detect_latest_douyin_message",
+            return_value={"url": "https://www.douyin.com/", "has_editor": True, "latest_text": "多少钱", "error": ""},
+        ), patch(
+            "aisec_agent.web.douyin_conversation_monitor._dm_click_unread_or_latest_chat",
+            return_value={"ok": True, "unread": False, "detail": "用户甲 昨天 多少钱", "preview_text": "多少钱"},
+        ), patch(
+            "aisec_agent.web.douyin_conversation_monitor._gpu_pool_chat_reply",
+            return_value="亲，具体看规格哈",
+        ), patch("aisec_agent.web.douyin_conversation_monitor._sr") as mock_sr:
+            sr = MagicMock()
+            sr._dm_now.return_value = "now"
+            mock_sr.return_value = sr
+            monitor._tick(page)
+        self.assertEqual(monitor.reply_count, 0)
+        sr._dm_fill_message_editor.assert_not_called()
+
+    def test_stops_after_two_auto_replies_without_new_inbound(self):
+        monitor = self._make_send_monitor()
+        page = MagicMock()
+        with patch(
+            "aisec_agent.web.douyin_conversation_monitor._dm_open_douyin_messages_surface",
+            return_value=[{"name": "detect_message_surface", "ok": True}],
+        ), patch(
+            "aisec_agent.web.douyin_conversation_monitor._dm_scan_inbox_summary",
+            return_value={"ok": True, "unread_count": 1, "unread_people": 1},
+        ), patch(
+            "aisec_agent.web.douyin_conversation_monitor._dm_detect_latest_douyin_message",
+            return_value={"url": "https://www.douyin.com/", "has_editor": True, "latest_text": "多少钱", "error": ""},
+        ), patch(
+            "aisec_agent.web.douyin_conversation_monitor._dm_click_unread_or_latest_chat",
+            return_value={"ok": True, "unread": True, "detail": "用户甲 刚刚 多少钱", "preview_text": "多少钱"},
+        ), patch(
+            "aisec_agent.web.douyin_conversation_monitor._gpu_pool_chat_reply",
+            return_value="亲，具体看规格哈",
+        ), patch("aisec_agent.web.douyin_conversation_monitor._sr") as mock_sr:
+            sr = MagicMock()
+            sr._dm_now.return_value = "now"
+            sr._dm_fill_message_editor.return_value = {"name": "paste_message", "ok": True}
+            sr._dm_message_editor_text.return_value = "亲，具体看规格哈"
+            sr._dm_send_and_confirm_current_message.return_value = [{"name": "send", "ok": True}]
+            mock_sr.return_value = sr
+            monitor._tick(page)
+            monitor._tick(page)
+            monitor._tick(page)
+        self.assertEqual(monitor.reply_count, 2)
+        self.assertTrue(any("已达自动回复上限" in item["text"] for item in monitor.logs))
+
+    def test_skips_group_invite_auto_send(self):
+        monitor = self._make_send_monitor()
+        page = MagicMock()
+        with patch(
+            "aisec_agent.web.douyin_conversation_monitor._dm_open_douyin_messages_surface",
+            return_value=[{"name": "detect_message_surface", "ok": True}],
+        ), patch(
+            "aisec_agent.web.douyin_conversation_monitor._dm_scan_inbox_summary",
+            return_value={"ok": True, "unread_count": 1, "unread_people": 1},
+        ), patch(
+            "aisec_agent.web.douyin_conversation_monitor._dm_detect_latest_douyin_message",
+            return_value={
+                "url": "https://www.douyin.com/",
+                "has_editor": True,
+                "latest_text": "https://v.douyin.com/group/287976598570",
+                "error": "",
+            },
+        ), patch(
+            "aisec_agent.web.douyin_conversation_monitor._dm_click_unread_or_latest_chat",
+            return_value={
+                "ok": True,
+                "unread": True,
+                "detail": "杨洋 刚刚 进群",
+                "preview_text": "https://v.douyin.com/group/287976598570",
+            },
+        ), patch("aisec_agent.web.douyin_conversation_monitor._sr") as mock_sr:
+            sr = MagicMock()
+            sr._dm_now.return_value = "now"
+            mock_sr.return_value = sr
+            monitor._tick(page)
+        self.assertEqual(monitor.reply_count, 0)
+        self.assertTrue(any("群聊" in item["text"] for item in monitor.logs))
 
 
 if __name__ == "__main__":

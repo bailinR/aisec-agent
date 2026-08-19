@@ -70,11 +70,7 @@ full conversation persistence still belongs in the database/event pipeline.
 
 测试页：`http://127.0.0.1:7860/dm-cs-demo`
 
-默认用本机算力池 `http://127.0.0.1:4000/v1`、模型 `chat-pm`。启动监控时打开：
-
-- `generate_reply=true`
-- `auto_send=true`
-- `reply_backend=gpu_pool`（也可设为 `rag` 走项目知识库链路）
+默认关闭自动发送。`auto_send=true` 时，对方未回复前同一会话最多自动回 2 条；群聊/进群链接不会回。
 
 只测算力池、不打开浏览器：
 
