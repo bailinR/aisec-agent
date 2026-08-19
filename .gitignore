@@ -12,7 +12,11 @@ __pycache__/
 *.py[cod]
 *.pyo
 *.log
+*.bak
+*.bak_*
 .tmp-*
+.dbg/
+.local_backup_*/
 
 .idea/
 .vscode/

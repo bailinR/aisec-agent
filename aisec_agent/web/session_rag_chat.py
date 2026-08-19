@@ -49,6 +49,7 @@ FILE_PARSER_HTML_FILE = STATIC_DIR / "file_parser.html"
 PROJECT_MATERIALS_HTML_FILE = STATIC_DIR / "project_materials.html"
 ADMIN_VUE_HTML_FILE = STATIC_DIR / "admin_vue.html"
 WORKSPACE_HTML_FILE = STATIC_DIR / "workspace.html"
+DM_CS_DEMO_HTML_FILE = STATIC_DIR / "dm_cs_demo.html"
 ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 DEFAULT_COMPANY_NAME = "默认公司"
 
@@ -7664,6 +7665,8 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self._audit_finish(HTTPStatus.FOUND, {"location": "/admin-vue"})
         elif path in {"/admin", "/admin-vue"}:
             self._send_html(ADMIN_VUE_HTML_FILE)
+        elif path in {"/dm-cs-demo", "/douyin-cs-demo"}:
+            self._send_html(DM_CS_DEMO_HTML_FILE)
         elif path.startswith("/static/"):
             self._send_static(path.removeprefix("/static/"))
         elif path.startswith(f"{DM_DEBUG_ARTIFACT_URL_PREFIX}/"):
@@ -7672,6 +7675,8 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self._handle_douyin_dm_task_list(parsed_url)
         elif path.startswith("/api/v1/douyin/private-message/tasks/") and not path.endswith("/clear"):
             self._handle_douyin_dm_task_status(parsed_url)
+        elif path == "/api/v1/douyin/private-message/conversation-monitors":
+            self._handle_douyin_conversation_monitor_list()
         elif path == "/api/workspace/state":
             self._handle_workspace_state(parsed_url)
         elif path == "/api/presets":
@@ -7780,6 +7785,17 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
 
         if path in {"/api/douyin/private-message/demo", "/api/v1/douyin/private-message/demo"}:
             self._handle_douyin_private_message_demo()
+            return
+
+        if path in {
+            "/api/v1/douyin/private-message/conversation-monitors/start",
+            "/api/v1/douyin/private-message/conversation-monitors/stop",
+        }:
+            self._handle_douyin_conversation_monitor_control(path.rsplit("/", 1)[-1])
+            return
+
+        if path == "/api/v1/douyin/private-message/conversation-monitors/probe-reply":
+            self._handle_douyin_conversation_monitor_probe_reply()
             return
 
         if path == "/api/v1/douyin/private-message/tasks":
@@ -8501,6 +8517,53 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
                 payload,
                 executor=_web_douyin_private_message_playwright_executor,
             )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_douyin_conversation_monitor_list(self):
+        from aisec_agent.web.douyin_conversation_monitor import build_douyin_conversation_monitor_list_response
+
+        try:
+            data = build_douyin_conversation_monitor_list_response()
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_douyin_conversation_monitor_control(self, action: str):
+        from aisec_agent.web.douyin_conversation_monitor import (
+            build_douyin_conversation_monitor_start_response,
+            build_douyin_conversation_monitor_stop_response,
+        )
+
+        try:
+            payload = self._read_json()
+            if action == "start":
+                data = build_douyin_conversation_monitor_start_response(
+                    payload,
+                    logic=getattr(self.server, "logic", None),
+                    project_store=getattr(self.server, "project_store", None),
+                )
+            elif action == "stop":
+                data = build_douyin_conversation_monitor_stop_response(payload)
+            else:
+                raise WebInputError("unsupported monitor action")
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_douyin_conversation_monitor_probe_reply(self):
+        from aisec_agent.web.douyin_conversation_monitor import build_douyin_cs_probe_reply_response
+
+        try:
+            payload = self._read_json()
+            data = build_douyin_cs_probe_reply_response(payload)
             self._send_json({"ok": True, "data": data})
         except WebInputError as e:
             self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
@@ -10203,6 +10266,7 @@ def _dm_wait_message_sent(
     timeout_ms: int = 8000,
     baseline: Optional[Iterable[str]] = None,
     notice_baseline: Optional[Iterable[str]] = None,
+    accept_editor_cleared: bool = False,
 ) -> Dict[str, Any]:
     baseline_signatures = {str(item).strip() for item in (baseline or []) if str(item).strip()}
     if notice_baseline is None:
@@ -10214,10 +10278,16 @@ def _dm_wait_message_sent(
     deadline = time.time() + max(1, timeout_ms / 1000)
     last_text = ""
     editor_cleared = False
+    cleared_since = 0.0
     while time.time() < deadline:
         last_text = _dm_message_editor_text(page)
         if not last_text:
+            if not editor_cleared:
+                cleared_since = time.time()
             editor_cleared = True
+        else:
+            editor_cleared = False
+            cleared_since = 0.0
         failure_notice = _dm_detect_send_failure_notice(
             page,
             baseline=notice_baseline_signatures,
@@ -10241,6 +10311,12 @@ def _dm_wait_message_sent(
                     "ok": True,
                     "detail": f"outgoing bubble confirmed at {match['x']},{match['y']}",
                 }
+        if accept_editor_cleared and editor_cleared and cleared_since and (time.time() - cleared_since) >= 0.6:
+            return {
+                "name": "send_message",
+                "ok": True,
+                "detail": "editor cleared after send (bubble unconfirmed)",
+            }
         try:
             page.wait_for_timeout(250)
         except Exception:
@@ -10603,12 +10679,32 @@ def _dm_send_and_confirm_current_message(
     message: str,
     timeout_ms: int = 8000,
     retry_enter_before_click: bool = False,
+    prefer_click_send: bool = False,
+    accept_editor_cleared: bool = False,
 ) -> List[Dict[str, Any]]:
     baseline_matches = _dm_collect_message_bubble_matches(page, message)
     baseline = [match.get("signature") for match in baseline_matches]
     notice_baseline_matches = _dm_collect_send_failure_notice_candidates(page)
     notice_baseline = [match.get("signature") for match in notice_baseline_matches]
     steps: List[Dict[str, Any]] = []
+
+    if prefer_click_send:
+        try:
+            click_step = _dm_send_current_message(page, timeout_ms=timeout_ms)
+            steps.append(click_step)
+            steps.append(
+                _dm_wait_message_sent(
+                    page,
+                    message,
+                    timeout_ms=timeout_ms,
+                    baseline=baseline,
+                    notice_baseline=notice_baseline,
+                    accept_editor_cleared=accept_editor_cleared,
+                )
+            )
+            return steps
+        except Exception as exc:
+            steps.append({"name": "click_send_first_unconfirmed", "ok": False, "detail": str(exc)})
 
     try:
         page.keyboard.press("Enter")
@@ -10623,6 +10719,7 @@ def _dm_send_and_confirm_current_message(
             timeout_ms=timeout_ms,
             baseline=baseline,
             notice_baseline=notice_baseline,
+            accept_editor_cleared=accept_editor_cleared,
         )
 
     try:

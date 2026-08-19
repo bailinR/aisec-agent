@@ -3752,7 +3752,7 @@
             accountBrowserOpening: false,
             conversationMonitors: [],
             conversationMonitorCounts: {total: 0, running: 0, error: 0},
-            conversationSettings: {auto_send: true, poll_seconds: "8"},
+            conversationSettings: {auto_send: false, poll_seconds: "8"},
             conversationMonitorTimer: null,
             sceneTemplates: {templates: []},
             modelConfigs: {},
@@ -5202,7 +5202,7 @@
             try { saved = JSON.parse(localStorage.getItem(this.conversationSettingsStorageKey()) || "{}"); }
             catch (_) { saved = {}; }
             this.conversationSettings = {
-              auto_send: saved.auto_send !== false,
+              auto_send: saved.auto_send === true,
               poll_seconds: String(saved.poll_seconds || "8"),
             };
             this.refreshConversationMonitors(true);
