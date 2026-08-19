@@ -653,6 +653,82 @@
       display: grid;
       gap: 14px;
     }
+    .activity-board {
+      display: grid;
+      gap: 14px;
+    }
+    .activity-workspace {
+      display: grid;
+      grid-template-columns: 360px minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+    }
+    .activity-list {
+      display: grid;
+      gap: 10px;
+      max-height: calc(100vh - 280px);
+      overflow: auto;
+      padding-right: 2px;
+    }
+    .activity-card {
+      width: 100%;
+      min-height: 92px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      color: var(--text);
+      box-shadow: none;
+      text-align: left;
+      padding: 12px;
+      display: grid;
+      gap: 7px;
+    }
+    .activity-card:hover { border-color: var(--line-strong); background: #f9fbff; box-shadow: none; }
+    .activity-card.active { border-color: rgba(13,135,152,.36); background: var(--accent-soft); }
+    .activity-card-head, .activity-card-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-width: 0;
+    }
+    .activity-name {
+      font-weight: 900;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .activity-status {
+      flex: 0 0 auto;
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 11px;
+      font-weight: 800;
+      background: var(--blue-soft);
+      color: var(--blue);
+    }
+    .activity-status.off {
+      background: #f3f4f6;
+      color: var(--muted);
+    }
+    .activity-card-meta {
+      color: var(--muted);
+      font-size: 12px;
+      justify-content: flex-start;
+      flex-wrap: wrap;
+    }
+    .activity-card-meta span::after {
+      content: "·";
+      margin: 0 6px;
+      color: #b7c2d4;
+    }
+    .activity-card-meta span:last-child::after { content: ""; margin: 0; }
+    .activity-editor-note {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
     .account-workspace {
       display: grid;
       grid-template-columns: 360px minmax(0, 1fr);
@@ -1984,7 +2060,8 @@
       .model-settings-board { grid-template-columns: 1fr; }
       .knowledge-workbench { grid-template-columns: 1fr; }
       .dm-flow { grid-template-columns: 1fr; }
-      .account-workspace { grid-template-columns: 1fr; }
+      .account-workspace,
+      .activity-workspace { grid-template-columns: 1fr; }
       .account-queue-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .conversation-layout { grid-template-columns: 1fr; }
       .batch-options, .batch-result { grid-template-columns: 1fr; }
@@ -2863,6 +2940,176 @@
             </div>
           </section>
 
+          </section>
+
+          <section v-if="activeMenu === 'activities'" class="activity-board">
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">活动钩子概览</div>
+                  <div class="panel-meta">按业务板块配置资料包、评估名额、体验入口等钩子；生成私信时会按评论/视频自动匹配启用中的活动。</div>
+                </div>
+                <div class="panel-actions">
+                  <button class="secondary mini" @click="addActivityHook">新增钩子</button>
+                  <button @click="saveActivityHook" :disabled="!selectedActivityDraft.activity_id">保存修改</button>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div class="account-queue-grid">
+                  <div class="account-queue-item">
+                    <div class="account-queue-label">活动总数</div>
+                    <div class="account-queue-value">{{ activityHookStats.total }}</div>
+                  </div>
+                  <div class="account-queue-item">
+                    <div class="account-queue-label">已启用</div>
+                    <div class="account-queue-value">{{ activityHookStats.enabled }}</div>
+                  </div>
+                  <div class="account-queue-item">
+                    <div class="account-queue-label">已绑定板块</div>
+                    <div class="account-queue-value">{{ activityHookStats.bound }}</div>
+                  </div>
+                  <div class="account-queue-item">
+                    <div class="account-queue-label">业务板块</div>
+                    <div class="account-queue-value">{{ activityBoardOptions.length }}</div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <div class="activity-workspace">
+              <aside class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">钩子列表</div>
+                    <div class="panel-meta">点击左侧卡片编辑，右侧表单保存后立即生效。</div>
+                  </div>
+                </div>
+                <div class="panel-body">
+                  <div class="empty" v-if="!(activitySettings.activities || []).length">还没有活动钩子，点击“新增钩子”开始配置。</div>
+                  <div class="activity-list" v-else>
+                    <button
+                      class="activity-card"
+                      v-for="activity in (activitySettings.activities || [])"
+                      :key="activity.activity_id"
+                      :class="{active: selectedActivityId === activity.activity_id}"
+                      @click="selectActivityHook(activity.activity_id)"
+                    >
+                      <span class="activity-card-head">
+                        <span class="activity-name">{{ activity.title || '未命名活动' }}</span>
+                        <span class="activity-status" :class="{off: activity.enabled === false}">{{ activity.enabled === false ? '已停用' : '启用中' }}</span>
+                      </span>
+                      <span class="activity-card-meta">
+                        <span>{{ activity.business_board_name || '未选业务板块' }}</span>
+                        <span>{{ activity.business_module_name || '未选业务模块' }}</span>
+                        <span>{{ activity.activity_type || '活动' }}</span>
+                      </span>
+                      <span class="company-meta">{{ activity.benefit || activity.applicable_scene || '暂无权益说明' }}</span>
+                    </button>
+                  </div>
+                </div>
+              </aside>
+
+              <section class="panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">{{ selectedActivityDraft.title || '活动钩子配置' }}</div>
+                    <div class="panel-meta">必须选择业务板块；业务模块可选，便于更精准匹配评论场景。</div>
+                  </div>
+                  <div class="panel-actions" v-if="selectedActivityDraft.activity_id">
+                    <button class="danger mini" @click="deleteActivityHook">删除</button>
+                  </div>
+                </div>
+                <div class="panel-body" v-if="selectedActivityDraft.activity_id">
+                  <div class="field-grid three">
+                    <div>
+                      <label>活动标题</label>
+                      <input v-model.trim="selectedActivityDraft.title" placeholder="例如：益生菌养护资料包领取">
+                    </div>
+                    <div>
+                      <label>活动类型</label>
+                      <select v-model="selectedActivityDraft.activity_type">
+                        <option value="资料包">资料包</option>
+                        <option value="初步评估">初步评估</option>
+                        <option value="体验名额">体验名额</option>
+                        <option value="预约入口">预约入口</option>
+                        <option value="活动">活动</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label>启用状态</label>
+                      <select v-model="selectedActivityDraft.enabled">
+                        <option :value="true">启用</option>
+                        <option :value="false">停用</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="field-grid">
+                    <div>
+                      <label>业务板块（必选）</label>
+                      <select v-model="selectedActivityDraft.business_board_id" @change="onActivityBoardChange">
+                        <option value="">请选择业务板块</option>
+                        <option v-for="board in activityBoardOptions" :key="board.business_board_id" :value="board.business_board_id">
+                          {{ board.business_board_name || board.name }}
+                        </option>
+                      </select>
+                    </div>
+                    <div>
+                      <label>业务模块（可选）</label>
+                      <select v-model="selectedActivityDraft.business_module_id" @change="onActivityModuleChange">
+                        <option value="">不限定业务模块</option>
+                        <option v-for="module in activityModuleOptions" :key="module.business_module_id" :value="module.business_module_id">
+                          {{ module.business_module_name || module.name }}
+                        </option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label>适用场景</label>
+                    <textarea rows="3" v-model="selectedActivityDraft.applicable_scene" placeholder="说明什么评论/视频场景可以使用这个钩子"></textarea>
+                  </div>
+                  <div>
+                    <label>活动描述</label>
+                    <textarea rows="3" v-model="selectedActivityDraft.description" placeholder="活动面向谁、做什么、怎么轻量承接"></textarea>
+                  </div>
+                  <div class="field-grid">
+                    <div>
+                      <label>钩子利益</label>
+                      <textarea rows="3" v-model="selectedActivityDraft.benefit" placeholder="用户立刻回复的理由，例如资料包、初评名额"></textarea>
+                    </div>
+                    <div>
+                      <label>领取 / 承接方式</label>
+                      <textarea rows="3" v-model="selectedActivityDraft.claim_method" placeholder="私信里怎么引导领取或进入下一步"></textarea>
+                    </div>
+                  </div>
+                  <div class="field-grid three">
+                    <div>
+                      <label>名额说明</label>
+                      <input v-model.trim="selectedActivityDraft.quota" placeholder="例如：每日名额有限，不编造剩余数量">
+                    </div>
+                    <div>
+                      <label>截止时间</label>
+                      <input v-model.trim="selectedActivityDraft.deadline" placeholder="例如：本周内优先安排">
+                    </div>
+                    <div>
+                      <label>标签（逗号分隔）</label>
+                      <input v-model.trim="selectedActivityDraft.tagsText" placeholder="益生菌，肠道，资料包">
+                    </div>
+                  </div>
+                  <div>
+                    <label>合规备注</label>
+                    <textarea rows="3" v-model="selectedActivityDraft.compliance_note" placeholder="不能承诺疗效、价格、名额等边界"></textarea>
+                  </div>
+                  <div class="activity-editor-note">
+                    保存位置：`activity_settings.json`。提示词页不再承载活动增删改；这里改完后，私信生成会按评论自动匹配启用中的钩子。
+                  </div>
+                </div>
+                <div class="panel-body" v-else>
+                  <div class="empty">请选择左侧活动，或点击“新增钩子”。</div>
+                </div>
+              </section>
+            </div>
+          </section>
+
           <section v-if="activeMenu === 'prompts'" class="prompt-board">
             <div class="prompt-board-toolbar">
               <div>
@@ -3514,6 +3761,8 @@
             modelKeyVisible: false,
             modelSaving: false,
             activitySettings: {activities: []},
+            selectedActivityId: "",
+            selectedActivityDraft: {},
             projectFiles: [],
             upload: {file: null, useAi: true},
             uploadResult: null,
@@ -3582,7 +3831,8 @@
               {key: "accounts", label: "账号管理", icon: "AC", desc: "保存账号登录信息，打开浏览器托管私信回复。"},
               {key: "conversations", label: "私信对话", icon: "CH", desc: "监控托管账号的新私信，自动生成并推进多轮对话。"},
               {key: "knowledge", label: "知识库", icon: "KB", desc: "文件夹式知识库，映射真实路径，支持文件预览和修改。"},
-              {key: "prompts", label: "提示词", icon: "PT", desc: "管理全局、业务承接、任务规则、活动提示词，并说明最终组装关系。"},
+              {key: "activities", label: "活动钩子", icon: "HK", desc: "按业务板块维护资料包、名额、入口等行动钩子，可在页面直接增删改。"},
+              {key: "prompts", label: "提示词", icon: "PT", desc: "管理全局、业务承接、任务规则提示词，并说明最终组装关系。"},
               {key: "models", label: "模型设置", icon: "AI", desc: "管理模型供应商、API Key 和调用参数，Key 只显示脱敏结果。"},
               {key: "batch", label: "批量任务", icon: "BT", desc: "批量维护评论转私信任务，逐条生成并预填或发送。"},
               {key: "dm", label: "私信调试", icon: "DM", desc: "用当前配置生成私信，查看简化响应和提示词链路。"},
@@ -4012,20 +4262,7 @@
             const activityItems = [
               ...knowledgePromptFiles
                 .filter(file => isActivityPromptFile(file))
-                .map(file => fileItem(file, "活动提示词", ["知识库", "活动钩子"])),
-              ...(this.activitySettings.activities || []).map(act => ({
-                id: "activity:" + act.activity_id,
-                title: act.title || act.activity_id,
-                kind: "activity",
-                kindLabel: "活动提示词",
-                content: JSON.stringify(act, null, 2),
-                tags: ["活动", "资料包", "入口", ...(act.tags || [])],
-                location: this.promptLocationFromActivity(act),
-                editable: true,
-                canEdit: true,
-                canDelete: true,
-                raw: act,
-              })),
+                .map(file => fileItem(file, "活动参考资料", ["知识库", "活动说明"])),
             ];
             const flowItems = this.promptFlow.map((step, index) => {
               return {
@@ -4048,7 +4285,7 @@
               {key: "scene_materials", title: "场景材料", desc: "场景里的事实素材、话术参考和可用信息", items: materialItems},
               {key: "business", title: "业务承接规则", desc: "识别业务方向、判断意向强弱、选择承接动作和规避错误承诺", items: businessItems},
               {key: "task", title: "任务规则提示词", desc: "规定怎么做、输出什么、不要做什么", items: taskItems},
-              {key: "activity", title: "活动提示词", desc: "资料包、名额、入口和行动钩子", items: activityItems},
+              {key: "activity", title: "活动参考资料", desc: "知识库中的活动说明文档；可配置活动钩子请到左侧「活动钩子」菜单", items: activityItems},
               {key: "flow", title: "提示词组装顺序", desc: "按这条顺序把输入、业务承接、流程模板、场景材料、任务规则、活动和知识库拼成完整 Prompt", items: flowItems},
             ].filter(group => group.items.length);
           },
@@ -4068,6 +4305,34 @@
           },
           enabledActivities() {
             return (this.activitySettings.activities || []).filter(item => item.enabled !== false);
+          },
+          activityBoardOptions() {
+            if ((this.businessBoards || []).length) {
+              return this.businessBoards;
+            }
+            return (this.documentDescriptions.knowledge_bases || []).map(base => ({
+              business_board_id: base.kb_id || "",
+              business_board_name: base.name || "未命名业务板块",
+              name: base.name || "未命名业务板块",
+              modules: (base.domains || []).map(domain => ({
+                business_module_id: domain.domain_id || "",
+                business_module_name: domain.name || "未命名业务模块",
+                name: domain.name || "未命名业务模块",
+              })),
+            }));
+          },
+          activityModuleOptions() {
+            const boardId = this.selectedActivityDraft && this.selectedActivityDraft.business_board_id || "";
+            const board = this.activityBoardOptions.find(item => item.business_board_id === boardId);
+            return (board && board.modules) || [];
+          },
+          activityHookStats() {
+            const activities = this.activitySettings.activities || [];
+            return {
+              total: activities.length,
+              enabled: activities.filter(item => item.enabled !== false).length,
+              bound: activities.filter(item => item.business_board_id || item.business_board_name).length,
+            };
           },
           dmPrompts() {
             return this.dmMeta.prompts || [];
@@ -6018,6 +6283,7 @@
               }
               this.sceneTemplates = state.scene_templates || {templates: []};
               this.activitySettings = state.activity_settings || {activities: []};
+              this.ensureActivitySelection();
               await this.loadModelConfigs();
               try {
                 this.workspaceState = await this.fetchJson("/api/workspace/state");
@@ -6165,6 +6431,156 @@
           ensureInitialSelections() {
             if (!this.activePromptItem && this.promptCatalog.length && this.promptCatalog[0].items.length) {
               this.selectPromptItem(this.promptCatalog[0].items[0]);
+            }
+            this.ensureActivitySelection();
+          },
+          emptyActivityDraft() {
+            return {
+              activity_id: "act_" + this.uuid().replace(/-/g, "").slice(0, 10),
+              title: "",
+              activity_type: "资料包",
+              business_board_id: "",
+              business_board_name: "",
+              business_module_id: "",
+              business_module_name: "",
+              applicable_scene: "",
+              description: "",
+              benefit: "",
+              claim_method: "",
+              quota: "",
+              deadline: "",
+              compliance_note: "",
+              tags: [],
+              tagsText: "",
+              enabled: true,
+            };
+          },
+          activityDraftFromItem(activity) {
+            const item = activity || {};
+            return {
+              activity_id: item.activity_id || "",
+              title: item.title || "",
+              activity_type: item.activity_type || "活动",
+              business_board_id: item.business_board_id || "",
+              business_board_name: item.business_board_name || "",
+              business_module_id: item.business_module_id || "",
+              business_module_name: item.business_module_name || "",
+              applicable_scene: item.applicable_scene || "",
+              description: item.description || "",
+              benefit: item.benefit || "",
+              claim_method: item.claim_method || "",
+              quota: item.quota || "",
+              deadline: item.deadline || "",
+              compliance_note: item.compliance_note || "",
+              tags: item.tags || [],
+              tagsText: (item.tags || []).join("，"),
+              enabled: item.enabled !== false,
+            };
+          },
+          ensureActivitySelection() {
+            const activities = this.activitySettings.activities || [];
+            if (!activities.length) {
+              this.selectedActivityId = "";
+              this.selectedActivityDraft = {};
+              return;
+            }
+            const current = activities.find(item => item.activity_id === this.selectedActivityId);
+            this.selectActivityHook((current || activities[0]).activity_id);
+          },
+          selectActivityHook(activityId) {
+            const activity = (this.activitySettings.activities || []).find(item => item.activity_id === activityId);
+            if (!activity) {
+              this.selectedActivityId = "";
+              this.selectedActivityDraft = {};
+              return;
+            }
+            this.selectedActivityId = activity.activity_id;
+            this.selectedActivityDraft = this.activityDraftFromItem(activity);
+          },
+          addActivityHook() {
+            const draft = this.emptyActivityDraft();
+            this.selectedActivityId = draft.activity_id;
+            this.selectedActivityDraft = draft;
+            this.setStatus("已新建活动钩子草稿，请选择业务板块后保存", "info");
+          },
+          syncActivityBoardFields() {
+            const board = this.activityBoardOptions.find(item => item.business_board_id === this.selectedActivityDraft.business_board_id);
+            this.selectedActivityDraft.business_board_name = board ? (board.business_board_name || board.name || "") : "";
+            const module = this.activityModuleOptions.find(item => item.business_module_id === this.selectedActivityDraft.business_module_id);
+            this.selectedActivityDraft.business_module_name = module ? (module.business_module_name || module.name || "") : "";
+            if (!this.selectedActivityDraft.business_module_id) {
+              this.selectedActivityDraft.business_module_name = "";
+            }
+          },
+          onActivityBoardChange() {
+            this.syncActivityBoardFields();
+            this.selectedActivityDraft.business_module_id = "";
+            this.selectedActivityDraft.business_module_name = "";
+          },
+          onActivityModuleChange() {
+            this.syncActivityBoardFields();
+          },
+          async saveActivityHook() {
+            if (!this.selectedActivityDraft || !this.selectedActivityDraft.activity_id) {
+              this.setStatus("请先选择或新增活动钩子", "error");
+              return;
+            }
+            if (!(this.selectedActivityDraft.title || "").trim()) {
+              this.setStatus("请填写活动标题", "error");
+              return;
+            }
+            if (!(this.selectedActivityDraft.business_board_id || "").trim()) {
+              this.setStatus("请选择业务板块", "error");
+              return;
+            }
+            this.syncActivityBoardFields();
+            const activity = {
+              ...this.selectedActivityDraft,
+              tags: String(this.selectedActivityDraft.tagsText || "").split(/[,，、]/).map(item => item.trim()).filter(Boolean),
+            };
+            delete activity.tagsText;
+            this.setStatus("正在保存活动钩子...");
+            try {
+              const data = await this.fetchJson("/api/admin/activity/save", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({project_id: this.projectId, activity})
+              });
+              this.activitySettings = data.activity_settings || this.activitySettings;
+              this.selectedActivityId = (data.activity && data.activity.activity_id) || activity.activity_id;
+              this.ensureActivitySelection();
+              this.setStatus("活动钩子已保存", "ok");
+            } catch (error) {
+              this.setStatus(error.message || "保存活动钩子失败", "error");
+            }
+          },
+          async deleteActivityHook() {
+            const activityId = this.selectedActivityDraft && this.selectedActivityDraft.activity_id;
+            if (!activityId) return;
+            const name = this.selectedActivityDraft.title || activityId;
+            if (!window.confirm("确定删除活动钩子“" + name + "”吗？")) return;
+            const exists = (this.activitySettings.activities || []).some(item => item.activity_id === activityId);
+            if (!exists) {
+              this.selectedActivityId = "";
+              this.selectedActivityDraft = {};
+              this.ensureActivitySelection();
+              this.setStatus("未保存草稿已取消", "ok");
+              return;
+            }
+            try {
+              this.setStatus("正在删除活动钩子...");
+              const data = await this.fetchJson("/api/admin/activity/delete", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({project_id: this.projectId, activity_id: activityId})
+              });
+              this.activitySettings = data.activity_settings || this.activitySettings;
+              this.selectedActivityId = "";
+              this.selectedActivityDraft = {};
+              this.ensureActivitySelection();
+              this.setStatus("活动钩子已删除：" + name, "ok");
+            } catch (error) {
+              this.setStatus(error.message || "删除活动钩子失败", "error");
             }
           },
           onUploadFile(event) {

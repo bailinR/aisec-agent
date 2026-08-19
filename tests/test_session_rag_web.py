@@ -84,6 +84,7 @@ from aisec_agent.web.session_rag_chat import (
     _dm_send_current_message,
     _dm_send_failure_notice_code,
     _dm_wait_message_sent,
+    _douyin_detect_login_requirement,
     _douyin_private_message_playwright_executor,
     _format_sender_identity_context,
     process_douyin_dm_task_once,
@@ -1170,6 +1171,77 @@ class SessionRAGWebTest(unittest.TestCase):
         manual_task = task_list["tasks"]["manual_required"][0]
         self.assertTrue(manual_task["manual_takeover"]["available"])
         self.assertEqual(manual_task["manual_takeover"]["browser"], "edge")
+
+    def test_douyin_dm_login_modal_fails_with_need_relogin_reason(self):
+        redis = FakeRedis()
+        build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_login_modal_001",
+                "video_info": "video",
+                "account_cookie": "cookie",
+                "comment_info": "comment",
+                "target_profile_url": "https://www.douyin.com/user/test-sec-uid",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+
+        demo_result = {
+            "success": False,
+            "opened": True,
+            "prefilled": False,
+            "sent": False,
+            "requires_login": True,
+            "error": "login_required: 需要重新登录",
+            "steps": [
+                {"name": "open_profile", "ok": True, "detail": "opened"},
+                {"name": "login_required", "ok": False, "detail": "after_open_profile: 需要重新登录"},
+            ],
+        }
+        with patch(
+            "aisec_agent.web.session_rag_chat.build_public_private_message_response",
+            return_value={"reply": "hello"},
+        ), patch(
+            "aisec_agent.web.session_rag_chat.build_douyin_private_message_demo_response",
+            return_value=demo_result,
+        ):
+            processed = process_douyin_dm_task_once(redis_client=redis, mode="send", block_timeout=1)
+
+        self.assertEqual(processed["status"], "manual_required")
+        self.assertEqual(processed["queue_status"], "manual_required")
+        self.assertEqual(processed["error_code"], "login_required")
+        self.assertEqual(processed["failure_code"], "login_required")
+        self.assertEqual(processed["failure_reason"], "需要重新登录")
+        self.assertIn("需要重新登录", processed["failure_summary"])
+        self.assertTrue(processed["manual_required"])
+
+        status = build_douyin_dm_task_status_response("dm_login_modal_001", redis_client=redis)
+        self.assertEqual(status["result"]["failure_code"], "login_required")
+        self.assertEqual(status["result"]["failure_reason"], "需要重新登录")
+
+    def test_douyin_detect_login_requirement_matches_free_hd_login_modal(self):
+        class DummyPage:
+            def evaluate(self, *_args, **_kwargs):
+                return {
+                    "requires_login": True,
+                    "requires_verification": False,
+                    "body_text": "登录后免费畅享高清视频 扫码登录 验证码登录",
+                }
+
+        state = _douyin_detect_login_requirement(DummyPage())
+        self.assertTrue(state["requires_login"])
+        self.assertFalse(state["requires_verification"])
+
+    def test_dm_infer_failure_code_prefers_login_required_for_relogin_text(self):
+        self.assertEqual(
+            _dm_infer_failure_code("", "login_required: 需要重新登录", {
+                "requires_login": True,
+                "steps": [{"name": "login_required", "ok": False, "detail": "after_open_profile: 需要重新登录"}],
+            }),
+            "login_required",
+        )
+        meta = _dm_failure_metadata("login_required", "manual", "login_required: 需要重新登录")
+        self.assertEqual(meta["failure_reason"], "需要重新登录")
 
     def test_open_url_response_uses_injected_opener(self):
         calls = []
@@ -4122,6 +4194,8 @@ class SessionRAGWebTest(unittest.TestCase):
                     "activity": {
                         "title": "睡眠状态免费初评活动",
                         "activity_type": "义诊",
+                        "business_board_name": "大健康业务板块",
+                        "business_module_name": "睡眠初评服务",
                         "applicable_scene": "用户评论睡不好、压力大、熬夜、入睡困难时使用。",
                         "description": "提供一次轻量睡眠状态初评。",
                         "benefit": "免费初评和睡眠自测表。",
@@ -4153,7 +4227,10 @@ class SessionRAGWebTest(unittest.TestCase):
             )
 
         self.assertEqual(saved["activity"]["title"], "睡眠状态免费初评活动")
+        self.assertEqual(saved["activity"]["business_board_name"], "大健康业务板块")
+        self.assertEqual(saved["activity"]["business_module_name"], "睡眠初评服务")
         self.assertEqual(restored["activity_settings"]["activity_type"], "义诊")
+        self.assertEqual(restored["activity_settings"]["business_board_name"], "大健康业务板块")
         self.assertIn("咱们这边正好有", restored["final_prompt"])
         self.assertIn("睡眠状态免费初评活动", restored["final_prompt"])
         self.assertIn("免费初评和睡眠自测表", restored["final_prompt"])

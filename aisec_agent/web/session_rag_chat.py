@@ -1098,6 +1098,8 @@ def _infer_sender_identity_from_context(
         segments.extend([
             str(activity_settings.get("title") or ""),
             str(activity_settings.get("activity_type") or ""),
+            str(activity_settings.get("business_board_name") or ""),
+            str(activity_settings.get("business_module_name") or ""),
             str(activity_settings.get("applicable_scene") or ""),
             str(activity_settings.get("description") or ""),
             str(activity_settings.get("benefit") or ""),
@@ -4866,10 +4868,28 @@ def _normalize_scene_template(raw: Dict[str, Any]) -> Dict[str, Any]:
 def _normalize_activity(raw: Dict[str, Any]) -> Dict[str, Any]:
     activity_id = str(raw.get("activity_id") or "").strip() or "act_" + uuid.uuid4().hex[:10]
     tags = raw.get("tags") if isinstance(raw.get("tags"), list) else []
+    board_name = _clip_text(
+        raw.get("business_board_name") or raw.get("knowledge_base") or raw.get("business_board"),
+        120,
+    )
+    board_id = str(raw.get("business_board_id") or raw.get("kb_id") or "").strip()
+    if board_name and not board_id:
+        board_id = _business_board_key(board_name, "")
+    module_name = _clip_text(
+        raw.get("business_module_name") or raw.get("domain") or raw.get("business_module"),
+        120,
+    )
+    module_id = str(raw.get("business_module_id") or raw.get("domain_id") or "").strip()
+    if module_name and not module_id:
+        module_id = _domain_id(module_name)
     return {
         "activity_id": activity_id,
         "title": _clip_text(raw.get("title"), 80) or "未命名活动",
         "activity_type": _clip_text(raw.get("activity_type") or raw.get("type"), 40) or "活动",
+        "business_board_id": board_id,
+        "business_board_name": board_name,
+        "business_module_id": module_id,
+        "business_module_name": module_name,
         "applicable_scene": _clip_text(raw.get("applicable_scene"), 800),
         "description": _clip_text(raw.get("description"), 1200),
         "benefit": _clip_text(raw.get("benefit") or raw.get("offer"), 800),
@@ -5253,6 +5273,8 @@ def _select_activity(question: str, activities: List[Dict[str, Any]], activity_i
         values = [
             activity.get("title"),
             activity.get("activity_type"),
+            activity.get("business_board_name"),
+            activity.get("business_module_name"),
             activity.get("applicable_scene"),
             activity.get("description"),
             activity.get("benefit"),
@@ -8861,7 +8883,7 @@ DM_FAILURE_PROFILES = {
     "login_required": {
         "stage": "browser_login",
         "category": "account",
-        "reason": "抖音登录态失效或未登录",
+        "reason": "需要重新登录",
         "hint": "请先在浏览器里完成抖音登录，再重试任务",
     },
     "verification_required": {
@@ -8972,6 +8994,8 @@ DM_FAILURE_STEP_STAGE_MAP = {
     "press_enter_send": "send_action",
     "press_enter_unconfirmed": "send_confirm",
     "send_message": "send_confirm",
+    "login_required": "browser_login",
+    "verification_required": "browser_login",
     "playwright_error": "browser_runtime",
 }
 
@@ -10870,21 +10894,94 @@ def _douyin_detect_login_requirement(page: Any) -> Dict[str, Any]:
         () => {
           const bodyText = String(document.body && document.body.innerText || "").slice(0, 4000);
           const hasLoginPanel = !!document.querySelector(
-            '.login-full-panel, [class*="login-panel"], [class*="verify"], input[placeholder*="手机号"], input[placeholder*="验证码"]'
+            '.login-full-panel, [class*="login-panel"], input[placeholder*="手机号"], input[placeholder*="验证码"]'
           );
-          const requiresLoginText = /登录|手机号|验证码|扫码登录|二次验证|安全验证/.test(bodyText);
+          const loginModalText = /登录后免费|扫码登录|验证码登录|密码登录|打开[\\u300c\\u300d'"]*抖音APP|请输入手机号|获取验证码/.test(bodyText);
+          const requiresVerificationText = /二次验证|安全验证|请完成下列验证|滑块验证|完成下方验证/.test(bodyText);
+          const requires_login = (hasLoginPanel || loginModalText) && !requiresVerificationText;
           return {
-            requires_login: hasLoginPanel || requiresLoginText,
+            requires_login,
+            requires_verification: requiresVerificationText,
             body_text: bodyText.slice(0, 200),
           };
         }
         """
     )
     if not isinstance(payload, dict):
-        return {"requires_login": False, "body_text": ""}
+        return {"requires_login": False, "requires_verification": False, "body_text": ""}
     return {
         "requires_login": bool(payload.get("requires_login")),
+        "requires_verification": bool(payload.get("requires_verification")),
         "body_text": str(payload.get("body_text") or ""),
+    }
+
+
+def _dm_login_required_step(stage: str = "") -> Dict[str, Any]:
+    detail = "需要重新登录"
+    if stage:
+        detail = f"{stage}: {detail}"
+    return {"name": "login_required", "ok": False, "detail": detail}
+
+
+def _dm_abort_on_login_requirement(
+    page: Any,
+    steps: List[Dict[str, Any]],
+    *,
+    stage: str = "",
+) -> Optional[Dict[str, Any]]:
+    login_state = _douyin_detect_login_requirement(page)
+    if login_state.get("requires_verification"):
+        step = {"name": "verification_required", "ok": False, "detail": f"{stage}: 需要二次验证" if stage else "需要二次验证"}
+        steps.append(step)
+        return {
+            "error": "verification_required: 需要二次验证",
+            "requires_login": False,
+            "requires_verification": True,
+            "login_state": login_state,
+        }
+    if not login_state.get("requires_login"):
+        return None
+    steps.append(_dm_login_required_step(stage))
+    return {
+        "error": "login_required: 需要重新登录",
+        "requires_login": True,
+        "requires_verification": False,
+        "login_state": login_state,
+    }
+
+
+def _dm_build_login_abort_result(
+    abort: Dict[str, Any],
+    *,
+    steps: List[Dict[str, Any]],
+    combined_steps: List[Dict[str, Any]],
+    page: Any,
+    options: Dict[str, Any],
+    browser_name: str,
+    keep_browser_open: bool,
+    context: Any,
+    browser: Any,
+    playwright: Any,
+    cookies: List[Any],
+) -> Dict[str, Any]:
+    failure = _dm_screenshot_failure(page, options, str(abort.get("error") or "login_required: 需要重新登录"))
+    if not _dm_should_keep_browser_open_on_failure(str(abort.get("error") or ""), keep_browser_open):
+        _dm_stop_playwright_context(context, browser, playwright)
+    return {
+        "success": False,
+        "opened": any(step.get("name") == "open_profile" and step.get("ok") for step in combined_steps + steps),
+        "prefilled": False,
+        "sent": False,
+        "resolved_browser": browser_name,
+        "engine": "playwright",
+        "steps": combined_steps + steps,
+        "error": str(abort.get("error") or "login_required: 需要重新登录"),
+        "requires_login": bool(abort.get("requires_login")),
+        "requires_verification": bool(abort.get("requires_verification")),
+        "keep_browser_open": keep_browser_open,
+        "account_cookie_loaded": bool(cookies),
+        "account_cookie_count": len(cookies),
+        **failure,
     }
 
 
@@ -10960,11 +11057,74 @@ def _douyin_private_message_playwright_executor(
                 ),
             })
             _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page))
-            steps.append(_dm_click_profile_private_message(page, timeout_ms=min(timeout_ms, 12000)))
+            login_abort = _dm_abort_on_login_requirement(page, steps, stage="after_open_profile")
+            if login_abort:
+                return _dm_build_login_abort_result(
+                    login_abort,
+                    steps=steps,
+                    combined_steps=combined_steps,
+                    page=page,
+                    options=options,
+                    browser_name=browser_name,
+                    keep_browser_open=keep_browser_open,
+                    context=context,
+                    browser=browser,
+                    playwright=playwright,
+                    cookies=cookies,
+                )
+            try:
+                steps.append(_dm_click_profile_private_message(page, timeout_ms=min(timeout_ms, 12000)))
+            except RuntimeError as exc:
+                login_abort = _dm_abort_on_login_requirement(page, steps, stage="open_private_message")
+                if login_abort:
+                    return _dm_build_login_abort_result(
+                        login_abort,
+                        steps=steps,
+                        combined_steps=combined_steps,
+                        page=page,
+                        options=options,
+                        browser_name=browser_name,
+                        keep_browser_open=keep_browser_open,
+                        context=context,
+                        browser=browser,
+                        playwright=playwright,
+                        cookies=cookies,
+                    )
+                raise
             _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page, timeout_ms=1200))
+            login_abort = _dm_abort_on_login_requirement(page, steps, stage="after_open_private_message")
+            if login_abort:
+                return _dm_build_login_abort_result(
+                    login_abort,
+                    steps=steps,
+                    combined_steps=combined_steps,
+                    page=page,
+                    options=options,
+                    browser_name=browser_name,
+                    keep_browser_open=keep_browser_open,
+                    context=context,
+                    browser=browser,
+                    playwright=playwright,
+                    cookies=cookies,
+                )
             try:
                 steps.append(_dm_fill_message_editor(page, message, timeout_ms=min(timeout_ms, 12000)))
             except RuntimeError as exc:
+                login_abort = _dm_abort_on_login_requirement(page, steps, stage="fill_message_editor")
+                if login_abort:
+                    return _dm_build_login_abort_result(
+                        login_abort,
+                        steps=steps,
+                        combined_steps=combined_steps,
+                        page=page,
+                        options=options,
+                        browser_name=browser_name,
+                        keep_browser_open=keep_browser_open,
+                        context=context,
+                        browser=browser,
+                        playwright=playwright,
+                        cookies=cookies,
+                    )
                 if "no trusted editor" not in str(exc).lower():
                     raise
                 recovery = _dm_close_douyin_global_message_drawer(page)
@@ -10974,6 +11134,21 @@ def _douyin_private_message_playwright_executor(
                 retry_open["name"] = "retry_open_private_message"
                 steps.append(retry_open)
                 _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page, timeout_ms=1200))
+                login_abort = _dm_abort_on_login_requirement(page, steps, stage="after_retry_open_private_message")
+                if login_abort:
+                    return _dm_build_login_abort_result(
+                        login_abort,
+                        steps=steps,
+                        combined_steps=combined_steps,
+                        page=page,
+                        options=options,
+                        browser_name=browser_name,
+                        keep_browser_open=keep_browser_open,
+                        context=context,
+                        browser=browser,
+                        playwright=playwright,
+                        cookies=cookies,
+                    )
                 steps.append(_dm_fill_message_editor(page, message, timeout_ms=min(timeout_ms, 12000)))
             sent = False
             followup_private_message = False
@@ -10981,6 +11156,21 @@ def _douyin_private_message_playwright_executor(
             followup_private_message_detail = ""
             if auto_send:
                 _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page, timeout_ms=1200))
+                login_abort = _dm_abort_on_login_requirement(page, steps, stage="before_send")
+                if login_abort:
+                    return _dm_build_login_abort_result(
+                        login_abort,
+                        steps=steps,
+                        combined_steps=combined_steps,
+                        page=page,
+                        options=options,
+                        browser_name=browser_name,
+                        keep_browser_open=keep_browser_open,
+                        context=context,
+                        browser=browser,
+                        playwright=playwright,
+                        cookies=cookies,
+                    )
                 steps.extend(_dm_send_and_confirm_current_message(page, message, timeout_ms=min(timeout_ms, 10000)))
                 sent = True
                 if followup_message:
@@ -11140,7 +11330,7 @@ def _douyin_account_cookie_playwright_executor(raw_cookies: str, browser_name: s
             "detail": account_profile.get("account_type_label") if detected else (account_profile.get("reason") or "未识别"),
         })
         if not detected and login_state.get("requires_login"):
-            steps.append({"name": "login_required", "ok": False, "detail": "login required before account type detection"})
+            steps.append(_dm_login_required_step("before_account_type_detection"))
         if not keep_browser_open:
             _dm_stop_playwright_context(context, browser, playwright)
         return {
@@ -11531,8 +11721,15 @@ def _dm_failure_from_demo_result(demo_result: Dict[str, Any]) -> Optional[Except
     notice_code = _dm_send_failure_notice_code(text)
     if notice_code:
         return RuntimeError(f"{notice_code}: {trace.get('failure_step_detail') or result.get('error') or notice_code}")
-    if trace.get("requires_login") or any(marker in text for marker in ["login", "二次验证", "second_verify", "verification"]):
+    if any(marker in text for marker in ["second_verify", "二次验证", "verification required", "verification_required", "滑块验证", "请完成下列验证"]):
         return RuntimeError("verification required")
+    if trace.get("requires_login") or any(
+        marker in text
+        for marker in ["login_required", "login required", "需要重新登录", "login-full-panel", "扫码登录", "登录后免费"]
+    ):
+        return RuntimeError("login_required: 需要重新登录")
+    if any(marker in text for marker in ["login", "verification"]):
+        return RuntimeError("login_required: 需要重新登录")
     if any(marker in text for marker in ["风控", "risk", "blocked", "限制", "permission"]):
         return RuntimeError("account risk")
     if any(marker in text for marker in ["browser has been closed", "page has been closed", "context has been closed", "target page, context or browser has been closed", "browser closed", "page closed"]):
@@ -11577,8 +11774,10 @@ def _dm_infer_failure_code(error_code: str, error_text: str, detail: Optional[An
         return "model_timeout" if any(marker in text for marker in ["model", "llm", "minimax", "openai", "deepseek", "anthropic"]) else "network_timeout"
     if any(marker in text for marker in ["private message button not found", "private chat editor not found", "message editor not found"]):
         return "automation_changed"
-    if any(marker in text for marker in ["login-full-panel", "second_verify", "二次验证", "verification required", "login required"]):
+    if any(marker in text for marker in ["second_verify", "二次验证", "verification required", "verification_required", "滑块验证", "请完成下列验证"]):
         return "verification_required"
+    if any(marker in text for marker in ["login_required", "login required", "需要重新登录", "login-full-panel", "扫码登录", "登录后免费"]):
+        return "login_required"
     if any(marker in text for marker in ["captcha", "challenge", "too many requests", "429", "rate limit", "rate-limited"]):
         return "rate_limited"
     if any(marker in text for marker in ["authentication required", "cookie expired", "cookie invalid", "session expired", "not authenticated", "login expired"]):
@@ -11603,7 +11802,7 @@ def _dm_failure_metadata(error_code: str, failure_type: str, error_text: str, de
         "verification_required",
         "recipient_privacy_restriction",
     }:
-        failure_reason = "抖音登录态失效或需要人工验证"
+        failure_reason = "需要重新登录"
     if failure_type == "manual" and resolved_code == "message_send_unconfirmed" and not failure_step_detail:
         failure_step_detail = str(error_text or "")
     if not failure_step_detail and error_text:

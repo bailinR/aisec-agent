@@ -924,6 +924,8 @@ Content-Type：`multipart/form-data`
 | activity_id | string | 否 | 自动生成 | 活动 ID |
 | title | string | 否 | `未命名活动` | 标题 |
 | activity_type / type | string | 否 | `活动` | 活动类型 |
+| business_board_id / business_board_name | string | 否 | 空 | 所属业务板块（页面必选） |
+| business_module_id / business_module_name | string | 否 | 空 | 所属业务模块（可选） |
 | applicable_scene | string | 否 | 空 | 适用场景 |
 | description | string | 否 | 空 | 活动描述 |
 | benefit / offer | string | 否 | 空 | 活动权益 |
