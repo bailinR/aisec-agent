@@ -102,7 +102,7 @@ class DouyinConversationMonitorTests(unittest.TestCase):
             self.assertTrue(stopped["stopped"])
             self.assertEqual(stopped["monitor"]["status"], "stopped")
 
-    def test_tick_watch_only_does_not_open_or_reply(self):
+    def test_tick_watch_only_peeks_preview_without_open_or_reply(self):
         monitor = DouyinConversationMonitor(
             account_id="acc_1",
             account_name="发送账号",
@@ -126,11 +126,43 @@ class DouyinConversationMonitorTests(unittest.TestCase):
             return_value={"ok": True, "unread_count": 1, "unread_people": 1, "detail": "scanned"},
         ), patch(
             "aisec_agent.web.douyin_conversation_monitor._dm_click_unread_or_latest_chat",
+            return_value={"ok": True, "unread": True, "detail": "用户甲 刚刚 多少钱", "preview_text": "多少钱"},
         ) as mock_click:
             monitor._tick(page)
 
+        self.assertEqual(monitor.last_message, "多少钱")
         self.assertEqual(monitor.last_reply, "")
         self.assertEqual(monitor.reply_count, 0)
+        mock_click.assert_called_once_with(page, click=False)
+
+    def test_tick_watch_only_skips_peek_when_no_unread(self):
+        monitor = DouyinConversationMonitor(
+            account_id="acc_1",
+            account_name="发送账号",
+            account_key="cookie_testkey",
+            account_cookies="",
+            browser_name="chrome",
+            headless=True,
+            project_id="",
+            company_id="",
+            source_platform="抖音",
+            auto_send=False,
+            generate_reply=False,
+            poll_seconds=5,
+        )
+        page = MagicMock()
+        with patch(
+            "aisec_agent.web.douyin_conversation_monitor._dm_open_douyin_messages_surface",
+            return_value=[{"name": "detect_message_surface", "ok": True}],
+        ), patch(
+            "aisec_agent.web.douyin_conversation_monitor._dm_scan_inbox_summary",
+            return_value={"ok": True, "unread_count": 0, "unread_people": 0, "detail": "scanned"},
+        ), patch(
+            "aisec_agent.web.douyin_conversation_monitor._dm_click_unread_or_latest_chat",
+        ) as mock_click:
+            monitor._tick(page)
+
+        self.assertEqual(monitor.last_message, "")
         mock_click.assert_not_called()
 
     def test_tick_gpu_pool_generates_and_sends(self):

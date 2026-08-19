@@ -627,7 +627,7 @@ def _dm_scan_inbox_summary(page: Any) -> Dict[str, Any]:
     }
 
 
-def _dm_click_unread_or_latest_chat(page: Any, timeout_ms: int = 5000) -> Dict[str, Any]:
+def _dm_click_unread_or_latest_chat(page: Any, timeout_ms: int = 5000, *, click: bool = True) -> Dict[str, Any]:
     sr = _sr()
     script = """
     () => {
@@ -776,6 +776,14 @@ def _dm_click_unread_or_latest_chat(page: Any, timeout_ms: int = 5000) -> Dict[s
     except Exception as exc:
         result = {"clicked": False, "detail": str(exc)}
     if isinstance(result, dict):
+        if not click and result.get("clicked"):
+            return {
+                "name": "peek_unread_chat",
+                "ok": True,
+                "detail": str(result.get("detail") or "peeked"),
+                "preview_text": str(result.get("preview_text") or "").strip(),
+                "unread": bool(result.get("unread")),
+            }
         tab_point = result.get("tabPoint") if isinstance(result.get("tabPoint"), dict) else None
         if tab_point and tab_point.get("x") is not None:
             try:
@@ -1172,9 +1180,40 @@ class DouyinConversationMonitor:
             )
         else:
             self.log("收件箱摘要失败：" + str(inbox.get("detail") or "unknown"), "warn")
-        # 盯号模式（不生成/不发送）：只扫收件箱角标，禁止点开会话。
-        # 点开后抖音会清未读，中台气泡会被实时同步成长期 00/00。
+        # 盯号模式（不生成/不发送）：只扫收件箱角标 + 列表预览，禁止点开会话。
+        # 点开会话会清未读，中台气泡会被实时同步成长期 00/00。
         if not self.generate_reply:
+            unread_people = int(self.inbox_unread_people or 0)
+            unread_count = int(self.inbox_unread_count or 0)
+            if unread_people <= 0 and unread_count <= 0:
+                return
+            peek = _dm_click_unread_or_latest_chat(page, click=False)
+            if not peek.get("ok"):
+                detail = str(peek.get("detail") or "unknown")
+                if unread_people > 0 or unread_count > 0:
+                    extra = self._maybe_capture_diagnostic(page, detail)
+                    self.log("有未读但未能读取列表预览：" + detail, "warn", extra)
+                return
+            preview = str(peek.get("preview_text") or "").strip()
+            detail = str(peek.get("detail") or "").strip()
+            message = preview or detail
+            if not message:
+                self.log("有未读会话，但未解析到消息预览", "warn")
+                return
+            if re.fullmatch(r"[1-9]\d?", message) and not preview:
+                self.log("忽略疑似未读角标文本：" + message, "info")
+                return
+            peer_key = _dm_peer_key_from_row(detail, preview or message)
+            inbound = _dm_inbound_fingerprint(message)
+            signature = f"{peer_key}|{inbound}"
+            if signature == self.last_seen_signature:
+                return
+            with self.lock:
+                self.last_seen_signature = signature
+                self.last_message = message
+                self.last_peer = peer_key
+                self.updated_at = sr._dm_now()
+            self.log("识别到新消息（列表预览）：" + message[:120], "ok", {"peer": peer_key or ""})
             return
         detect = _dm_detect_latest_douyin_message(page)
         # Always prefer an unread/recent conversation row first; staying in an old

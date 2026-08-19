@@ -1,7 +1,7 @@
 {
   "version": 1,
   "project_id": "project_a85d890a904f",
-  "updated_at": "2026-08-14T18:25:19",
+  "updated_at": "2026-08-19T21:15:02",
   "companies": [
     {
       "company_id": "company_cf97f621f6",
@@ -49,6 +49,14 @@
       "enabled": true,
       "created_at": "2026-07-27T02:22:15",
       "updated_at": "2026-07-27T02:22:15"
+    },
+    {
+      "company_id": "company_cf97f621f6",
+      "kb_id": "kb_1431b315f0",
+      "role": "owner",
+      "enabled": true,
+      "created_at": "2026-08-19T21:15:02",
+      "updated_at": "2026-08-19T21:15:02"
     }
   ],
   "knowledge_bases": [
@@ -56,7 +64,7 @@
       "kb_id": "kb_5bede326e3",
       "name": "AI技术与私信自动化业务板块",
       "description": "面向自动私信、评论采集、AI内容生产、智能硬件和自动化运营的业务资料。",
-      "document_count": 5
+      "document_count": 6
     },
     {
       "kb_id": "kb_7cf5474512",
@@ -75,6 +83,12 @@
       "name": "空气能热泵烘干机",
       "description": "",
       "document_count": 3
+    },
+    {
+      "kb_id": "kb_1431b315f0",
+      "name": "定植益生菌",
+      "description": "",
+      "document_count": 0
     }
   ]
 }

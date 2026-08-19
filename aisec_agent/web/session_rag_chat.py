@@ -7673,6 +7673,8 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self._send_artifact(path.removeprefix(f"{DM_DEBUG_ARTIFACT_URL_PREFIX}/"))
         elif path == "/api/v1/douyin/private-message/tasks":
             self._handle_douyin_dm_task_list(parsed_url)
+        elif path == "/api/v1/douyin/private-message/accounts":
+            self._handle_douyin_dm_account_list()
         elif path.startswith("/api/v1/douyin/private-message/tasks/") and not path.endswith("/clear"):
             self._handle_douyin_dm_task_status(parsed_url)
         elif path == "/api/v1/douyin/private-message/conversation-monitors":
@@ -7800,6 +7802,14 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
 
         if path == "/api/v1/douyin/private-message/tasks":
             self._handle_douyin_dm_task_submit()
+            return
+
+        if path == "/api/v1/douyin/private-message/accounts/register":
+            self._handle_douyin_dm_account_register()
+            return
+
+        if path.startswith("/api/v1/douyin/private-message/accounts/") and path.endswith("/pause"):
+            self._handle_douyin_dm_account_pause()
             return
 
         if path == "/api/v1/douyin/private-message/tasks/clear":
@@ -8499,6 +8509,37 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
+    def _handle_douyin_dm_account_list(self):
+        try:
+            data = build_douyin_dm_account_list_response(redis_client=getattr(self.server, "redis_client", None))
+            self._send_json({"ok": True, "data": data})
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_douyin_dm_account_register(self):
+        try:
+            data = build_douyin_dm_account_register_response(
+                self._read_json(), redis_client=getattr(self.server, "redis_client", None)
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_douyin_dm_account_pause(self):
+        try:
+            path = urlparse(self.path).path
+            account_key = path[len("/api/v1/douyin/private-message/accounts/"):-len("/pause")].strip("/")
+            data = build_douyin_dm_account_pause_response(
+                account_key, self._read_json(), redis_client=getattr(self.server, "redis_client", None)
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
     def _handle_douyin_dm_task_clear(self):
         try:
             data = build_douyin_dm_task_clear_response(
@@ -8892,10 +8933,15 @@ DM_REDIS_MANUAL_QUEUE = "dm:queue:manual_required"
 DM_REDIS_DEAD_LETTER_QUEUE = "dm:queue:dead_letter"
 DM_REDIS_PROCESSING_ZSET = "dm:queue:processing"
 DM_REDIS_ACCOUNT_SET = "dm:accounts"
+DM_REDIS_ACCOUNT_PREFIX = "dm:account:"
+DM_REDIS_ACCOUNT_SENT_PREFIX = "dm:account:sent:"
 DM_REDIS_TASK_TTL_SECONDS = 7 * 24 * 3600
 DM_REDIS_DEFAULT_MAX_RETRIES = 1
 DM_REDIS_RETRY_DELAYS_SECONDS = [10, 30, 120]
 DM_REDIS_STALE_PROCESSING_SECONDS = 30 * 60
+DM_DEFAULT_HOURLY_LIMIT = max(1, _env_int("AISEC_DM_HOURLY_LIMIT", 20))
+DM_RATE_LIMIT_COOLDOWN_SECONDS = max(60, _env_int("AISEC_DM_RATE_LIMIT_COOLDOWN_SECONDS", 30 * 60))
+DM_PLATFORM_BUSY_COOLDOWN_SECONDS = max(30, _env_int("AISEC_DM_PLATFORM_BUSY_COOLDOWN_SECONDS", 10 * 60))
 DM_DEBUG_ARTIFACT_DIR = Path(__file__).resolve().parents[2] / "content" / "douyin_dm_artifacts"
 DM_DEBUG_ARTIFACT_URL_PREFIX = "/api/v1/douyin/private-message/artifacts"
 DM_DEFAULT_VIEWPORT_WIDTH = 1440
@@ -8942,6 +8988,18 @@ DM_FAILURE_PROFILES = {
         "category": "recipient",
         "reason": "对方设置了仅互关用户可发送私信",
         "hint": "该用户当前不可接收本账号私信，无需重试或冷却发送账号",
+    },
+    "hourly_limit_reached": {
+        "stage": "account_limit",
+        "category": "account_limit",
+        "reason": "账号已达到每小时私信上限",
+        "hint": "请等待账号小时窗口恢复，系统会优先切换到其他可用账号",
+    },
+    "account_paused": {
+        "stage": "account_state",
+        "category": "account",
+        "reason": "账号已暂停使用",
+        "hint": "请在私信库账号管理中恢复该账号后重新提交任务",
     },
     "login_required": {
         "stage": "browser_login",
@@ -9103,6 +9161,220 @@ def _dm_pending_queue_for_account(account_key: str) -> str:
     return f"dm:queue:pending:{str(account_key or 'default').strip() or 'default'}"
 
 
+def _dm_account_state_key(account_key: str) -> str:
+    return f"{DM_REDIS_ACCOUNT_PREFIX}{str(account_key or 'default').strip() or 'default'}"
+
+
+def _dm_account_sent_key(account_key: str) -> str:
+    return f"{DM_REDIS_ACCOUNT_SENT_PREFIX}{str(account_key or 'default').strip() or 'default'}"
+
+
+def _dm_account_state(redis_conn: Any, account_key: str) -> Dict[str, Any]:
+    state = _dm_redis_hash_all(redis_conn, _dm_account_state_key(account_key))
+    return state if isinstance(state, dict) else {}
+
+
+def _dm_register_account(
+    redis_conn: Any,
+    account_key: str,
+    *,
+    account_id: str = "",
+    account_cookie: str = "",
+    account_name: str = "",
+    hourly_limit: Any = None,
+) -> Dict[str, Any]:
+    key = str(account_key or "default").strip() or "default"
+    previous = _dm_account_state(redis_conn, key)
+    try:
+        limit = max(1, int(hourly_limit if hourly_limit not in {None, ""} else previous.get("hourly_limit", DM_DEFAULT_HOURLY_LIMIT)))
+    except Exception:
+        limit = DM_DEFAULT_HOURLY_LIMIT
+    updates = {
+        "account_key": key,
+        "account_id": str(account_id or previous.get("account_id") or ""),
+        "account_name": str(account_name or previous.get("account_name") or account_id or key),
+        "account_cookie": str(account_cookie or previous.get("account_cookie") or ""),
+        "status": str(previous.get("status") or "active"),
+        "dy_private_message_note": str(previous.get("dy_private_message_note") or ""),
+        "next_available_at": str(previous.get("next_available_at") or ""),
+        "next_available_ts": str(previous.get("next_available_ts") or "0"),
+        "hourly_limit": str(limit),
+        "hourly_window_start": str(previous.get("hourly_window_start") or "0"),
+        "hourly_sent_count": str(previous.get("hourly_sent_count") or "0"),
+        "updated_at": _dm_now(),
+    }
+    _dm_redis_hash_set(redis_conn, _dm_account_state_key(key), updates)
+    try:
+        redis_conn.sadd(DM_REDIS_ACCOUNT_SET, key)
+    except Exception:
+        pass
+    return {**previous, **updates}
+
+
+def _dm_account_available(redis_conn: Any, account_key: str, now_ts: Optional[float] = None) -> bool:
+    state = _dm_account_state(redis_conn, account_key)
+    if not state:
+        return True
+    status = str(state.get("status") or "active")
+    if status in {"paused", "login_invalid", "disabled", "risk"}:
+        return False
+    current = time.time() if now_ts is None else float(now_ts)
+    try:
+        next_available_ts = float(state.get("next_available_ts") or 0)
+        if next_available_ts > current:
+            return False
+        if status in {"cooldown", "daily_limited"} and next_available_ts:
+            _dm_set_account_state(redis_conn, account_key, status="active", note="", next_available_ts=0, next_available_at="")
+    except Exception:
+        pass
+    window_start = float(state.get("hourly_window_start") or 0)
+    sent_count = int(_payload_float(state, "hourly_sent_count", 0))
+    if window_start and current - window_start >= 3600:
+        sent_count = 0
+    hourly_limit = max(1, int(_payload_float(state, "hourly_limit", DM_DEFAULT_HOURLY_LIMIT)))
+    if sent_count >= hourly_limit:
+        next_ts = (window_start or current) + 3600
+        _dm_set_account_state(
+            redis_conn,
+            account_key,
+            status="cooldown",
+            note="账号已达到每小时私信上限",
+            next_available_ts=next_ts,
+        )
+        return False
+    return True
+
+
+def _dm_set_account_state(
+    redis_conn: Any,
+    account_key: str,
+    *,
+    status: Optional[str] = None,
+    note: Optional[str] = None,
+    next_available_ts: Optional[float] = None,
+    next_available_at: Optional[str] = None,
+) -> Dict[str, Any]:
+    state = _dm_account_state(redis_conn, account_key)
+    updates: Dict[str, Any] = {"updated_at": _dm_now()}
+    if status is not None:
+        updates["status"] = str(status)
+    if note is not None:
+        updates["dy_private_message_note"] = str(note)
+    if next_available_ts is not None:
+        updates["next_available_ts"] = str(float(next_available_ts))
+        updates["next_available_at"] = str(
+            next_available_at
+            if next_available_at is not None
+            else (datetime.fromtimestamp(float(next_available_ts)).strftime("%Y-%m-%d %H:%M:%S") if float(next_available_ts) > 0 else "")
+        )
+    _dm_redis_hash_set(redis_conn, _dm_account_state_key(account_key), updates)
+    return {**state, **updates}
+
+
+def _dm_select_alternate_account(redis_conn: Any, current_key: str) -> Optional[Dict[str, Any]]:
+    current = str(current_key or "").strip()
+    try:
+        account_keys = [_dm_decode_scalar(item) for item in (redis_conn.smembers(DM_REDIS_ACCOUNT_SET) or [])]
+    except Exception:
+        account_keys = []
+    for key in sorted(set(account_keys)):
+        if not key or key == current or not _dm_account_available(redis_conn, key):
+            continue
+        state = _dm_account_state(redis_conn, key)
+        if state.get("account_cookie"):
+            return state
+    return None
+
+
+def _dm_record_account_send(redis_conn: Any, account_key: str) -> Dict[str, Any]:
+    state = _dm_account_state(redis_conn, account_key)
+    now_ts = time.time()
+    window_start = float(state.get("hourly_window_start") or 0)
+    count = int(_payload_float(state, "hourly_sent_count", 0))
+    if not window_start or now_ts - window_start >= 3600:
+        window_start = now_ts
+        count = 0
+    count += 1
+    updates = {
+        "hourly_window_start": str(window_start),
+        "hourly_sent_count": str(count),
+        "last_sent_at": _dm_now(),
+        "updated_at": _dm_now(),
+    }
+    hourly_limit = max(1, int(_payload_float(state, "hourly_limit", DM_DEFAULT_HOURLY_LIMIT)))
+    if count >= hourly_limit:
+        updates.update({
+            "status": "cooldown",
+            "dy_private_message_note": "账号已达到每小时私信上限",
+            "next_available_ts": str(window_start + 3600),
+            "next_available_at": datetime.fromtimestamp(window_start + 3600).strftime("%Y-%m-%d %H:%M:%S"),
+        })
+    _dm_redis_hash_set(redis_conn, _dm_account_state_key(account_key), updates)
+    return {**state, **updates}
+
+
+def _dm_requeue_task_for_account(redis_conn: Any, task_id: str, task: Dict[str, Any], account: Dict[str, Any]) -> None:
+    account_key = str(account.get("account_key") or "").strip()
+    if not account_key:
+        return
+    _dm_remove_task_from_pending_queues(redis_conn, task_id, [task.get("account_key"), account_key])
+    _dm_redis_hash_set(redis_conn, _dm_task_key(task_id), {
+        "account_id": str(account.get("account_id") or ""),
+        "account_key": account_key,
+        "account_cookie": str(account.get("account_cookie") or ""),
+        "account_cookies": str(account.get("account_cookie") or ""),
+        "account_switched": "true",
+        "switched_from_account_key": str(task.get("account_key") or ""),
+        "retry_queue": DM_REDIS_AUTO_PENDING_QUEUE,
+        "status": "retry_wait",
+        "queue_status": "retry_wait",
+        "next_retry_at": _dm_now(),
+        "retry_delay_seconds": "0",
+        "task_cleared": "false",
+        "result_ready": "false",
+        "updated_at": _dm_now(),
+    })
+    redis_conn.rpush(DM_REDIS_PENDING_QUEUE, task_id)
+    redis_conn.rpush(_dm_pending_queue_for_account(account_key), task_id)
+    redis_conn.rpush(DM_REDIS_AUTO_PENDING_QUEUE, task_id)
+
+
+def _dm_promote_due_retry_tasks(redis_conn: Any, limit: int = 100) -> int:
+    now_ts = time.time()
+    try:
+        task_ids = [
+            _dm_decode_scalar(item)
+            for item in (redis_conn.zrangebyscore(DM_REDIS_RETRY_ZSET, 0, now_ts, start=0, num=max(1, limit)) or [])
+        ]
+    except Exception:
+        return 0
+    promoted = 0
+    for task_id in task_ids:
+        task = _dm_redis_hash_all(redis_conn, _dm_task_key(task_id))
+        if not task or str(task.get("status") or "") != "retry_wait":
+            redis_conn.zrem(DM_REDIS_RETRY_ZSET, task_id)
+            continue
+        account_key = str(task.get("account_key") or "default")
+        if not _dm_account_available(redis_conn, account_key, now_ts):
+            continue
+        retry_queue = str(task.get("retry_queue") or DM_REDIS_AUTO_PENDING_QUEUE)
+        redis_conn.zrem(DM_REDIS_RETRY_ZSET, task_id)
+        _dm_remove_task_from_pending_queues(redis_conn, task_id, account_key)
+        for queue in dict.fromkeys([
+            DM_REDIS_PENDING_QUEUE,
+            _dm_pending_queue_for_account(account_key),
+            retry_queue,
+        ]):
+            redis_conn.rpush(queue, task_id)
+        _dm_redis_hash_set(redis_conn, _dm_task_key(task_id), {
+            "status": "pending",
+            "queue_status": "queued",
+            "updated_at": _dm_now(),
+        })
+        promoted += 1
+    return promoted
+
+
 def _dm_account_key_from_values(account_cookie: str = "", account_id: str = "") -> str:
     seed = str(account_id or account_cookie or "").strip()
     if not seed:
@@ -9140,6 +9412,8 @@ def _dm_task_submit_runtime_fields(item: Dict[str, Any]) -> Dict[str, str]:
     )
     account_cookie = _dm_cookie_text(raw_account_cookie)
     account_id = str(normalized.get("account_id") or normalized.get("account") or normalized.get("account_name") or "").strip()
+    account_name = str(normalized.get("account_name") or normalized.get("name") or account_id or "").strip()
+    hourly_limit = str(normalized.get("hourly_limit") or "").strip()
     account_key = _dm_account_key_from_values(account_cookie, account_id)
     debug_mode = _dm_bool_text(normalized.get("debug_mode"))
     run_mode = str(normalized.get("run_mode") or "send").strip().lower()
@@ -9168,6 +9442,8 @@ def _dm_task_submit_runtime_fields(item: Dict[str, Any]) -> Dict[str, str]:
         persistent_context = False
     return {
         "account_id": account_id,
+        "account_name": account_name,
+        "hourly_limit": hourly_limit,
         "account_key": account_key,
         "account_cookie": account_cookie,
         "account_cookies": account_cookie,
@@ -11951,7 +12227,9 @@ def _dm_task_failure_fields(error_code: str, failure_type: str, error_text: str,
 def _dm_task_result(task: Dict[str, Any]) -> Dict[str, Any]:
     status = str(task.get("status") or "")
     sent = _dm_bool_text(task.get("sent"))
-    success = status == "success" and sent
+    # A recipient privacy restriction is a terminal business outcome: the
+    # task was handled, although the platform did not deliver the message.
+    success = status == "success"
     error_text = str(task.get("error") or "")
     has_failure = False if success else bool(
         error_text
@@ -11972,12 +12250,16 @@ def _dm_task_result(task: Dict[str, Any]) -> Dict[str, Any]:
         "result_ready": _dm_bool_text(task.get("result_ready")),
         "success": success,
         "sent": sent,
+        "send_status": task.get("send_status") or ("sent" if sent else "not_sent"),
         "reply": task.get("reply") or "",
         "message_source": task.get("message_source") or ("provided" if task.get("message") else "generated"),
         "error": error_text,
         "queue_status": task.get("queue_status") or "",
         "task_cleared": _dm_bool_text(task.get("task_cleared")),
         "account_key": task.get("account_key") or "",
+        "account_id": task.get("account_id") or "",
+        "account_switched": _dm_bool_text(task.get("account_switched")),
+        "switched_from_account_key": task.get("switched_from_account_key") or "",
         "target_profile_url": task.get("target_profile_url") or "",
         "first_private_message": _dm_bool_text(task.get("first_private_message")),
         "first_private_message_status": task.get("first_private_message_status") or "",
@@ -12280,6 +12562,73 @@ def build_douyin_dm_task_clear_response(
     }
 
 
+def build_douyin_dm_account_list_response(
+    redis_client: Optional[Any] = None,
+) -> Dict[str, Any]:
+    """Return shared Redis account state for the admin account manager."""
+    redis_conn = _redis_conn(redis_client)
+    try:
+        keys = sorted({_dm_decode_scalar(item) for item in (redis_conn.smembers(DM_REDIS_ACCOUNT_SET) or [])})
+    except Exception:
+        keys = []
+    accounts = []
+    for account_key in keys:
+        state = _dm_account_state(redis_conn, account_key)
+        if not state:
+            continue
+        state["account_key"] = account_key
+        state["hourly_limit"] = int(_payload_float(state, "hourly_limit", DM_DEFAULT_HOURLY_LIMIT))
+        state["hourly_sent_count"] = int(_payload_float(state, "hourly_sent_count", 0))
+        state["account_cookie"] = "[redacted]" if state.get("account_cookie") else ""
+        accounts.append(state)
+    return {"accounts": accounts, "count": len(accounts)}
+
+
+def build_douyin_dm_account_register_response(
+    payload: Dict[str, Any],
+    redis_client: Optional[Any] = None,
+) -> Dict[str, Any]:
+    normalized = dict(payload or {})
+    account_cookie = _dm_cookie_text(normalized.get("account_cookie") or normalized.get("account_cookies") or normalized.get("cookie") or "")
+    account_id = str(normalized.get("account_id") or normalized.get("id") or normalized.get("account_name") or "").strip()
+    account_key = str(normalized.get("account_key") or "").strip() or _dm_account_key_from_values(account_cookie, account_id)
+    state = _dm_register_account(
+        _redis_conn(redis_client),
+        account_key,
+        account_id=account_id,
+        account_cookie=account_cookie,
+        account_name=str(normalized.get("account_name") or normalized.get("name") or account_id or account_key),
+        hourly_limit=normalized.get("hourly_limit"),
+    )
+    if _dm_bool_text(normalized.get("activate")):
+        state = _dm_set_account_state(
+            _redis_conn(redis_client), account_key,
+            status="active", note="", next_available_ts=0, next_available_at="",
+        )
+    state["account_key"] = account_key
+    state["account_cookie"] = "[redacted]" if state.get("account_cookie") else ""
+    return {"account": state}
+
+
+def build_douyin_dm_account_pause_response(
+    account_key: str,
+    payload: Optional[Dict[str, Any]] = None,
+    redis_client: Optional[Any] = None,
+) -> Dict[str, Any]:
+    key = str(account_key or "").strip()
+    if not key:
+        raise WebInputError("account_key is required")
+    normalized = dict(payload or {})
+    state = _dm_set_account_state(
+        _redis_conn(redis_client), key,
+        status="paused" if _dm_bool_text(normalized.get("paused", True)) else "active",
+        note=str(normalized.get("note") or ("账号已暂停使用" if _dm_bool_text(normalized.get("paused", True)) else "")),
+    )
+    state["account_key"] = key
+    state["account_cookie"] = "[redacted]" if state.get("account_cookie") else ""
+    return {"account": state}
+
+
 def build_douyin_private_message_demo_response(
     payload: Dict[str, Any],
     executor: Optional[Any] = None,
@@ -12487,6 +12836,7 @@ def build_douyin_dm_task_submit_response(
         task = {
             "task_id": task_id,
             "account_id": runtime_fields["account_id"],
+            "account_name": runtime_fields.get("account_name") or runtime_fields["account_id"],
             "account_key": runtime_fields["account_key"],
             "account_cookie": runtime_fields["account_cookie"],
             "account_cookies": runtime_fields["account_cookies"],
@@ -12512,6 +12862,10 @@ def build_douyin_dm_task_submit_response(
             "reply": "",
             "message_source": "provided" if provided_message else "generated",
             "sent": "false",
+            "send_status": "pending",
+            "account_switched": "false",
+            "switched_from_account_key": "",
+            "hourly_limit": runtime_fields.get("hourly_limit") or "",
             "followup_private_message": "false",
             "followup_private_message_status": "pending",
             "followup_private_message_detail": "",
@@ -12556,6 +12910,14 @@ def build_douyin_dm_task_submit_response(
         previous_account_key = str(previous_task.get("account_key") or "").strip() if previous_task else ""
         _dm_remove_task_from_queues(redis_conn, task_id, [account_key, previous_account_key])
         _dm_redis_hash_set(redis_conn, key, task)
+        _dm_register_account(
+            redis_conn,
+            account_key,
+            account_id=runtime_fields.get("account_id", ""),
+            account_cookie=account_cookie,
+            account_name=runtime_fields.get("account_name", ""),
+            hourly_limit=runtime_fields.get("hourly_limit"),
+        )
         try:
             redis_conn.expire(key, DM_REDIS_TASK_TTL_SECONDS)
         except Exception:
@@ -12593,6 +12955,7 @@ def process_douyin_dm_task_once(
 ) -> Optional[Dict[str, Any]]:
     _dm_cleanup_closed_playwright_sessions()
     redis_conn = _redis_conn(redis_client)
+    _dm_promote_due_retry_tasks(redis_conn)
     requested_account_key = str(account_key or "").strip()
     account_selector_provided = bool(requested_account_key or str(account_cookie or "").strip() or str(account_id or "").strip())
     if not requested_account_key and account_selector_provided:
@@ -12620,11 +12983,70 @@ def process_douyin_dm_task_once(
         _dm_redis_hash_set(redis_conn, key, runtime_updates)
         task.update(runtime_updates)
 
+    task_account_key = str(task.get("account_key") or requested_account_key or "default")
+    _dm_register_account(
+        redis_conn,
+        task_account_key,
+        account_id=task.get("account_id") or account_id,
+        account_cookie=task.get("account_cookie") or account_cookie,
+        account_name=task.get("account_name") or task.get("account_id") or account_id,
+        hourly_limit=task.get("hourly_limit"),
+    )
+
     _dm_remove_task_from_pending_queues(
         redis_conn,
         task_id,
         {task.get("account_key"), requested_account_key},
     )
+
+    # Enforce account availability before opening a browser.  A cooled or
+    # hourly-limited account is transparently replaced by another registered
+    # account; if none exists, return a structured failure to the data hub.
+    if not _dm_account_available(redis_conn, task_account_key):
+        state = _dm_account_state(redis_conn, task_account_key)
+        state_status = str(state.get("status") or "cooldown")
+        alternate = (
+            _dm_select_alternate_account(redis_conn, task_account_key)
+            if state_status in {"cooldown", "daily_limited"}
+            else None
+        )
+        if alternate:
+            _dm_requeue_task_for_account(redis_conn, task_id, task, alternate)
+            _dm_redis_hash_set(redis_conn, key, {
+                "failure_code": "hourly_limit_reached",
+                "failure_reason": "当前账号暂不可用，已切换其他账号",
+                "failure_summary": "当前账号暂不可用，已切换其他账号",
+                "send_status": "account_switched",
+            })
+            return _dm_task_result({**task, "status": "retry_wait", "queue_status": "retry_wait", "account_switched": "true", "switched_from_account_key": task_account_key, "failure_code": "hourly_limit_reached", "failure_reason": "当前账号暂不可用，已切换其他账号", "send_status": "account_switched"})
+        if state_status == "daily_limited":
+            code, reason = "stranger_daily_limit", "已达今日私信上限"
+        elif state_status == "login_invalid":
+            code, reason = "login_required", "需要重新登录"
+        elif state_status == "paused":
+            code, reason = "account_paused", "账号已暂停使用"
+        elif state_status == "risk":
+            code, reason = "account_risk", str(state.get("dy_private_message_note") or "账号需要人工处理")
+        elif state_status == "disabled":
+            code, reason = "account_permission_denied", str(state.get("dy_private_message_note") or "账号已停用")
+        elif state_status == "cooldown" and str(state.get("dy_private_message_note") or "").strip():
+            reason = str(state.get("dy_private_message_note"))
+            if "每小时" in reason:
+                code = "hourly_limit_reached"
+            elif "频繁" in reason:
+                code = "rate_limited"
+            else:
+                code = "platform_busy"
+        else:
+            code, reason = "hourly_limit_reached", "账号已达到每小时私信上限"
+        failure_state = _dm_task_failure_fields(code, "final", reason)
+        _dm_redis_hash_set(redis_conn, key, {
+            "status": "failed", "queue_status": "failed", **failure_state,
+            "send_status": "failed", "sent": "false", "result_ready": "true",
+            "task_cleared": "true", "finished_at": _dm_now(), "updated_at": _dm_now(),
+        })
+        redis_conn.rpush(DM_REDIS_FAILED_QUEUE, task_id)
+        return _dm_task_result({**task, "status": "failed", "queue_status": "failed", **failure_state, "send_status": "failed", "result_ready": "true"})
 
     run_mode = str(mode or task.get("run_mode") or "generate").strip().lower()
     if run_mode not in {"dry_run", "generate", "prefill", "send"}:
@@ -12732,6 +13154,8 @@ def process_douyin_dm_task_once(
             })
 
         sent = bool(result.get("sent"))
+        if sent:
+            _dm_record_account_send(redis_conn, task_account_key)
         target_key = task.get("target_key") or _dm_normalized_target(task.get("target_profile_url") or "")
         first_private_message = False
         first_private_message_status = "generated_only"
@@ -12774,6 +13198,9 @@ def process_douyin_dm_task_once(
             "reply": reply,
             "message_source": "provided" if provided_message else "generated",
             "sent": "true" if sent else "false",
+            "send_status": "sent" if sent else ("prefilled" if run_mode == "prefill" else "not_sent"),
+            "account_switched": task.get("account_switched") or "false",
+            "switched_from_account_key": task.get("switched_from_account_key") or "",
             "error": "",
             "error_code": "",
             "failure_code": "",
@@ -12816,6 +13243,7 @@ def process_douyin_dm_task_once(
             "followup_private_message_detail": followup_private_message_detail,
             "task_cleared": True,
             "queue_status": "done",
+            "send_status": "sent" if sent else ("prefilled" if run_mode == "prefill" else "not_sent"),
         })
         return _dm_redact_task(result)
     except Exception as exc:
@@ -12929,12 +13357,102 @@ def process_douyin_dm_task_once(
             error_text,
             detail=demo_result if isinstance(demo_result, dict) else None,
         )
+        if error_code == "login_required":
+            _dm_set_account_state(
+                redis_conn,
+                task_account_key,
+                status="login_invalid",
+                note="账号登录失效，需要重新登录",
+            )
+        elif error_code == "stranger_daily_limit":
+            now_ts = time.time()
+            next_day_ts = datetime.fromtimestamp(now_ts).replace(hour=0, minute=5, second=0, microsecond=0).timestamp()
+            if next_day_ts <= now_ts:
+                next_day_ts += 24 * 60 * 60
+            _dm_set_account_state(redis_conn, task_account_key, status="daily_limited", note="已达今日私信上限", next_available_ts=next_day_ts)
+        elif error_code == "rate_limited":
+            _dm_set_account_state(redis_conn, task_account_key, status="cooldown", note="私信发送频繁，账号冷却中", next_available_ts=time.time() + DM_RATE_LIMIT_COOLDOWN_SECONDS)
+        elif error_code == "platform_busy":
+            _dm_set_account_state(redis_conn, task_account_key, status="cooldown", note="抖音私信系统繁忙，账号暂时冷却", next_available_ts=time.time() + DM_PLATFORM_BUSY_COOLDOWN_SECONDS)
+
+        # Privacy restrictions are a handled business result.  Do not put
+        # these tasks in failed/dead-letter queues and expose why delivery did
+        # not occur to the data hub.
+        if error_code == "recipient_privacy_restriction":
+            privacy_reason = failure_state.get("failure_reason") or "对方设置了仅互关用户可发送私信"
+            privacy_fields = {
+                "status": "success",
+                "queue_status": "done",
+                **failure_state,
+                "sent": "false",
+                "send_status": "recipient_privacy_restriction",
+                "result_ready": "true",
+                "task_cleared": "true",
+                "manual_required": "false",
+                "dead_letter": "false",
+                "finished_at": finished,
+                "updated_at": finished,
+            }
+            _dm_redis_hash_set(redis_conn, key, privacy_fields)
+            try:
+                redis_conn.rpush(DM_REDIS_DONE_QUEUE, task_id)
+            except Exception:
+                pass
+            return {
+                "task_id": task_id,
+                "status": "success",
+                "queue_status": "done",
+                "success": True,
+                "sent": False,
+                "send_status": "recipient_privacy_restriction",
+                "error": error_text,
+                "error_code": error_code,
+                **failure_state,
+                "result_ready": True,
+                "task_cleared": True,
+                "manual_required": False,
+                "dead_letter": False,
+                "next_retry_at": "",
+                "account_id": task.get("account_id") or "",
+                "account_switched": _dm_bool_text(task.get("account_switched")),
+                "switched_from_account_key": task.get("switched_from_account_key") or "",
+            }
         if error_code == "recipient_privacy_restriction":
             try:
                 redis_conn.zrem(DM_REDIS_RETRY_ZSET, task_id)
             except Exception:
                 pass
         if retryable and retry_count <= max_retries:
+            alternate = _dm_select_alternate_account(redis_conn, task_account_key) if error_code in {"stranger_daily_limit", "rate_limited", "platform_busy"} else None
+            if alternate:
+                _dm_requeue_task_for_account(redis_conn, task_id, task, alternate)
+                switched_fields = {
+                    "retry_count": str(retry_count),
+                    "max_retries": str(max_retries),
+                    **failure_state,
+                    "send_status": "account_switched",
+                    "result_ready": "false",
+                    "task_cleared": "false",
+                    "updated_at": finished,
+                }
+                _dm_redis_hash_set(redis_conn, key, switched_fields)
+                return {
+                    "task_id": task_id,
+                    "status": "retry_wait",
+                    "queue_status": "retry_wait",
+                    "error": error_text,
+                    "error_code": error_code,
+                    **failure_state,
+                    "send_status": "account_switched",
+                    "account_id": alternate.get("account_id") or "",
+                    "account_switched": True,
+                    "switched_from_account_key": task_account_key,
+                    "retry_count": retry_count,
+                    "max_retries": max_retries,
+                    "next_retry_at": _dm_now(),
+                    "result_ready": False,
+                    "task_cleared": False,
+                }
             delay_seconds = retry_delay_override_seconds or DM_REDIS_RETRY_DELAYS_SECONDS[
                 min(retry_count - 1, len(DM_REDIS_RETRY_DELAYS_SECONDS) - 1)
             ]
@@ -12953,6 +13471,7 @@ def process_douyin_dm_task_once(
                 "next_retry_at": next_retry_at,
                 "retry_delay_seconds": str(delay_seconds),
                 "retry_queue": pending_queue,
+                "send_status": "retry_wait",
                 "result_ready": "false",
                 "task_cleared": "false",
                 "manual_required": "false",
@@ -12990,7 +13509,8 @@ def process_douyin_dm_task_once(
                 "task_cleared": False,
             }
 
-        if manual_required:
+        login_required_failure = error_code == "login_required"
+        if manual_required and not login_required_failure:
             final_status = "manual_required"
             final_queue_status = "manual_required"
             try:
@@ -13060,6 +13580,7 @@ def process_douyin_dm_task_once(
             "next_retry_at": "",
             "first_private_message": False,
             "first_private_message_status": final_queue_status,
+            "send_status": "failed",
         }
     finally:
         try:

@@ -99,16 +99,18 @@
   <div class="shell">
     <header>
       <h1>抖音私信 AI 客服测试</h1>
-      <p>监听发送账号消息列表 → 算力池 <code>chat-pm</code> 生成回复 → 可选自动发送。默认复用本机已登录 profile。</p>
+      <p>监听发送账号私信列表，展示最近新消息内容（不点开会话，读列表预览）。Cookie 填在下方专用框；已有本机 profile 时可只填 account_key。不要勾选 generate_reply / auto_send。</p>
     </header>
 
     <div class="grid">
       <section class="panel">
         <h2>启动参数</h2>
+        <label>account_cookie（二选一：填 Cookie 或填下方 account_key 复用 profile）</label>
+        <textarea id="accountCookie" spellcheck="false" placeholder='粘贴 {"cookies":[...]} 或 sessionid=xxx; sid_guard=xxx'></textarea>
         <div class="row">
           <div>
-            <label>account_key（优先，复用已扫码 profile）</label>
-            <input id="accountKey" value="cookie_279f894816d72ce8">
+            <label>account_key（复用本机已登录 profile，与 Cookie 二选一）</label>
+            <input id="accountKey" value="cookie_086dd1e31b59dfc5" placeholder="如 cookie_086dd1e31b59dfc5">
           </div>
           <div>
             <label>browser_name</label>
@@ -189,7 +191,8 @@
     }
 
     function payload() {
-      return {
+      const accountCookie = $("accountCookie").value.trim();
+      const body = {
         account_key: $("accountKey").value.trim(),
         account_id: $("accountId").value.trim(),
         account_name: $("accountName").value.trim(),
@@ -202,6 +205,8 @@
         headless: $("headless").checked,
         source_platform: "抖音",
       };
+      if (accountCookie) body.account_cookies = accountCookie;
+      return body;
     }
 
     function renderMonitor(m) {
@@ -256,8 +261,8 @@
 
     async function startMonitor() {
       const body = payload();
-      if (!body.account_key && !body.account_id) {
-        toast("请填写 account_key 或 account_id");
+      if (!body.account_cookies && !body.account_key) {
+        toast("请填写 account_cookie，或填写本机已有的 account_key");
         return;
       }
       toast("正在启动…");
@@ -276,6 +281,8 @@
         account_key: currentAccountKey || $("accountKey").value.trim(),
         account_id: $("accountId").value.trim(),
       };
+      const accountCookie = $("accountCookie").value.trim();
+      if (accountCookie) body.account_cookies = accountCookie;
       toast("正在停止…");
       const data = await api("/api/v1/douyin/private-message/conversation-monitors/stop", {
         method: "POST",

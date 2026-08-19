@@ -1,7 +1,7 @@
 {
   "version": 1,
   "project_id": "project_a85d890a904f",
-  "updated_at": "2026-08-14T18:25:19",
+  "updated_at": "2026-08-19T21:15:02",
   "knowledge_bases": [
     {
       "kb_id": "kb_5bede326e3",
@@ -169,6 +169,32 @@
                   "section": "自动私信引流系统"
                 }
               ]
+            },
+            {
+              "section_id": "section_8625cbc879",
+              "name": "默认板块",
+              "documents": [
+                {
+                  "doc_id": "doc_630e0f9d885d",
+                  "title": "sales_expert_fill_template",
+                  "source_file_name": "sales_expert_fill_template.md",
+                  "relative_path": "knowledge/files/AI技术与私信自动化业务板块/自动私信引流系统/默认板块/sales_expert_fill_template.md",
+                  "description": "sales_expert_fill_template；> 建议私信身份：健康顾问助理；【项目名称】私信知识库填写模板；> 使用说明（给销售专家）：；> 1. 复制本文件，改名为「【项目名】私信资料.md」，例如「大健康睡眠初评私信资料.md」。；> 2. 只填你真正确认过的内容；不确定就写「待确认」，不要编造。；> 3. 用口语、短句、真实成交话术；避免空泛广告词。；> 4. 价格、效果、名额、时间承诺，没有书面依据就不要写死。；> 5. 填完后告诉运营/研发：业务别名、建议私信身份、必读合规文档。；--；0. 文。",
+                  "summary": "sales_expert_fill_template；【项目名称】私信知识库填写模板；> 使用说明（给销售专家）：；> 1. 复制本文件，改名为「【项目名】私信资料.md」，例如「大健康睡眠初评私信资料.md」。；> 2. 只填你真正确认过的内容；不确定就写「待确认」，不要编造。；> 3. 用口语、短句、真实成交话术；避免空泛广告词。；> 4. 价格、效果、名额、时间承诺，没有书面依据就不要写死。；--；0. 文档元信息；| 字段 | 填写内容 |；| --- | --- |；| 项目正式名称 | |；| 对内简称。",
+                  "tags": [
+                    "AI技术与私信自动化业务板块",
+                    "自动私信引流系统"
+                  ],
+                  "sender_identity": "健康顾问助理",
+                  "content_chars": 4779,
+                  "updated_at": "2026-08-16T12:26:54",
+                  "kb_id": "kb_12e7d5bbbc",
+                  "knowledge_base": "AI技术与私信自动化业务板块",
+                  "domain": "自动私信引流系统",
+                  "section": "默认板块"
+                }
+              ],
+              "allow_empty_placeholder": true
             }
           ],
           "allow_empty_placeholder": true
@@ -493,6 +519,13 @@
           ]
         }
       ]
+    },
+    {
+      "kb_id": "kb_1431b315f0",
+      "name": "定植益生菌",
+      "description": "",
+      "domains": [],
+      "allow_empty_placeholder": true
     }
   ],
   "domains": [
@@ -656,6 +689,32 @@
               "section": "自动私信引流系统"
             }
           ]
+        },
+        {
+          "section_id": "section_8625cbc879",
+          "name": "默认板块",
+          "documents": [
+            {
+              "doc_id": "doc_630e0f9d885d",
+              "title": "sales_expert_fill_template",
+              "source_file_name": "sales_expert_fill_template.md",
+              "relative_path": "knowledge/files/AI技术与私信自动化业务板块/自动私信引流系统/默认板块/sales_expert_fill_template.md",
+              "description": "sales_expert_fill_template；> 建议私信身份：健康顾问助理；【项目名称】私信知识库填写模板；> 使用说明（给销售专家）：；> 1. 复制本文件，改名为「【项目名】私信资料.md」，例如「大健康睡眠初评私信资料.md」。；> 2. 只填你真正确认过的内容；不确定就写「待确认」，不要编造。；> 3. 用口语、短句、真实成交话术；避免空泛广告词。；> 4. 价格、效果、名额、时间承诺，没有书面依据就不要写死。；> 5. 填完后告诉运营/研发：业务别名、建议私信身份、必读合规文档。；--；0. 文。",
+              "summary": "sales_expert_fill_template；【项目名称】私信知识库填写模板；> 使用说明（给销售专家）：；> 1. 复制本文件，改名为「【项目名】私信资料.md」，例如「大健康睡眠初评私信资料.md」。；> 2. 只填你真正确认过的内容；不确定就写「待确认」，不要编造。；> 3. 用口语、短句、真实成交话术；避免空泛广告词。；> 4. 价格、效果、名额、时间承诺，没有书面依据就不要写死。；--；0. 文档元信息；| 字段 | 填写内容 |；| --- | --- |；| 项目正式名称 | |；| 对内简称。",
+              "tags": [
+                "AI技术与私信自动化业务板块",
+                "自动私信引流系统"
+              ],
+              "sender_identity": "健康顾问助理",
+              "content_chars": 4779,
+              "updated_at": "2026-08-16T12:26:54",
+              "kb_id": "kb_12e7d5bbbc",
+              "knowledge_base": "AI技术与私信自动化业务板块",
+              "domain": "自动私信引流系统",
+              "section": "默认板块"
+            }
+          ],
+          "allow_empty_placeholder": true
         }
       ],
       "allow_empty_placeholder": true

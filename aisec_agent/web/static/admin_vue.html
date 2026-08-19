@@ -779,6 +779,11 @@
       font-weight: 800;
     }
     .account-status.hosting { border-color: rgba(24,115,72,.28); color: var(--ok); background: #ecfdf3; }
+    .account-status.active { border-color: rgba(24,115,72,.28); color: var(--ok); background: #ecfdf3; }
+    .account-status.cooldown { border-color: rgba(161,92,7,.28); color: var(--amber); background: var(--amber-soft); }
+    .account-status.daily_limited { border-color: rgba(161,92,7,.28); color: var(--amber); background: var(--amber-soft); }
+    .account-status.login_invalid,
+    .account-status.disabled { border-color: rgba(180,35,24,.28); color: var(--danger); background: #fff1f0; }
     .account-status.paused { border-color: rgba(161,92,7,.28); color: var(--amber); background: var(--amber-soft); }
     .account-status.risk { border-color: rgba(180,35,24,.28); color: var(--danger); background: #fff1f0; }
     .account-cookie-box textarea { min-height: 132px; }
@@ -2293,7 +2298,7 @@
                         <span>{{ managedAccountTypeLabel(account) }}</span>
                         <span>{{ account.cookie_text ? '已保存 Cookie' : '未保存 Cookie' }}</span>
                       </span>
-                      <span class="company-meta">用于托管私信回复，并复用该账号登录信息。</span>
+                      <span class="company-meta">{{ account.dy_private_message_note || '用于托管私信回复，并复用该账号登录信息。' }}</span>
                     </button>
                   </div>
                 </div>
@@ -2328,6 +2333,9 @@
                       <label>状态</label>
                       <select v-model="selectedManagedAccount.status" @change="persistManagedAccounts">
                         <option value="hosting">托管中</option>
+                        <option value="cooldown">冷却中</option>
+                        <option value="daily_limited">今日上限</option>
+                        <option value="login_invalid">登录失效</option>
                         <option value="paused">暂停</option>
                         <option value="risk">需人工处理</option>
                       </select>
@@ -2339,6 +2347,24 @@
                         <option value="blue_v">蓝V账号</option>
                         <option value="personal">普通账号</option>
                       </select>
+                    </div>
+                  </div>
+                  <div class="field-grid four">
+                    <div>
+                      <label>dy私信说明</label>
+                      <input :value="selectedManagedAccount.dy_private_message_note || '正常'" readonly>
+                    </div>
+                    <div>
+                      <label>下次可用时间</label>
+                      <input :value="selectedManagedAccount.next_available_at || '当前可用'" readonly>
+                    </div>
+                    <div>
+                      <label>小时发送上限</label>
+                      <input type="number" min="1" v-model.number="selectedManagedAccount.hourly_limit" @change="persistManagedAccounts">
+                    </div>
+                    <div>
+                      <label>本小时已发送</label>
+                      <input :value="selectedManagedAccount.hourly_sent_count || 0" readonly>
                     </div>
                   </div>
                   <div class="field-grid three">
@@ -3749,6 +3775,7 @@
             managedAccounts: [],
             selectedManagedAccountId: "",
             accountQueueStatus: {counts: {}, queue: {}, tasks: {}},
+            accountStateTimer: null,
             accountBrowserOpening: false,
             conversationMonitors: [],
             conversationMonitorCounts: {total: 0, running: 0, error: 0},
@@ -3874,7 +3901,7 @@
           },
           managedAccountStats() {
             const total = this.managedAccounts.length;
-            const enabled = this.managedAccounts.filter(item => item.status !== "paused").length;
+            const enabled = this.managedAccounts.filter(item => ["hosting", "active"].includes(item.status)).length;
             const withCookie = this.managedAccounts.filter(item => String(item.cookie_text || "").trim()).length;
             return {total, enabled, withCookie};
           },
@@ -4436,6 +4463,9 @@
           this.conversationMonitorTimer = window.setInterval(() => {
             if (this.activeMenu === "conversations") this.refreshConversationMonitors(true);
           }, 3500);
+          this.accountStateTimer = window.setInterval(() => {
+            if (this.activeMenu === "accounts") this.refreshAccountQueueStatus(true);
+          }, 5000);
         },
         updated() {
           this.schedulePromptLayoutMeasure();
@@ -4452,6 +4482,10 @@
           if (this.conversationMonitorTimer) {
             window.clearInterval(this.conversationMonitorTimer);
             this.conversationMonitorTimer = null;
+          }
+          if (this.accountStateTimer) {
+            window.clearInterval(this.accountStateTimer);
+            this.accountStateTimer = null;
           }
           this.persistDmState(true);
           if (this.promptModalVisible && typeof document !== "undefined") {
@@ -5068,6 +5102,13 @@
               profile_sec_uid: "",
               enterprise_verify_reason: "",
               custom_verify: "",
+              dy_private_message_note: "",
+              next_available_at: "",
+              hourly_limit: 20,
+              hourly_sent_count: 0,
+              account_key: "",
+              last_failure_code: "",
+              last_failure_reason: "",
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
             };
@@ -5080,7 +5121,7 @@
               id: String(item.id || item.account_id || ("account_" + this.uuid().slice(0, 10))),
               name: String(item.name || item.account_name || "抖音托管账号"),
               platform: String(item.platform || "抖音"),
-              status: ["hosting", "paused", "risk"].includes(item.status) ? item.status : "hosting",
+              status: ["hosting", "active", "cooldown", "daily_limited", "login_invalid", "paused", "risk", "disabled"].includes(item.status) ? item.status : "hosting",
               browser_name: String(item.browser_name || item.browser || "edge"),
               headless: item.headless === true,
               auto_reply: item.auto_reply !== false,
@@ -5095,6 +5136,13 @@
               profile_sec_uid: String(item.profile_sec_uid || item.sec_uid || ""),
               enterprise_verify_reason: String(item.enterprise_verify_reason || ""),
               custom_verify: String(item.custom_verify || ""),
+              dy_private_message_note: String(item.dy_private_message_note || ""),
+              next_available_at: String(item.next_available_at || ""),
+              hourly_limit: Math.max(1, Number(item.hourly_limit || 20)),
+              hourly_sent_count: Math.max(0, Number(item.hourly_sent_count || 0)),
+              account_key: String(item.account_key || ""),
+              last_failure_code: String(item.last_failure_code || ""),
+              last_failure_reason: String(item.last_failure_reason || ""),
               updated_at: String(item.updated_at || item.created_at || new Date().toISOString()),
             };
           },
@@ -5118,8 +5166,16 @@
             }));
             if (!silent) this.setStatus("账号配置已保存", "ok");
           },
-          saveManagedAccounts() {
+          async saveManagedAccounts() {
             this.persistManagedAccounts(false);
+            await Promise.all(this.managedAccounts.map(account => this.registerManagedAccount(account, true)));
+            await Promise.all(this.managedAccounts.filter(account => account.account_key && account.status === "paused").map(account =>
+              this.fetchJson("/api/v1/douyin/private-message/accounts/" + encodeURIComponent(account.account_key) + "/pause", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({paused: true, note: "账号已暂停使用"}),
+              }).catch(() => null)
+            ));
           },
           addManagedAccount() {
             const account = this.managedAccountDefault();
@@ -5143,7 +5199,11 @@
             this.setStatus("账号已删除", "ok");
           },
           managedAccountStatusLabel(status) {
-            return {hosting: "托管中", paused: "暂停", risk: "需接管"}[status] || "托管中";
+            return {
+              hosting: "托管中", active: "托管中", cooldown: "冷却中",
+              daily_limited: "今日上限", login_invalid: "登录失效",
+              paused: "暂停", risk: "需接管", disabled: "已停用",
+            }[status] || "托管中";
           },
           managedAccountTypeLabel(account) {
             const item = account || {};
@@ -5321,10 +5381,53 @@
             const value = counts[key];
             return Number.isFinite(Number(value)) ? Number(value) : 0;
           },
+          async registerManagedAccount(account, silent = false, activate = false) {
+            if (!account || !String(account.cookie_text || "").trim()) return null;
+            try {
+              const data = await this.fetchJson("/api/v1/douyin/private-message/accounts/register", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                  account_key: account.account_key || "",
+                  account_id: account.id || "",
+                  account_name: account.name || "",
+                  account_cookie: account.cookie_text || "",
+                  hourly_limit: account.hourly_limit || 20,
+                  activate: activate === true,
+                }),
+              });
+              this.mergeManagedAccountState(data && data.account);
+              return data;
+            } catch (error) {
+              if (!silent) this.setStatus(error.message || "同步私信账号状态失败", "error");
+              return null;
+            }
+          },
+          mergeManagedAccountState(state) {
+            if (!state || typeof state !== "object") return;
+            const account = this.managedAccounts.find(item => item.account_key === state.account_key || item.id === state.account_id);
+            if (!account) return;
+            const previousStatus = String(account.status || "");
+            const statusMap = {active: "hosting", cooldown: "cooldown", daily_limited: "daily_limited", login_invalid: "login_invalid", paused: "paused", risk: "risk", disabled: "disabled"};
+            account.account_key = String(state.account_key || account.account_key || "");
+            account.status = statusMap[state.status] || account.status;
+            account.dy_private_message_note = String(state.dy_private_message_note || "");
+            account.next_available_at = String(state.next_available_at || "");
+            account.hourly_limit = Math.max(1, Number(state.hourly_limit || account.hourly_limit || 20));
+            account.hourly_sent_count = Math.max(0, Number(state.hourly_sent_count || 0));
+            if (state.status === "login_invalid" && previousStatus !== "login_invalid") {
+              this.setStatus("账号「" + (account.name || account.id) + "」登录失效，需要重新登录", "error");
+            }
+          },
           async refreshAccountQueueStatus(silent = false) {
             try {
-              const data = await this.fetchJson("/api/v1/douyin/private-message/tasks?limit=20");
+              const [data, accountData] = await Promise.all([
+                this.fetchJson("/api/v1/douyin/private-message/tasks?limit=20"),
+                this.fetchJson("/api/v1/douyin/private-message/accounts"),
+              ]);
               this.accountQueueStatus = data || {counts: {}, queue: {}, tasks: {}};
+              (accountData && accountData.accounts || []).forEach(state => this.mergeManagedAccountState(state));
+              this.persistManagedAccounts(true);
               if (!silent) this.setStatus("账号队列状态已刷新", "ok");
             } catch (error) {
               this.accountQueueStatus = {counts: {}, queue: {}, tasks: {}};
@@ -5378,6 +5481,7 @@
             account.status = "hosting";
             this.applyManagedAccountProfile(account, data);
             this.persistManagedAccounts(true);
+            await this.registerManagedAccount(account, true, true);
             return data;
           },
           async applyManagedAccountCookie() {

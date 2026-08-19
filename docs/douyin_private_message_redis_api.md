@@ -106,6 +106,9 @@ python -m aisec_agent.worker.douyin_dm_worker --mode send --account-browser-pool
 |---|---|
 | `status` | `pending` / `running` / `success` / `failed` / `retry_wait` / `manual_required` |
 | `queue_status` | 当前队列状态 |
+| `success` | 业务处理是否成功 |
+| `sent` | 是否确认实际发送 |
+| `send_status` | `sent` / `failed` / `retry_wait` / `account_switched` / `recipient_privacy_restriction` 等发送结果 |
 | `error` | 原始错误文本 |
 | `error_code` | 内部错误码 |
 | `failure_code` | 更具体的失败码 |
@@ -128,12 +131,37 @@ python -m aisec_agent.worker.douyin_dm_worker --mode send --account-browser-pool
 | `manual_takeover` | 人工接管提示、浏览器和目标 URL |
 | `first_private_message_status` | 首条私信状态 |
 | `message_source` | `provided` 表示使用调用方传入的 `message`，`generated` 表示由模型生成 |
+| `account_id` | 实际执行账号 |
+| `account_switched` | 是否自动切换了账号 |
+| `switched_from_account_key` | 切换前的账号 key |
 
 ## 3. 任务列表
 
 `GET /api/v1/douyin/private-message/tasks?limit=20`
 
 会返回各队列的任务快照，适合快速扫一眼当前卡在哪个队列。
+
+### 3.1 账号状态
+
+```http
+GET /api/v1/douyin/private-message/accounts
+```
+
+返回 Redis 中共享的私信账号状态，包括 `status`、`dy_private_message_note`、`next_available_at`、`hourly_limit` 和 `hourly_sent_count`，Cookie 只返回 `[redacted]`。
+
+后台账号管理可通过以下接口注册/同步账号：
+
+```http
+POST /api/v1/douyin/private-message/accounts/register
+```
+
+手动暂停或恢复账号：
+
+```http
+POST /api/v1/douyin/private-message/accounts/{account_key}/pause
+```
+
+请求体传 `{"paused": true}` 表示暂停，传 `{"paused": false}` 表示恢复。
 
 ## 4. 队列说明
 
@@ -162,6 +190,10 @@ python -m aisec_agent.worker.douyin_dm_worker --mode send --account-browser-pool
 - `cookie_invalid`：Cookie 无效、过期或未正确加载
 - `browser_closed`：浏览器或页面已关闭
 - `rate_limited`：命中限流或验证码
+- `platform_busy`：抖音私信系统繁忙，账号进入短时冷却
+- `stranger_daily_limit`：陌生人私信达到今日上限，账号暂停到次日
+- `hourly_limit_reached`：账号达到每小时私信上限
+- `recipient_privacy_restriction`：对方隐私设置不允许发送；该场景返回 `status=success`、`success=true`、`sent=false`，不进入失败或死信队列
 
 ## 6. 这些字段为什么重要
 

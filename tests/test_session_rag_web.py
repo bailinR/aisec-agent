@@ -1,6 +1,7 @@
 import json
 import unittest
 import tempfile
+import time
 from pathlib import Path
 from io import BytesIO
 from unittest.mock import patch
@@ -40,6 +41,8 @@ from aisec_agent.web.session_rag_chat import (
     build_douyin_dm_task_list_response,
     build_douyin_dm_task_submit_response,
     build_douyin_dm_task_clear_response,
+    build_douyin_dm_account_list_response,
+    build_douyin_dm_account_register_response,
     DM_DEBUG_ARTIFACT_DIR,
     _dm_click_editor_send_button,
     DM_REDIS_PENDING_QUEUE,
@@ -49,6 +52,7 @@ from aisec_agent.web.session_rag_chat import (
     DM_REDIS_MANUAL_QUEUE,
     DM_REDIS_DEAD_LETTER_QUEUE,
     DM_REDIS_PROCESSING_ZSET,
+    DM_REDIS_ACCOUNT_PREFIX,
     build_douyin_account_cookie_apply_response,
     build_douyin_private_message_demo_response,
     _douyin_account_profile,
@@ -79,6 +83,7 @@ from aisec_agent.web.session_rag_chat import (
     build_workspace_state_response,
     _public_model_configs,
     _dm_pending_queue_for_account,
+    _dm_promote_due_retry_tasks,
     _dm_redis_hash_set,
     _dm_send_and_confirm_current_message,
     _dm_send_current_message,
@@ -1207,17 +1212,28 @@ class SessionRAGWebTest(unittest.TestCase):
         ):
             processed = process_douyin_dm_task_once(redis_client=redis, mode="send", block_timeout=1)
 
-        self.assertEqual(processed["status"], "manual_required")
-        self.assertEqual(processed["queue_status"], "manual_required")
+        self.assertEqual(processed["status"], "failed")
+        self.assertEqual(processed["queue_status"], "failed")
         self.assertEqual(processed["error_code"], "login_required")
         self.assertEqual(processed["failure_code"], "login_required")
         self.assertEqual(processed["failure_reason"], "需要重新登录")
         self.assertIn("需要重新登录", processed["failure_summary"])
         self.assertTrue(processed["manual_required"])
+        self.assertFalse(processed["dead_letter"])
+        self.assertEqual(redis.lrange(DM_REDIS_FAILED_QUEUE, 0, -1), ["dm_login_modal_001"])
+        self.assertEqual(redis.lrange(DM_REDIS_MANUAL_QUEUE, 0, -1), [])
 
         status = build_douyin_dm_task_status_response("dm_login_modal_001", redis_client=redis)
+        self.assertEqual(status["result"]["status"], "failed")
+        self.assertEqual(status["result"]["queue_status"], "failed")
         self.assertEqual(status["result"]["failure_code"], "login_required")
         self.assertEqual(status["result"]["failure_reason"], "需要重新登录")
+        self.assertTrue(status["result"]["manual_required"])
+        self.assertTrue(status["result"]["manual_takeover"]["available"])
+        account_key = status["result"]["account_key"]
+        account_state = redis.hgetall(f"{DM_REDIS_ACCOUNT_PREFIX}{account_key}")
+        self.assertEqual(account_state["status"], "login_invalid")
+        self.assertEqual(account_state["dy_private_message_note"], "账号登录失效，需要重新登录")
 
     def test_douyin_detect_login_requirement_matches_free_hd_login_modal(self):
         class DummyPage:
@@ -1431,18 +1447,22 @@ class SessionRAGWebTest(unittest.TestCase):
         ):
             processed = process_douyin_dm_task_once(redis_client=redis, mode="send", block_timeout=1)
 
-        self.assertEqual(processed["status"], "failed")
-        self.assertEqual(processed["queue_status"], "dead_letter")
+        self.assertEqual(processed["status"], "success")
+        self.assertEqual(processed["queue_status"], "done")
+        self.assertTrue(processed["success"])
+        self.assertFalse(processed["sent"])
+        self.assertEqual(processed["send_status"], "recipient_privacy_restriction")
         self.assertTrue(processed["result_ready"])
         self.assertEqual(processed["failure_code"], "recipient_privacy_restriction")
         self.assertEqual(processed["failure_stage"], "send_confirm")
         self.assertEqual(processed["failure_category"], "recipient")
         self.assertFalse(processed["manual_required"])
-        self.assertTrue(processed["dead_letter"])
+        self.assertFalse(processed["dead_letter"])
         self.assertEqual(processed["next_retry_at"], "")
         self.assertEqual(redis.zcard(DM_REDIS_RETRY_ZSET), 0)
         self.assertNotIn("dm_recipient_privacy_001", redis.lists.get(DM_REDIS_MANUAL_QUEUE, []))
-        self.assertIn("dm_recipient_privacy_001", redis.lists.get(DM_REDIS_DEAD_LETTER_QUEUE, []))
+        self.assertNotIn("dm_recipient_privacy_001", redis.lists.get(DM_REDIS_DEAD_LETTER_QUEUE, []))
+        self.assertIn("dm_recipient_privacy_001", redis.lists.get("dm:queue:done", []))
 
         status = build_douyin_dm_task_status_response("dm_recipient_privacy_001", redis_client=redis)
         self.assertEqual(status["result"]["failure_code"], "recipient_privacy_restriction")
@@ -1477,6 +1497,127 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(processed["failure_category"], "account_limit")
         self.assertTrue(processed["next_retry_at"])
         self.assertEqual(redis.zcard(DM_REDIS_RETRY_ZSET), 1)
+        task_status = build_douyin_dm_task_status_response("dm_stranger_daily_limit_001", redis_client=redis)
+        account_key = task_status["result"]["account_key"]
+        account_state = redis.hgetall(f"{DM_REDIS_ACCOUNT_PREFIX}{account_key}")
+        self.assertEqual(account_state["status"], "daily_limited")
+        self.assertEqual(account_state["dy_private_message_note"], "已达今日私信上限")
+        self.assertTrue(account_state["next_available_at"])
+
+    def test_douyin_dm_rate_limit_switches_to_available_account(self):
+        redis = FakeRedis()
+        build_douyin_dm_task_submit_response({
+            "task_id": "dm_switch_001", "video_info": "video", "account_id": "one",
+            "account_cookie": "cookie-one", "comment_info": "comment",
+            "target_profile_url": "https://www.douyin.com/user/test-sec-uid", "project_name": "test",
+        }, redis_client=redis)
+        build_douyin_dm_account_register_response({
+            "account_id": "two", "account_name": "two", "account_cookie": "cookie-two",
+        }, redis_client=redis)
+        with patch("aisec_agent.web.session_rag_chat.build_public_private_message_response", return_value={"reply": "hello"}), patch(
+            "aisec_agent.web.session_rag_chat.build_douyin_private_message_demo_response",
+            side_effect=RuntimeError("私信功能使用频繁，请稍后再试"),
+        ):
+            processed = process_douyin_dm_task_once(redis_client=redis, mode="send", block_timeout=1)
+        self.assertEqual(processed["status"], "retry_wait")
+        self.assertEqual(processed["send_status"], "account_switched")
+        self.assertTrue(processed["account_switched"])
+        self.assertEqual(processed["account_id"], "two")
+        task = redis.hgetall("dm:task:dm_switch_001")
+        self.assertEqual(task["account_id"], "two")
+        self.assertEqual(redis.lrange("dm:queue:auto_pending", 0, -1), ["dm_switch_001"])
+
+    def test_douyin_dm_login_invalid_does_not_switch_account(self):
+        redis = FakeRedis()
+        build_douyin_dm_task_submit_response({
+            "task_id": "dm_login_invalid_001", "video_info": "video", "account_id": "login-one",
+            "account_cookie": "cookie-login-one", "comment_info": "comment",
+            "target_profile_url": "https://www.douyin.com/user/test-sec-uid", "project_name": "test",
+        }, redis_client=redis)
+        task = redis.hgetall("dm:task:dm_login_invalid_001")
+        redis.hset(f"{DM_REDIS_ACCOUNT_PREFIX}{task['account_key']}", mapping={
+            "status": "login_invalid", "dy_private_message_note": "账号登录失效，需要重新登录",
+        })
+        build_douyin_dm_account_register_response({
+            "account_id": "login-two", "account_cookie": "cookie-login-two",
+        }, redis_client=redis)
+        processed = process_douyin_dm_task_once(redis_client=redis, mode="send", block_timeout=1)
+        self.assertEqual(processed["status"], "failed")
+        self.assertEqual(processed["failure_code"], "login_required")
+        self.assertEqual(processed["failure_reason"], "需要重新登录")
+        self.assertFalse(processed["account_switched"])
+        self.assertEqual(redis.hgetall("dm:task:dm_login_invalid_001")["account_id"], "login-one")
+
+    def test_douyin_dm_hourly_limit_returns_structured_failure(self):
+        redis = FakeRedis()
+        build_douyin_dm_account_register_response({
+            "account_id": "hourly", "account_name": "hourly", "account_cookie": "cookie-hourly", "hourly_limit": 1,
+        }, redis_client=redis)
+        account_key = next(iter(redis.sets["dm:accounts"]))
+        redis.hset(f"{DM_REDIS_ACCOUNT_PREFIX}{account_key}", mapping={
+            "hourly_window_start": str(time.time()), "hourly_sent_count": "1", "hourly_limit": "1",
+        })
+        build_douyin_dm_task_submit_response({
+            "task_id": "dm_hourly_001", "video_info": "video", "account_id": "hourly",
+            "account_cookie": "cookie-hourly", "comment_info": "comment",
+            "target_profile_url": "https://www.douyin.com/user/test-sec-uid", "project_name": "test",
+        }, redis_client=redis)
+        processed = process_douyin_dm_task_once(redis_client=redis, mode="send", block_timeout=1)
+        self.assertEqual(processed["status"], "failed")
+        self.assertEqual(processed["failure_code"], "hourly_limit_reached")
+        self.assertEqual(processed["failure_reason"], "账号已达到每小时私信上限")
+        self.assertEqual(processed["send_status"], "failed")
+
+    def test_douyin_dm_platform_busy_marks_cooldown_and_switches_account(self):
+        redis = FakeRedis()
+        build_douyin_dm_task_submit_response({
+            "task_id": "dm_busy_001", "video_info": "video", "account_id": "busy-one",
+            "account_cookie": "cookie-busy-one", "comment_info": "comment",
+            "target_profile_url": "https://www.douyin.com/user/test-sec-uid", "project_name": "test",
+        }, redis_client=redis)
+        build_douyin_dm_account_register_response({
+            "account_id": "busy-two", "account_cookie": "cookie-busy-two",
+        }, redis_client=redis)
+        with patch("aisec_agent.web.session_rag_chat.build_public_private_message_response", return_value={"reply": "hello"}), patch(
+            "aisec_agent.web.session_rag_chat.build_douyin_private_message_demo_response",
+            side_effect=RuntimeError("系统繁忙，请稍后再试"),
+        ):
+            processed = process_douyin_dm_task_once(redis_client=redis, mode="send", block_timeout=1)
+        self.assertEqual(processed["failure_code"], "platform_busy")
+        self.assertTrue(processed["account_switched"])
+        old_key = processed["switched_from_account_key"]
+        state = redis.hgetall(f"{DM_REDIS_ACCOUNT_PREFIX}{old_key}")
+        self.assertEqual(state["status"], "cooldown")
+        self.assertEqual(state["dy_private_message_note"], "抖音私信系统繁忙，账号暂时冷却")
+        self.assertTrue(state["next_available_at"])
+
+    def test_douyin_dm_promotes_due_retry_task(self):
+        redis = FakeRedis()
+        build_douyin_dm_task_submit_response({
+            "task_id": "dm_due_001", "video_info": "video", "account_id": "due",
+            "account_cookie": "cookie-due", "comment_info": "comment",
+            "target_profile_url": "https://www.douyin.com/user/test-sec-uid", "project_name": "test",
+        }, redis_client=redis)
+        task = redis.hgetall("dm:task:dm_due_001")
+        redis.lists[DM_REDIS_PENDING_QUEUE] = []
+        redis.lists[DM_REDIS_AUTO_PENDING_QUEUE] = []
+        redis.lists[_dm_pending_queue_for_account(task["account_key"])] = []
+        redis.hset("dm:task:dm_due_001", mapping={"status": "retry_wait", "queue_status": "retry_wait", "retry_queue": DM_REDIS_AUTO_PENDING_QUEUE})
+        redis.zadd(DM_REDIS_RETRY_ZSET, {"dm_due_001": time.time() - 1})
+        self.assertEqual(_dm_promote_due_retry_tasks(redis), 1)
+        self.assertEqual(redis.lrange(DM_REDIS_AUTO_PENDING_QUEUE, 0, -1), ["dm_due_001"])
+        self.assertEqual(redis.hgetall("dm:task:dm_due_001")["queue_status"], "queued")
+
+    def test_douyin_dm_account_state_api_redacts_cookie(self):
+        redis = FakeRedis()
+        build_douyin_dm_account_register_response({
+            "account_id": "api-account", "account_cookie": "secret-cookie", "hourly_limit": 12,
+        }, redis_client=redis)
+        listed = build_douyin_dm_account_list_response(redis_client=redis)
+        self.assertEqual(listed["count"], 1)
+        self.assertEqual(listed["accounts"][0]["account_id"], "api-account")
+        self.assertEqual(listed["accounts"][0]["hourly_limit"], 12)
+        self.assertEqual(listed["accounts"][0]["account_cookie"], "[redacted]")
 
     def test_douyin_dm_send_process_accepts_cookie_object(self):
         redis = FakeRedis()
