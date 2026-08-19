@@ -1,7 +1,7 @@
 {
   "version": 1,
   "project_id": "project_a85d890a904f",
-  "updated_at": "2026-08-14T15:03:50",
+  "updated_at": "2026-08-18T19:42:06",
   "knowledge_bases": [
     {
       "kb_id": "kb_5bede326e3",
@@ -47,7 +47,7 @@
                   "content_chars": 304
                 }
               ],
-              "allow_empty_placeholder": true
+              "allow_empty_placeholder": false
             }
           ],
           "allow_empty_placeholder": true
@@ -144,7 +144,7 @@
                   "content_chars": 324
                 }
               ],
-              "allow_empty_placeholder": true
+              "allow_empty_placeholder": false
             },
             {
               "section_id": "section_8625cbc879",
@@ -260,7 +260,7 @@
                   "content_chars": 203
                 }
               ],
-              "allow_empty_placeholder": true
+              "allow_empty_placeholder": false
             }
           ],
           "allow_empty_placeholder": true
@@ -330,7 +330,7 @@
                   "content_chars": 327
                 }
               ],
-              "allow_empty_placeholder": true
+              "allow_empty_placeholder": false
             }
           ],
           "allow_empty_placeholder": true
@@ -382,7 +382,7 @@
                   "content_chars": 350
                 }
               ],
-              "allow_empty_placeholder": true
+              "allow_empty_placeholder": false
             }
           ],
           "allow_empty_placeholder": true
@@ -425,7 +425,7 @@
                   "content_chars": 317
                 }
               ],
-              "allow_empty_placeholder": true
+              "allow_empty_placeholder": false
             }
           ],
           "allow_empty_placeholder": true
@@ -506,10 +506,10 @@
                   "section": "默认板块"
                 }
               ],
-              "allow_empty_placeholder": true
+              "allow_empty_placeholder": false
             }
           ],
-          "allow_empty_placeholder": true
+          "allow_empty_placeholder": false
         }
       ]
     }
@@ -553,7 +553,7 @@
               "content_chars": 304
             }
           ],
-          "allow_empty_placeholder": true
+          "allow_empty_placeholder": false
         }
       ],
       "allow_empty_placeholder": true
@@ -650,7 +650,7 @@
               "content_chars": 324
             }
           ],
-          "allow_empty_placeholder": true
+          "allow_empty_placeholder": false
         },
         {
           "section_id": "section_8625cbc879",
