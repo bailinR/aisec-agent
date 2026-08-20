@@ -7817,6 +7817,13 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self._handle_douyin_dm_account_register()
             return
 
+        if path in {
+            "/api/v1/douyin/private-message/accounts/verify",
+            "/api/douyin/private-message/accounts/verify",
+        }:
+            self._handle_douyin_account_verify()
+            return
+
         if path.startswith("/api/v1/douyin/private-message/accounts/") and path.endswith("/pause"):
             self._handle_douyin_dm_account_pause()
             return
@@ -8659,6 +8666,21 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
         try:
             payload = self._read_json()
             data = build_douyin_account_cookie_apply_response(
+                payload,
+                executor=_web_douyin_account_cookie_playwright_executor,
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_douyin_account_verify(self):
+        from aisec_agent.web.douyin_account_verify import build_douyin_account_verify_response
+
+        try:
+            payload = self._read_json()
+            data = build_douyin_account_verify_response(
                 payload,
                 executor=_web_douyin_account_cookie_playwright_executor,
             )
@@ -11727,6 +11749,50 @@ def _douyin_account_cookie_playwright_executor(raw_cookies: str, browser_name: s
             ),
         })
         _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page))
+        # Verify API: check login before opening profile / type detection.
+        if _dm_bool_text(options.get("verify_login_first")):
+            early_login = _douyin_detect_login_requirement(page)
+            if early_login.get("requires_login"):
+                steps.append(_dm_login_required_step("before_account_activity_check"))
+                if not keep_browser_open:
+                    _dm_stop_playwright_context(context, browser, playwright)
+                return {
+                    "success": True,
+                    "opened": True,
+                    "resolved_browser": browser_name,
+                    "engine": "playwright",
+                    "account_cookie_loaded": bool(cookies),
+                    "account_cookie_count": len(cookies),
+                    "steps": steps,
+                    "account_profile": {},
+                    "requires_login": True,
+                    "account_type_skipped": True,
+                    "keep_browser_open": keep_browser_open,
+                    "user_data_dir": str(_dm_playwright_user_data_dir(browser_name, options)) if _dm_bool_text(options.get("persistent_context", keep_browser_open or options.get("user_data_dir"))) else "",
+                }
+            if early_login.get("requires_verification"):
+                steps.append({
+                    "name": "detect_login_state",
+                    "ok": False,
+                    "detail": "需要二次验证/安全验证",
+                })
+                if not keep_browser_open:
+                    _dm_stop_playwright_context(context, browser, playwright)
+                return {
+                    "success": True,
+                    "opened": True,
+                    "resolved_browser": browser_name,
+                    "engine": "playwright",
+                    "account_cookie_loaded": bool(cookies),
+                    "account_cookie_count": len(cookies),
+                    "steps": steps,
+                    "account_profile": {},
+                    "requires_login": False,
+                    "requires_verification": True,
+                    "account_type_skipped": True,
+                    "keep_browser_open": keep_browser_open,
+                    "user_data_dir": str(_dm_playwright_user_data_dir(browser_name, options)) if _dm_bool_text(options.get("persistent_context", keep_browser_open or options.get("user_data_dir"))) else "",
+                }
         profile_surface = _douyin_open_profile_surface(page)
         if profile_surface.get("clicked"):
             steps.append({
