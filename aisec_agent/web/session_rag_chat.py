@@ -7824,6 +7824,13 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self._handle_douyin_account_verify()
             return
 
+        if path in {
+            "/api/v1/douyin/private-message/accounts/inbox",
+            "/api/douyin/private-message/accounts/inbox",
+        }:
+            self._handle_douyin_account_inbox()
+            return
+
         if path.startswith("/api/v1/douyin/private-message/accounts/") and path.endswith("/pause"):
             self._handle_douyin_dm_account_pause()
             return
@@ -8684,6 +8691,18 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
                 payload,
                 executor=_web_douyin_account_cookie_playwright_executor,
             )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_douyin_account_inbox(self):
+        from aisec_agent.web.douyin_account_inbox import build_douyin_account_inbox_response
+
+        try:
+            payload = self._read_json()
+            data = build_douyin_account_inbox_response(payload)
             self._send_json({"ok": True, "data": data})
         except WebInputError as e:
             self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
