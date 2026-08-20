@@ -1,7 +1,7 @@
 {
   "version": 1,
   "project_id": "project_a85d890a904f",
-  "updated_at": "2026-08-19T21:15:02",
+  "updated_at": "2026-08-20T13:28:35",
   "knowledge_bases": [
     {
       "kb_id": "kb_5bede326e3",
@@ -46,7 +46,8 @@
                   "updated_at": "2026-07-17T18:48:35",
                   "content_chars": 304
                 }
-              ]
+              ],
+              "allow_empty_placeholder": true
             }
           ],
           "allow_empty_placeholder": true
@@ -142,7 +143,8 @@
                   "updated_at": "2026-07-17T18:48:35",
                   "content_chars": 324
                 }
-              ]
+              ],
+              "allow_empty_placeholder": true
             },
             {
               "section_id": "section_a5414b3cfb",
@@ -168,7 +170,8 @@
                   "domain": "自动私信引流系统",
                   "section": "自动私信引流系统"
                 }
-              ]
+              ],
+              "allow_empty_placeholder": true
             },
             {
               "section_id": "section_8625cbc879",
@@ -272,7 +275,8 @@
                   "updated_at": "2026-07-17T18:48:35",
                   "content_chars": 203
                 }
-              ]
+              ],
+              "allow_empty_placeholder": true
             }
           ],
           "allow_empty_placeholder": true
@@ -341,7 +345,8 @@
                   "updated_at": "2026-07-17T18:48:35",
                   "content_chars": 327
                 }
-              ]
+              ],
+              "allow_empty_placeholder": true
             }
           ],
           "allow_empty_placeholder": true
@@ -392,7 +397,8 @@
                   "updated_at": "2026-07-17T18:48:35",
                   "content_chars": 350
                 }
-              ]
+              ],
+              "allow_empty_placeholder": true
             }
           ],
           "allow_empty_placeholder": true
@@ -434,7 +440,8 @@
                   "updated_at": "2026-07-17T18:48:35",
                   "content_chars": 317
                 }
-              ]
+              ],
+              "allow_empty_placeholder": true
             }
           ],
           "allow_empty_placeholder": true
@@ -514,9 +521,11 @@
                   "domain": "默认领域",
                   "section": "默认板块"
                 }
-              ]
+              ],
+              "allow_empty_placeholder": true
             }
-          ]
+          ],
+          "allow_empty_placeholder": true
         }
       ]
     },
@@ -524,7 +533,60 @@
       "kb_id": "kb_1431b315f0",
       "name": "定植益生菌",
       "description": "",
-      "domains": [],
+      "domains": [
+        {
+          "domain_id": "domain_e3b3efbb8a",
+          "name": "默认领域",
+          "sections": [
+            {
+              "section_id": "section_08f0127e02",
+              "name": "默认板块",
+              "documents": [
+                {
+                  "doc_id": "doc_612c60745000",
+                  "title": "益生菌产品统一叙事、核心意向人群及销售话术手册",
+                  "source_file_name": "益生菌产品统一叙事、核心意向人群及销售话术手册.md",
+                  "relative_path": "knowledge/files/定植益生菌/益生菌产品统一叙事、核心意向人群及销售话术手册.md",
+                  "description": "益生菌产品统一叙事、核心意向人群及销售话术手册；> 建议私信身份：健康顾问助理；益生菌产品统一叙事、核心意向人群及销售话术手册；一、产品对外统一叙事；（一）品牌背书；依托李明松教授专业科研团队，拥有深厚海外学术背景，长期深耕克罗恩病等各类肠道疾病研究，具备扎实的肠道菌群科研功底与临床研究经验，产品专业性、权威性有强力科研支撑。；（二）核心技术卖点；1. 纳米包埋技术：可有效抵御胃酸、胆汁破坏，避免菌株在消化过程中失活，保障菌株直达肠道定植起效；；2. 长期菌株驯化：历经30余年专业菌株驯化工艺，菌株性状稳定、活性强。",
+                  "summary": "益生菌产品统一叙事、核心意向人群及销售话术手册；益生菌产品统一叙事、核心意向人群及销售话术手册；一、产品对外统一叙事；（一）品牌背书；依托李明松教授专业科研团队，拥有深厚海外学术背景，长期深耕克罗恩病等各类肠道疾病研究，具备扎实的肠道菌群科研功底与临床研究经验，产品专业性、权威性有强力科研支撑。；（二）核心技术卖点；1. 纳米包埋技术：可有效抵御胃酸、胆汁破坏，避免菌株在消化过程中失活，保障菌株直达肠道定植起效；；2. 长期菌株驯化：历经30余年专业菌株驯化工艺，菌株性状稳定、活性强，适配人体肠道环境；；3. 高耐。",
+                  "tags": [
+                    "定植益生菌",
+                    "默认领域"
+                  ],
+                  "sender_identity": "健康顾问助理",
+                  "content_chars": 2345,
+                  "updated_at": "2026-08-20T13:27:20",
+                  "kb_id": "kb_1431b315f0",
+                  "knowledge_base": "定植益生菌",
+                  "domain": "默认领域",
+                  "section": "默认板块"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "allow_empty_placeholder": true
+    },
+    {
+      "kb_id": "kb_10e926c244",
+      "name": "公司基础资料板块",
+      "description": "",
+      "domains": [
+        {
+          "domain_id": "domain_a55d12fd95",
+          "name": "AI技术与智能硬件",
+          "sections": [
+            {
+              "section_id": "section_b182ec25b2",
+              "name": "默认板块",
+              "documents": [],
+              "allow_empty_placeholder": true
+            }
+          ],
+          "allow_empty_placeholder": true
+        }
+      ],
       "allow_empty_placeholder": true
     }
   ],
@@ -566,7 +628,8 @@
               "updated_at": "2026-07-17T18:48:35",
               "content_chars": 304
             }
-          ]
+          ],
+          "allow_empty_placeholder": true
         }
       ],
       "allow_empty_placeholder": true
@@ -662,7 +725,8 @@
               "updated_at": "2026-07-17T18:48:35",
               "content_chars": 324
             }
-          ]
+          ],
+          "allow_empty_placeholder": true
         },
         {
           "section_id": "section_a5414b3cfb",
@@ -688,7 +752,8 @@
               "domain": "自动私信引流系统",
               "section": "自动私信引流系统"
             }
-          ]
+          ],
+          "allow_empty_placeholder": true
         },
         {
           "section_id": "section_8625cbc879",
