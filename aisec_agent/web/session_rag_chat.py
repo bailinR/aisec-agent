@@ -7675,6 +7675,8 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self._handle_douyin_dm_task_list(parsed_url)
         elif path == "/api/v1/douyin/private-message/accounts":
             self._handle_douyin_dm_account_list()
+        elif path.startswith("/api/v1/douyin/private-message/tasks/") and path.endswith("/replies"):
+            self._handle_douyin_dm_task_replies(parsed_url)
         elif path.startswith("/api/v1/douyin/private-message/tasks/") and not path.endswith("/clear"):
             self._handle_douyin_dm_task_status(parsed_url)
         elif path == "/api/v1/douyin/private-message/conversation-monitors":
@@ -7783,6 +7785,13 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
 
         if path in {"/api/douyin/account-cookie/apply", "/api/v1/douyin/account-cookie/apply"}:
             self._handle_douyin_account_cookie_apply()
+            return
+
+        if path in {
+            "/api/douyin/private-message/conversations/read",
+            "/api/v1/douyin/private-message/conversations/read",
+        }:
+            self._handle_douyin_conversation_read()
             return
 
         if path in {"/api/douyin/private-message/demo", "/api/v1/douyin/private-message/demo"}:
@@ -8489,6 +8498,41 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
                 task_id,
                 redis_client=getattr(self.server, "redis_client", None),
             )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_douyin_dm_task_replies(self, parsed_url=None):
+        from aisec_agent.web.douyin_conversation_read import build_douyin_task_replies_response
+
+        try:
+            path = (parsed_url.path if parsed_url is not None else urlparse(self.path).path)
+            # /api/v1/douyin/private-message/tasks/{task_id}/replies
+            parts = [part for part in path.strip("/").split("/") if part]
+            task_id = ""
+            if len(parts) >= 2 and parts[-1] == "replies":
+                task_id = parts[-2].strip()
+            if not task_id or task_id == "tasks":
+                raise WebInputError("task_id is required")
+            data = build_douyin_task_replies_response(
+                task_id,
+                redis_client=getattr(self.server, "redis_client", None),
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            status = HTTPStatus.NOT_FOUND if "not found" in str(e).lower() else HTTPStatus.BAD_REQUEST
+            self._send_json({"ok": False, "error": str(e)}, status=status)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_douyin_conversation_read(self):
+        from aisec_agent.web.douyin_conversation_read import build_douyin_conversation_read_response
+
+        try:
+            payload = self._read_json()
+            data = build_douyin_conversation_read_response(payload)
             self._send_json({"ok": True, "data": data})
         except WebInputError as e:
             self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
