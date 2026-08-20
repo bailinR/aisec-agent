@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from aisec_agent.web.douyin_conversation_read import (
     annotate_outgoing_roles,
+    build_douyin_conversation_read_batch_response,
     build_reply_detection_result,
     extract_latest_peer_reply,
 )
+from aisec_agent.web.session_rag_chat import WebInputError
 
 
 class DouyinConversationReadTests(unittest.TestCase):
@@ -102,6 +105,85 @@ class DouyinConversationReadTests(unittest.TestCase):
         )
         self.assertTrue(result["outgoing_found"])
         self.assertFalse(result["has_reply"])
+
+    def test_batch_requires_items(self):
+        with self.assertRaises(WebInputError):
+            build_douyin_conversation_read_batch_response({})
+
+    def test_batch_aggregates_mocked_reads(self):
+        def fake_read(payload):
+            text = str(payload.get("expected_outgoing") or "")
+            if "有回复" in text:
+                return {
+                    "ok": True,
+                    "has_reply": True,
+                    "outgoing_found": True,
+                    "latest_peer_reply": "多少钱",
+                    "peer_replies": ["多少钱"],
+                    "failure_code": "",
+                    "message": "",
+                    "delivery_verified": True,
+                }
+            if "找不到" in text:
+                return {
+                    "ok": True,
+                    "has_reply": False,
+                    "outgoing_found": False,
+                    "latest_peer_reply": "",
+                    "peer_replies": [],
+                    "failure_code": "outgoing_not_found",
+                    "message": "outgoing not found",
+                    "delivery_verified": False,
+                }
+            return {
+                "ok": True,
+                "has_reply": False,
+                "outgoing_found": True,
+                "latest_peer_reply": "",
+                "peer_replies": [],
+                "failure_code": "",
+                "message": "",
+                "delivery_verified": True,
+            }
+
+        with patch(
+            "aisec_agent.web.douyin_conversation_read.build_douyin_conversation_read_response",
+            side_effect=fake_read,
+        ):
+            result = build_douyin_conversation_read_batch_response(
+                {
+                    "account_cookie": "sessionid=demo",
+                    "max_items": 10,
+                    "items": [
+                        {
+                            "lead_id": "L1",
+                            "expected_outgoing": "有回复文案",
+                            "target_profile_url": "https://www.douyin.com/user/x1",
+                        },
+                        {
+                            "lead_id": "L2",
+                            "expected_outgoing": "无回复文案",
+                            "target_profile_url": "https://www.douyin.com/user/x2",
+                        },
+                        {
+                            "lead_id": "L3",
+                            "expected_outgoing": "找不到文案",
+                            "target_profile_url": "https://www.douyin.com/user/x3",
+                        },
+                    ],
+                }
+            )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["total"], 3)
+        self.assertEqual(result["replied"], 1)
+        self.assertEqual(result["no_reply"], 1)
+        self.assertEqual(result["failed"], 0)
+        self.assertEqual(result["results"][0]["lead_id"], "L1")
+        self.assertTrue(result["results"][0]["has_reply"])
+        self.assertEqual(result["results"][0]["latest_peer_reply"], "多少钱")
+        self.assertFalse(result["results"][1]["has_reply"])
+        self.assertFalse(result["results"][2]["outgoing_found"])
 
 
 if __name__ == "__main__":

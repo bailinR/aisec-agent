@@ -468,6 +468,119 @@ def build_douyin_conversation_read_response(payload: Dict[str, Any]) -> Dict[str
     return _run_conversation_read_playwright(normalized)
 
 
+def build_douyin_conversation_read_batch_response(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Detect replies for multiple recent outgoing messages under one sending account.
+
+    Middle platform should pass items ordered by recent send time (newest first).
+    """
+    sr = _sr()
+    normalized = dict(payload or {})
+    items = normalized.get("items")
+    if not isinstance(items, list) or not items:
+        raise sr.WebInputError("items is required (non-empty list)")
+
+    max_items = int(sr._payload_float(normalized, "max_items", 10))
+    max_items = max(1, min(20, max_items))
+    selected = [item for item in items if isinstance(item, dict)][:max_items]
+    if not selected:
+        raise sr.WebInputError("items must contain objects")
+
+    shared_cookie = (
+        normalized.get("account_cookie")
+        or normalized.get("account_cookies")
+        or normalized.get("cookie")
+        or normalized.get("cookies")
+        or ""
+    )
+    shared_key = str(normalized.get("account_key") or "").strip()
+    shared_account_id = str(normalized.get("account_id") or normalized.get("account") or "").strip()
+    browser_name = str(normalized.get("browser_name") or normalized.get("browser") or "chrome").strip() or "chrome"
+    headless = True if normalized.get("headless") is None else sr._dm_bool_text(normalized.get("headless"))
+
+    results: List[Dict[str, Any]] = []
+    for index, item in enumerate(selected):
+        one = {
+            "account_cookie": item.get("account_cookie") or item.get("account_cookies") or shared_cookie,
+            "account_key": str(item.get("account_key") or shared_key).strip(),
+            "account_id": str(item.get("account_id") or shared_account_id).strip(),
+            "browser_name": str(item.get("browser_name") or item.get("browser") or browser_name).strip() or browser_name,
+            "headless": headless if item.get("headless") is None else sr._dm_bool_text(item.get("headless")),
+            "target_profile_url": item.get("target_profile_url") or item.get("profile_url") or "",
+            "sec_uid": item.get("sec_uid") or "",
+            "expected_outgoing": (
+                item.get("expected_outgoing")
+                or item.get("message")
+                or item.get("message_content")
+                or ""
+            ),
+            "task_id": item.get("task_id") or item.get("provider_task_id") or "",
+            "timeout_ms": item.get("timeout_ms") or normalized.get("timeout_ms"),
+        }
+        ref = str(
+            item.get("item_id")
+            or item.get("lead_id")
+            or item.get("task_id")
+            or item.get("provider_task_id")
+            or index
+        ).strip()
+        try:
+            detected = build_douyin_conversation_read_response(one)
+            results.append({
+                "ref": ref,
+                "item_id": item.get("item_id"),
+                "lead_id": item.get("lead_id"),
+                "task_id": one.get("task_id") or None,
+                "ok": bool(detected.get("ok")),
+                "has_reply": bool(detected.get("has_reply")),
+                "outgoing_found": bool(detected.get("outgoing_found")),
+                "latest_peer_reply": detected.get("latest_peer_reply") or "",
+                "peer_replies": list(detected.get("peer_replies") or []),
+                "failure_code": detected.get("failure_code") or "",
+                "message": detected.get("message") or "",
+                "delivery_verified": bool(detected.get("delivery_verified")),
+            })
+        except sr.WebInputError as exc:
+            results.append({
+                "ref": ref,
+                "item_id": item.get("item_id"),
+                "lead_id": item.get("lead_id"),
+                "task_id": one.get("task_id") or None,
+                "ok": False,
+                "has_reply": False,
+                "outgoing_found": False,
+                "latest_peer_reply": "",
+                "peer_replies": [],
+                "failure_code": "invalid_request",
+                "message": str(exc),
+                "delivery_verified": False,
+            })
+        except Exception as exc:
+            results.append({
+                "ref": ref,
+                "item_id": item.get("item_id"),
+                "lead_id": item.get("lead_id"),
+                "task_id": one.get("task_id") or None,
+                "ok": False,
+                "has_reply": False,
+                "outgoing_found": False,
+                "latest_peer_reply": "",
+                "peer_replies": [],
+                "failure_code": "browser_error",
+                "message": str(exc),
+                "delivery_verified": False,
+            })
+
+    replied = sum(1 for row in results if row.get("has_reply"))
+    return {
+        "ok": True,
+        "total": len(results),
+        "replied": replied,
+        "no_reply": sum(1 for row in results if row.get("ok") and row.get("outgoing_found") and not row.get("has_reply")),
+        "failed": sum(1 for row in results if not row.get("ok")),
+        "results": results,
+    }
+
+
 def build_douyin_task_replies_response(
     task_id: str,
     redis_client: Optional[Any] = None,

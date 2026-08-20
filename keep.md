@@ -1,0 +1,72 @@
+# keep — 全局约束与开发进度
+
+本文件是本仓库的**长期备忘**：全局约束、当前进度、已知坑。改代码或推进需求时先读再改；有新约定或进度变化时同步更新本文件。
+
+---
+
+## 全局约束
+
+1. **每次改完代码必须提交本地 Git**（`git add` + `git commit`）。不要求立刻 `push`，但本地仓库不能长期脏着。
+2. **双击 `start.bat` = 纯本地启动**：不 `fetch` / `pull` / stash，不对齐远程版本。需要跟 Gitee 对齐时用 `update-and-start.bat` 或 `scripts\start.ps1`（不加 `-SkipGitUpdate`）。
+3. **不要回退用户已有改动**；不要用 `start.bat` 的自动 stash 当「保存」手段。
+4. 本地启动默认同时起 **Web + worker**（`douyin_dm_worker --mode send`）；只起 Web 不能自动发私信。
+5. 正式服务器部署以 **Docker Web + worker** 为准，不要推回 systemd Python 主路径。
+6. 未读（账号维度）与回复检测（线索维度）分开，不要混用。
+
+---
+
+## 启停约定
+
+| 动作 | 怎么做 |
+|---|---|
+| 日常本地启动 | 双击 `start.bat`（内部 `-SkipGitUpdate`） |
+| 停止 | 双击 `stop.bat` |
+| 要从远程更新再启动 | 双击 `update-and-start.bat` |
+| 开发机已有 venv 时 | `scripts\start-local.ps1 -Restart` |
+
+Web：`0.0.0.0:7860` → `http://127.0.0.1:7860`
+
+---
+
+## 当前开发进度（2026-08-21）
+
+### 已完成（aisec）
+
+- 账号验活：`POST .../accounts/verify`
+- 一次性未读：`POST .../accounts/inbox`
+- 盯号 sync（好账号批量开 watch-only）：`POST .../conversation-monitors/sync`
+- 批量回复检测：`POST .../conversations/read/batch`
+- 单条回复检测 / 任务 replies：已有
+- 对接说明：`docs/数据中台对接回复与未读.md`
+- `start.bat` 改为本地启动，不再强制 Git 对齐
+
+### 进行中 / 待办
+
+- [ ] 将未推送的本地提交（含 inbox / sync / batch / start 行为）按需 push 到 Gitee
+- [ ] 数据中台（comment-kit）按 `docs/数据中台对接回复与未读.md` 接 sync + batch + 写回
+- [ ] 机 23 部署含上述 API 的版本（确认后再部署）
+
+### 本地 Git 注意
+
+- 本机曾出现 `master` **ahead of origin**（如 `6ce245c` 未 push），旧版 `start.bat` 会因此报 Code verification failed。
+- 未提交改动被旧逻辑 stash 后不会自动还原；开发 WIP 应用 `start.bat`（现已 SkipGit）或 `-SkipGitUpdate`。
+
+---
+
+## 接口速查（中台相关）
+
+| 能力 | 路径 |
+|---|---|
+| 验活 | `POST /api/v1/douyin/private-message/accounts/verify` |
+| 未读快照 | `POST /api/v1/douyin/private-message/accounts/inbox` |
+| 盯号同步 | `POST /api/v1/douyin/private-message/conversation-monitors/sync` |
+| 盯号列表 | `GET /api/v1/douyin/private-message/conversation-monitors` |
+| 批量查回复 | `POST /api/v1/douyin/private-message/conversations/read/batch` |
+
+---
+
+## 更新规则
+
+- 改约束 → 改本节「全局约束」
+- 完成/搁置需求 → 改「当前开发进度」
+- Agent 处理本仓库任务时：先读 `keep.md` 与 `AGENTS.md`

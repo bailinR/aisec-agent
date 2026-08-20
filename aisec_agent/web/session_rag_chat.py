@@ -7794,6 +7794,13 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self._handle_douyin_conversation_read()
             return
 
+        if path in {
+            "/api/douyin/private-message/conversations/read/batch",
+            "/api/v1/douyin/private-message/conversations/read/batch",
+        }:
+            self._handle_douyin_conversation_read_batch()
+            return
+
         if path in {"/api/douyin/private-message/demo", "/api/v1/douyin/private-message/demo"}:
             self._handle_douyin_private_message_demo()
             return
@@ -7803,6 +7810,13 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             "/api/v1/douyin/private-message/conversation-monitors/stop",
         }:
             self._handle_douyin_conversation_monitor_control(path.rsplit("/", 1)[-1])
+            return
+
+        if path in {
+            "/api/v1/douyin/private-message/conversation-monitors/sync",
+            "/api/douyin/private-message/conversation-monitors/sync",
+        }:
+            self._handle_douyin_conversation_monitor_sync()
             return
 
         if path == "/api/v1/douyin/private-message/conversation-monitors/probe-reply":
@@ -8553,6 +8567,18 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
+    def _handle_douyin_conversation_read_batch(self):
+        from aisec_agent.web.douyin_conversation_read import build_douyin_conversation_read_batch_response
+
+        try:
+            payload = self._read_json()
+            data = build_douyin_conversation_read_batch_response(payload)
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
     def _handle_douyin_dm_task_list(self, parsed_url=None):
         try:
             params = parse_qs((parsed_url.query if parsed_url is not None else urlparse(self.path).query) or "")
@@ -8627,6 +8653,22 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
 
         try:
             data = build_douyin_conversation_monitor_list_response()
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_douyin_conversation_monitor_sync(self):
+        from aisec_agent.web.douyin_conversation_monitor import build_douyin_conversation_monitor_sync_response
+
+        try:
+            payload = self._read_json()
+            data = build_douyin_conversation_monitor_sync_response(
+                payload,
+                logic=getattr(self.server, "logic", None),
+                project_store=getattr(self.server, "project_store", None),
+            )
             self._send_json({"ok": True, "data": data})
         except WebInputError as e:
             self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)

@@ -12,6 +12,7 @@ from aisec_agent.web.douyin_conversation_monitor import (
     build_douyin_conversation_monitor_list_response,
     build_douyin_conversation_monitor_start_response,
     build_douyin_conversation_monitor_stop_response,
+    build_douyin_conversation_monitor_sync_response,
     reset_conversation_monitors_for_tests,
 )
 from aisec_agent.web.session_rag_chat import WebInputError, _dm_account_key_from_values
@@ -101,6 +102,55 @@ class DouyinConversationMonitorTests(unittest.TestCase):
             )
             self.assertTrue(stopped["stopped"])
             self.assertEqual(stopped["monitor"]["status"], "stopped")
+
+    def test_sync_starts_watch_only_and_skips_already_running(self):
+        def fake_start(self):
+            self.status = "running"
+            self.thread = threading.Thread(target=lambda: None, daemon=True)
+            self.thread.start = lambda: None  # type: ignore[method-assign]
+            self.thread.is_alive = lambda: True  # type: ignore[method-assign]
+
+        def fake_stop(self):
+            self.status = "stopped"
+            self.stop_event.set()
+            if self.thread:
+                self.thread.is_alive = lambda: False  # type: ignore[method-assign]
+
+        accounts = [
+            {
+                "account_id": "acc_sync_1",
+                "account_name": "账号1",
+                "account_cookies": "sessionid=sync1; uid_tt=1",
+            },
+            {
+                "account_id": "acc_sync_2",
+                "account_name": "账号2",
+                "account_cookies": "sessionid=sync2; uid_tt=2",
+            },
+        ]
+        with patch.object(DouyinConversationMonitor, "start", fake_start), patch.object(
+            DouyinConversationMonitor, "stop", fake_stop
+        ):
+            first = build_douyin_conversation_monitor_sync_response(
+                {
+                    "accounts": accounts,
+                    "browser_name": "chrome",
+                    "headless": True,
+                    "poll_seconds": 8,
+                }
+            )
+            self.assertTrue(first["ok"])
+            self.assertEqual(first["mode"], "watch_only")
+            self.assertEqual(len(first["started"]), 2)
+            self.assertEqual(len(first["already_running"]), 0)
+            self.assertFalse(first["started"][0]["monitor"]["generate_reply"])
+            self.assertFalse(first["started"][0]["monitor"]["auto_send"])
+
+            again = build_douyin_conversation_monitor_sync_response({"accounts": accounts})
+            self.assertTrue(again["ok"])
+            self.assertEqual(len(again["started"]), 0)
+            self.assertEqual(len(again["already_running"]), 2)
+            self.assertEqual(again["counts"]["running"], 2)
 
     def test_tick_watch_only_peeks_preview_without_open_or_reply(self):
         monitor = DouyinConversationMonitor(

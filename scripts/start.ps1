@@ -126,6 +126,8 @@ function Update-FromGit {
   if ($changes.Count -gt 0) {
     Write-Host "Saving local uncommitted files before update:" -ForegroundColor Yellow
     $changes | ForEach-Object { Write-Host "  $_" }
+    Write-Host "Note: these changes stay in stash and are NOT auto-restored after start." -ForegroundColor Yellow
+    Write-Host "For local development with WIP, use: powershell -File .\scripts\start.ps1 -SkipGitUpdate" -ForegroundColor Yellow
     $stashMessage = "automatic backup before updating $branch at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
     & git stash push --include-untracked --message $stashMessage
     if ($LASTEXITCODE -ne 0) {
@@ -154,7 +156,24 @@ function Update-FromGit {
   $localCommit = (& git rev-parse HEAD).Trim()
   $remoteCommit = (& git rev-parse "origin/$branch").Trim()
   if ($localCommit -ne $remoteCommit) {
-    throw "Code verification failed. Local=$localCommit Remote=$remoteCommit"
+    # Local ahead of origin is common on a developer machine (committed but not pushed).
+    # ff-only pull cannot move origin forward, so exact SHA equality would block every start.
+    & git merge-base --is-ancestor $remoteCommit $localCommit
+    $remoteIsAncestor = ($LASTEXITCODE -eq 0)
+    & git merge-base --is-ancestor $localCommit $remoteCommit
+    $localIsAncestor = ($LASTEXITCODE -eq 0)
+    if ($remoteIsAncestor -and -not $localIsAncestor) {
+      Write-Warning @"
+Local branch is ahead of origin/$branch (unpushed commits).
+Local=$localCommit
+Remote=$remoteCommit
+Startup continues with local HEAD. Push when ready, or use -SkipGitUpdate to skip git sync.
+"@
+    } elseif ($localIsAncestor -and -not $remoteIsAncestor) {
+      throw "Code verification failed: local is behind origin/$branch after pull. Local=$localCommit Remote=$remoteCommit"
+    } else {
+      throw "Code verification failed: local and origin/$branch have diverged. Local=$localCommit Remote=$remoteCommit"
+    }
   }
 
   Restore-LauncherFilesFromStash -StashRef $script:savedStash
@@ -179,7 +198,11 @@ function Update-FromGit {
     throw "The worktree is not clean after update:`n$($unexpected -join "`n")"
   }
 
-  Write-Host "Code is fully synchronized: $localCommit" -ForegroundColor Green
+  if ($localCommit -eq $remoteCommit) {
+    Write-Host "Code is fully synchronized: $localCommit" -ForegroundColor Green
+  } else {
+    Write-Host "Code update finished with local ahead of origin: $localCommit" -ForegroundColor Green
+  }
 }
 
 try {

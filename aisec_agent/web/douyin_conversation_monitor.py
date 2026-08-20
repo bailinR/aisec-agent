@@ -1534,6 +1534,119 @@ def build_douyin_conversation_monitor_list_response() -> Dict[str, Any]:
     }
 
 
+def build_douyin_conversation_monitor_sync_response(
+    payload: Dict[str, Any],
+    logic: Optional[SessionRAGChatLogic] = None,
+    project_store: Optional[ProjectMaterialStore] = None,
+) -> Dict[str, Any]:
+    """Ensure watch-only monitors for the given healthy sending accounts.
+
+    Middle platform should pass currently eligible accounts (active Cookie).
+    Defaults: generate_reply=false, auto_send=false (unread monitoring only).
+    """
+    sr = _sr()
+    normalized = dict(payload or {})
+    accounts = normalized.get("accounts")
+    if accounts is None and (
+        normalized.get("account_cookie")
+        or normalized.get("account_cookies")
+        or normalized.get("account_key")
+    ):
+        accounts = [normalized]
+    if not isinstance(accounts, list) or not accounts:
+        raise sr.WebInputError("accounts is required (non-empty list)")
+
+    shared = {
+        "browser_name": str(normalized.get("browser_name") or normalized.get("browser") or "chrome").strip() or "chrome",
+        "headless": normalized.get("headless", True),
+        "generate_reply": normalized.get("generate_reply", False),
+        "auto_send": normalized.get("auto_send", False),
+        "poll_seconds": normalized.get("poll_seconds", 8),
+        "project_id": normalized.get("project_id"),
+        "company_id": normalized.get("company_id"),
+        "source_platform": normalized.get("source_platform") or "抖音",
+    }
+    stop_missing = sr._dm_bool_text(normalized.get("stop_missing", False))
+
+    started: List[Dict[str, Any]] = []
+    already_running: List[Dict[str, Any]] = []
+    failed: List[Dict[str, Any]] = []
+    desired_keys: List[str] = []
+
+    for raw_account in accounts:
+        if not isinstance(raw_account, dict):
+            failed.append({"error": "account item must be an object"})
+            continue
+        item = dict(shared)
+        item.update({k: v for k, v in raw_account.items() if v is not None})
+        # Force watch-only unless caller explicitly enables reply generation.
+        if "generate_reply" not in raw_account and "generate_reply" not in normalized:
+            item["generate_reply"] = False
+        if "auto_send" not in raw_account and "auto_send" not in normalized:
+            item["auto_send"] = False
+        account_label = str(
+            item.get("account_id") or item.get("account_name") or item.get("account_key") or ""
+        ).strip()
+        try:
+            result = build_douyin_conversation_monitor_start_response(
+                item,
+                logic=logic,
+                project_store=project_store,
+            )
+            monitor = result.get("monitor") if isinstance(result.get("monitor"), dict) else {}
+            account_key = str(monitor.get("account_key") or "").strip()
+            if account_key:
+                desired_keys.append(account_key)
+            entry = {
+                "account_id": monitor.get("account_id") or item.get("account_id") or account_label,
+                "account_key": account_key,
+                "started": bool(result.get("started")),
+                "reason": result.get("reason") or "",
+                "monitor": monitor,
+            }
+            if result.get("started"):
+                started.append(entry)
+            else:
+                already_running.append(entry)
+        except Exception as exc:
+            failed.append({
+                "account_id": account_label,
+                "account_key": str(item.get("account_key") or "").strip(),
+                "error": str(exc),
+            })
+
+    stopped: List[Dict[str, Any]] = []
+    if stop_missing:
+        desired = set(desired_keys)
+        with _DM_ACCOUNT_CONTROLLERS_LOCK:
+            extras = [
+                controller
+                for key, controller in _DM_ACCOUNT_CONTROLLERS.items()
+                if key not in desired
+            ]
+        for controller in extras:
+            snap = controller.snapshot()
+            controller.stop()
+            stopped.append({
+                "account_id": snap.get("account_id"),
+                "account_key": snap.get("account_key"),
+                "stopped": True,
+            })
+
+    listing = build_douyin_conversation_monitor_list_response()
+    return {
+        "ok": len(failed) == 0,
+        "mode": "watch_only",
+        "started": started,
+        "already_running": already_running,
+        "failed": failed,
+        "stopped": stopped,
+        "monitors": listing.get("monitors") or [],
+        "counts": listing.get("counts") or {},
+        "desired_account_keys": desired_keys,
+    }
+
+
 def build_douyin_cs_probe_reply_response(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Generate one CS-style reply via GPU pool without opening a browser."""
     sr = _sr()

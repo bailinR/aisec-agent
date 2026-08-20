@@ -3,10 +3,10 @@ setlocal
 chcp 65001 >nul
 cd /d "%~dp0"
 
-echo Starting aisec-agent (local only, no git sync)...
+echo Updating from origin then starting aisec-agent...
 echo.
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start.ps1" -SkipGitUpdate
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start.ps1"
 if errorlevel 1 (
   echo.
   echo Startup failed. Review the message above and runtime\logs.

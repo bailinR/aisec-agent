@@ -15,11 +15,13 @@ cd private-message
 
 然后双击 `start.bat`。
 
-以后每次启动也双击同一个 `start.bat`。它会：
+以后每次**本地启动**也双击同一个 `start.bat`。它会：
 
-1. 从 Gitee `origin` 快进更新当前分支（有本地未提交改动时先自动 stash）。
+1. **不**从 Gitee 拉代码，不 stash、不对齐远程版本（使用当前工作区原样启动）。
 2. 按需安装或刷新项目内 Python / Redis / Playwright 运行时。
 3. 停止旧实例后，只启动一个 `7860` Web 和一个私信 worker。
+
+若需要「先更新远程再启动」，双击 `update-and-start.bat`（会 fetch/pull，有本地未提交改动时仍会先 stash）。
 
 停止服务双击 `stop.bat`，会停止本项目 Web、worker、项目 Redis，并清理 `7860` 端口上的监听进程。
 
@@ -41,7 +43,7 @@ cd private-message
 
 ## 3. 更新与完整性确认
 
-双击 `start.bat` 时的代码更新等价于：
+日常双击 `start.bat` **不会**更新 Git。需要从 Gitee 快进更新时，双击 `update-and-start.bat`，等价于：
 
 ```powershell
 git fetch --prune origin
