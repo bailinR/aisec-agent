@@ -71,6 +71,20 @@ class DouyinConversationReadTests(unittest.TestCase):
         self.assertTrue(result["outgoing_found"])
         self.assertFalse(result["has_reply"])
         self.assertEqual(result["latest_peer_reply"], "")
+        self.assertIn("暂无新回复", result["message"])
+
+    def test_detection_matches_curly_quotes_and_read_suffix(self):
+        outgoing = '看到您之前留言问“怎么卖”，想问下是您自己有需要'
+        result = build_reply_detection_result(
+            [
+                {"role": "peer", "text": "4444444"},
+                {"role": "self", "text": '看到您之前留言问"怎么卖"，想问下是您自己有需要，还是想帮家人了解一下？ 已读', "read_status": "read"},
+            ],
+            expected_outgoing=outgoing + "，还是想帮家人了解一下？",
+        )
+        self.assertTrue(result["outgoing_found"])
+        self.assertFalse(result["has_reply"])
+        self.assertIn("对方已读", result["message"])
 
     def test_detection_outgoing_not_found(self):
         result = build_reply_detection_result(
@@ -105,6 +119,50 @@ class DouyinConversationReadTests(unittest.TestCase):
         )
         self.assertTrue(result["outgoing_found"])
         self.assertFalse(result["has_reply"])
+
+    def test_geometry_reclassifies_mislabeled_peer_reply(self):
+        """Peer bubble wrongly tagged as self must still be detected via x position."""
+        outgoing = '看到您之前留言问"怎么卖"，想问下是您自己有需要，还是想帮家人了解一下？'
+        result = build_reply_detection_result(
+            [
+                {"role": "self", "text": "5555555", "x": 520, "width": 90},
+                {"role": "self", "text": outgoing, "x": 720, "width": 260},
+                {"role": "self", "text": "效果怎么样", "x": 520, "width": 110},
+            ],
+            expected_outgoing=outgoing,
+        )
+        self.assertTrue(result["outgoing_found"])
+        self.assertTrue(result["has_reply"])
+        self.assertEqual(result["latest_peer_reply"], "效果怎么样")
+        self.assertEqual(result["messages"][2]["role"], "peer")
+
+    def test_strips_action_chrome_and_keeps_real_reply(self):
+        outgoing = "您好，看到您的留言了。"
+        result = build_reply_detection_result(
+            [
+                {"role": "self", "text": outgoing, "x": 720, "width": 240},
+                {"role": "self", "text": "效果怎么样", "x": 520, "width": 100},
+                {"role": "self", "text": "你好呀 点赞 回复 删除", "x": 500, "width": 160},
+                {"role": "self", "text": "你好呀", "x": 500, "width": 80},
+            ],
+            expected_outgoing=outgoing,
+        )
+        self.assertTrue(result["has_reply"])
+        self.assertEqual(result["latest_peer_reply"], "效果怎么样")
+
+    def test_prefer_rightmost_outgoing_anchor(self):
+        outgoing = "您好，看到您的留言了。"
+        result = build_reply_detection_result(
+            [
+                {"role": "self", "text": outgoing, "x": 200, "width": 180},
+                {"role": "self", "text": "列表脏数据", "x": 220, "width": 100},
+                {"role": "self", "text": outgoing, "x": 760, "width": 240},
+                {"role": "self", "text": "效果怎么样", "x": 520, "width": 100},
+            ],
+            expected_outgoing=outgoing,
+        )
+        self.assertTrue(result["has_reply"])
+        self.assertEqual(result["latest_peer_reply"], "效果怎么样")
 
     def test_batch_requires_items(self):
         with self.assertRaises(WebInputError):
