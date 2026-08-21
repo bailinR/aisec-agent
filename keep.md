@@ -53,8 +53,9 @@ Web：`0.0.0.0:7860` → `http://127.0.0.1:7860`
 - 路径：`C:\sixin\aisec\new\aisec-agent`
 - 分支：`master` @ `d03c613`
 - 访问：`http://192.168.18.100:7860`
-- 启停：便携运行时；远程 SSH 直接跑 `start.ps1` 会被会话结束杀掉进程，需用计划任务脱离会话启动
+- 启停：便携运行时；远程重启须以交互用户 `starc` 跑 `start.ps1 -SkipGitUpdate`，**禁止** `schtasks /RU SYSTEM`（SYSTEM 下 Playwright 会 `browser_closed`）
 - Gitee HTTPS 在机 23 无交互凭证，更新代码用 git bundle 快进
+- 2026-08-21 部署 `d03c613` 后曾误用 SYSTEM 重启，导致中台发私信批量 `browser_closed`；已改回 `ALEX001\starc` 运行
 
 - 本机曾出现 `master` **ahead of origin**（如 `6ce245c` 未 push），旧版 `start.bat` 会因此报 Code verification failed。
 - 未提交改动被旧逻辑 stash 后不会自动还原；开发 WIP 应用 `start.bat`（现已 SkipGit）或 `-SkipGitUpdate`。
