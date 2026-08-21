@@ -45,12 +45,13 @@ Web：`0.0.0.0:7860` → `http://127.0.0.1:7860`
 
 - [x] 将未推送的本地提交（含 inbox / sync / batch / start 行为）push 到 Gitee（`99c1f20`）
 - [x] 机 23 部署到 `99c1f20`（路径 `C:\sixin\aisec\new\aisec-agent`，Web+worker 已重启）
+- [x] 机 23 部署到 `d03c613`（私密账号 → `recipient_privacy_restriction`）
 - [ ] 数据中台（comment-kit）按 `docs/数据中台对接回复与未读.md` 接 sync + batch + 写回
 
 ### 生产机（机 23 / ALEX001）
 
 - 路径：`C:\sixin\aisec\new\aisec-agent`
-- 分支：`master` @ `99c1f20`
+- 分支：`master` @ `d03c613`
 - 访问：`http://192.168.18.100:7860`
 - 启停：便携运行时；远程 SSH 直接跑 `start.ps1` 会被会话结束杀掉进程，需用计划任务脱离会话启动
 - Gitee HTTPS 在机 23 无交互凭证，更新代码用 git bundle 快进
