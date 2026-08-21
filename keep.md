@@ -42,11 +42,17 @@ Web：`0.0.0.0:7860` → `http://127.0.0.1:7860`
 
 ### 进行中 / 待办
 
-- [ ] 将未推送的本地提交（含 inbox / sync / batch / start 行为）按需 push 到 Gitee
+- [x] 将未推送的本地提交（含 inbox / sync / batch / start 行为）push 到 Gitee（`99c1f20`）
+- [x] 机 23 部署到 `99c1f20`（路径 `C:\sixin\aisec\new\aisec-agent`，Web+worker 已重启）
 - [ ] 数据中台（comment-kit）按 `docs/数据中台对接回复与未读.md` 接 sync + batch + 写回
-- [ ] 机 23 部署含上述 API 的版本（确认后再部署）
 
-### 本地 Git 注意
+### 生产机（机 23 / ALEX001）
+
+- 路径：`C:\sixin\aisec\new\aisec-agent`
+- 分支：`master` @ `99c1f20`
+- 访问：`http://192.168.18.100:7860`
+- 启停：便携运行时；远程 SSH 直接跑 `start.ps1` 会被会话结束杀掉进程，需用计划任务脱离会话启动
+- Gitee HTTPS 在机 23 无交互凭证，更新代码用 git bundle 快进
 
 - 本机曾出现 `master` **ahead of origin**（如 `6ce245c` 未 push），旧版 `start.bat` 会因此报 Code verification failed。
 - 未提交改动被旧逻辑 stash 后不会自动还原；开发 WIP 应用 `start.bat`（现已 SkipGit）或 `-SkipGitUpdate`。
