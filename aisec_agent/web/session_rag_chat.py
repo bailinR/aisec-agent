@@ -9113,7 +9113,7 @@ DM_FAILURE_PROFILES = {
     "recipient_privacy_restriction": {
         "stage": "send_confirm",
         "category": "recipient",
-        "reason": "对方设置了仅互关用户可发送私信",
+        "reason": "对方隐私设置不允许接收私信（含私密账号 / 仅互关等）",
         "hint": "该用户当前不可接收本账号私信，无需重试或冷却发送账号",
     },
     "hourly_limit_reached": {
@@ -9234,6 +9234,9 @@ DM_FAILURE_STEP_STAGE_MAP = {
     "open_douyin_home": "page_open",
     "click_private_button": "open_private_chat",
     "open_private_chat": "open_private_chat",
+    "open_private_message": "open_conversation",
+    "retry_open_private_message": "open_conversation",
+    "recipient_privacy_restriction": "open_conversation",
     "apply_account_cookies": "session_prepare",
     "paste_message": "prefill",
     "click_send_button": "send_action",
@@ -10442,11 +10445,41 @@ def _dm_normalize_send_failure_notice_text(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
 
 
+def _dm_compact_failure_notice_text(value: Any) -> str:
+    normalized = _dm_normalize_send_failure_notice_text(value)
+    return re.sub(r"[\s，。！？、:：；;（）()【】\[\]…·]+", "", normalized)
+
+
+def _dm_text_indicates_private_account_restriction(text: Any) -> bool:
+    """Detect Douyin private-account profile copy (not broad 隐私/限制 matching)."""
+    compact = _dm_compact_failure_notice_text(text)
+    if not compact:
+        return False
+    if "私密账号" in compact:
+        return True
+    if "发起关注请求通过后即可查看该账号内容" in compact:
+        return True
+    return False
+
+
+def _dm_editor_lookup_failed(text: Any) -> bool:
+    lower = str(text or "").lower()
+    return any(
+        marker in lower
+        for marker in (
+            "private message button not found",
+            "private chat editor not found",
+            "message editor not found",
+            "no trusted editor",
+        )
+    )
+
+
 def _dm_send_failure_notice_code(text: Any) -> str:
     normalized = _dm_normalize_send_failure_notice_text(text)
     if not normalized:
         return ""
-    compact = re.sub(r"[\s，。！？、:：；;（）()【】\[\]…·]+", "", normalized).lower()
+    compact = _dm_compact_failure_notice_text(normalized).lower()
     if (
         "给陌生人发送消息已达到今日上限" in compact
         or ("陌生人" in compact and "今日上限" in compact)
@@ -10471,6 +10504,9 @@ def _dm_send_failure_notice_code(text: Any) -> str:
     ):
         return "rate_limited"
     if "recipient_privacy_restriction" in compact:
+        return "recipient_privacy_restriction"
+    # Private-account homepage copy must win over automation_changed / send_unconfirmed.
+    if _dm_text_indicates_private_account_restriction(normalized):
         return "recipient_privacy_restriction"
     if any(
         marker in compact
@@ -10548,6 +10584,7 @@ def _dm_collect_send_failure_notice_candidates(page: Any) -> List[Dict[str, Any]
         '仅允许互关的人发消息', '仅和他互关的人可发消息', '隐私设置',
         '无法向对方发送消息', '无法给对方发送消息', '暂无法给对方发送消息',
         '暂时无法给该用户发送消息',
+        '私密账号', '发起关注请求', '通过后即可查看该账号内容',
         '给陌生人发送消息已达到今日上限', '今日上限', '明天再发送陌生人消息',
         '系统繁忙', '私信频繁', '私信功能使用频繁', '发送消息过于频繁',
         '操作频繁', '请完成下列验证后继续', '滑块验证',
@@ -11416,6 +11453,68 @@ def _douyin_detect_login_requirement(page: Any) -> Dict[str, Any]:
     }
 
 
+def _douyin_detect_private_account_restriction(page: Any) -> Dict[str, Any]:
+    """Detect private-account profile state that blocks opening a message editor."""
+    try:
+        payload = page.evaluate(
+            """
+            () => {
+              const bodyText = String(document.body && document.body.innerText || "").slice(0, 6000);
+              const compact = bodyText.replace(/[\\s，。！？、:：；;（）()【】\\[\\]…·]+/g, '');
+              const isPrivate = compact.includes('私密账号') ||
+                compact.includes('发起关注请求通过后即可查看该账号内容');
+              return {
+                is_private_account: isPrivate,
+                body_text: bodyText.slice(0, 240),
+              };
+            }
+            """
+        )
+    except Exception:
+        payload = {}
+    if not isinstance(payload, dict):
+        return {"is_private_account": False, "body_text": ""}
+    return {
+        "is_private_account": bool(payload.get("is_private_account")),
+        "body_text": str(payload.get("body_text") or ""),
+    }
+
+
+def _dm_private_account_restriction_error(stage: str = "") -> str:
+    detail = "对方为私密账号，无法发送私信"
+    if stage:
+        detail = f"{stage}: {detail}"
+    return f"recipient_privacy_restriction: {detail}"
+
+
+def _dm_abort_on_private_account_restriction(
+    page: Any,
+    steps: List[Dict[str, Any]],
+    *,
+    stage: str = "",
+) -> Optional[Dict[str, Any]]:
+    state = _douyin_detect_private_account_restriction(page)
+    if not state.get("is_private_account"):
+        return None
+    detail = "对方为私密账号，无法发送私信"
+    if stage:
+        detail = f"{stage}: {detail}"
+    steps.append({"name": "recipient_privacy_restriction", "ok": False, "detail": detail})
+    return {
+        "error": _dm_private_account_restriction_error(stage),
+        "requires_login": False,
+        "requires_verification": False,
+        "private_account": True,
+        "login_state": state,
+    }
+
+
+def _dm_raise_if_private_account_blocks_messaging(page: Any, *, stage: str = "") -> None:
+    state = _douyin_detect_private_account_restriction(page)
+    if state.get("is_private_account"):
+        raise RuntimeError(_dm_private_account_restriction_error(stage))
+
+
 def _dm_login_required_step(stage: str = "") -> Dict[str, Any]:
     detail = "需要重新登录"
     if stage:
@@ -11572,9 +11671,39 @@ def _douyin_private_message_playwright_executor(
                     playwright=playwright,
                     cookies=cookies,
                 )
+            privacy_abort = _dm_abort_on_private_account_restriction(page, steps, stage="after_open_profile")
+            if privacy_abort:
+                return _dm_build_login_abort_result(
+                    privacy_abort,
+                    steps=steps,
+                    combined_steps=combined_steps,
+                    page=page,
+                    options=options,
+                    browser_name=browser_name,
+                    keep_browser_open=keep_browser_open,
+                    context=context,
+                    browser=browser,
+                    playwright=playwright,
+                    cookies=cookies,
+                )
             try:
                 steps.append(_dm_click_profile_private_message(page, timeout_ms=min(timeout_ms, 12000)))
             except RuntimeError as exc:
+                privacy_abort = _dm_abort_on_private_account_restriction(page, steps, stage="open_private_message")
+                if privacy_abort:
+                    return _dm_build_login_abort_result(
+                        privacy_abort,
+                        steps=steps,
+                        combined_steps=combined_steps,
+                        page=page,
+                        options=options,
+                        browser_name=browser_name,
+                        keep_browser_open=keep_browser_open,
+                        context=context,
+                        browser=browser,
+                        playwright=playwright,
+                        cookies=cookies,
+                    )
                 login_abort = _dm_abort_on_login_requirement(page, steps, stage="open_private_message")
                 if login_abort:
                     return _dm_build_login_abort_result(
@@ -11607,6 +11736,21 @@ def _douyin_private_message_playwright_executor(
                     playwright=playwright,
                     cookies=cookies,
                 )
+            privacy_abort = _dm_abort_on_private_account_restriction(page, steps, stage="after_open_private_message")
+            if privacy_abort:
+                return _dm_build_login_abort_result(
+                    privacy_abort,
+                    steps=steps,
+                    combined_steps=combined_steps,
+                    page=page,
+                    options=options,
+                    browser_name=browser_name,
+                    keep_browser_open=keep_browser_open,
+                    context=context,
+                    browser=browser,
+                    playwright=playwright,
+                    cookies=cookies,
+                )
             try:
                 steps.append(_dm_fill_message_editor(page, message, timeout_ms=min(timeout_ms, 12000)))
             except RuntimeError as exc:
@@ -11625,6 +11769,24 @@ def _douyin_private_message_playwright_executor(
                         playwright=playwright,
                         cookies=cookies,
                     )
+                if _dm_editor_lookup_failed(exc):
+                    privacy_abort = _dm_abort_on_private_account_restriction(
+                        page, steps, stage="fill_message_editor"
+                    )
+                    if privacy_abort:
+                        return _dm_build_login_abort_result(
+                            privacy_abort,
+                            steps=steps,
+                            combined_steps=combined_steps,
+                            page=page,
+                            options=options,
+                            browser_name=browser_name,
+                            keep_browser_open=keep_browser_open,
+                            context=context,
+                            browser=browser,
+                            playwright=playwright,
+                            cookies=cookies,
+                        )
                 if "no trusted editor" not in str(exc).lower():
                     raise
                 recovery = _dm_close_douyin_global_message_drawer(page)
@@ -11649,7 +11811,31 @@ def _douyin_private_message_playwright_executor(
                         playwright=playwright,
                         cookies=cookies,
                     )
-                steps.append(_dm_fill_message_editor(page, message, timeout_ms=min(timeout_ms, 12000)))
+                privacy_abort = _dm_abort_on_private_account_restriction(
+                    page, steps, stage="after_retry_open_private_message"
+                )
+                if privacy_abort:
+                    return _dm_build_login_abort_result(
+                        privacy_abort,
+                        steps=steps,
+                        combined_steps=combined_steps,
+                        page=page,
+                        options=options,
+                        browser_name=browser_name,
+                        keep_browser_open=keep_browser_open,
+                        context=context,
+                        browser=browser,
+                        playwright=playwright,
+                        cookies=cookies,
+                    )
+                try:
+                    steps.append(_dm_fill_message_editor(page, message, timeout_ms=min(timeout_ms, 12000)))
+                except RuntimeError as retry_exc:
+                    if _dm_editor_lookup_failed(retry_exc):
+                        _dm_raise_if_private_account_blocks_messaging(
+                            page, stage="fill_message_editor_retry"
+                        )
+                    raise
             sent = False
             followup_private_message = False
             followup_private_message_status = "skipped"
@@ -12278,13 +12464,18 @@ def _dm_failure_from_demo_result(demo_result: Dict[str, Any]) -> Optional[Except
         return RuntimeError("account risk")
     if any(marker in text for marker in ["browser has been closed", "page has been closed", "context has been closed", "target page, context or browser has been closed", "browser closed", "page closed"]):
         return RuntimeError("browser closed")
-    if any(marker in text for marker in ["private message button not found", "private chat editor not found", "message editor not found"]):
+    if _dm_editor_lookup_failed(text):
+        # Private-account pages often keep the 私信 button but never open an editor.
+        if _dm_text_indicates_private_account_restriction(text):
+            return RuntimeError(_dm_private_account_restriction_error("open_conversation"))
         return RuntimeError("automation changed")
     if any(marker in text for marker in ["captcha", "challenge", "too many requests", "429", "rate limit", "rate-limited"]):
         return RuntimeError("rate limited")
     if any(marker in text for marker in ["authentication required", "cookie expired", "cookie invalid", "session expired", "not authenticated", "login expired"]):
         return RuntimeError("cookie invalid")
     if "message send was not confirmed" in text:
+        if _dm_text_indicates_private_account_restriction(text):
+            return RuntimeError(_dm_private_account_restriction_error("send_confirm"))
         return RuntimeError("message send was not confirmed")
     if "message prefill did not persist" in text:
         return RuntimeError("message prefill did not persist")
@@ -12308,6 +12499,8 @@ def _dm_infer_failure_code(error_code: str, error_text: str, detail: Optional[An
     notice_code = _dm_send_failure_notice_code(text)
     if notice_code:
         return notice_code
+    if _dm_text_indicates_private_account_restriction(text):
+        return "recipient_privacy_restriction"
     if "message send was not confirmed" in text:
         return "message_send_unconfirmed"
     if "no module named 'playwright'" in text or 'no module named "playwright"' in text or ("playwrightcontextmanager" in text and "_playwright" in text):
@@ -12316,7 +12509,7 @@ def _dm_infer_failure_code(error_code: str, error_text: str, detail: Optional[An
         return "browser_closed"
     if any(marker in text for marker in ["timed out", "timeout", "read timed out"]):
         return "model_timeout" if any(marker in text for marker in ["model", "llm", "minimax", "openai", "deepseek", "anthropic"]) else "network_timeout"
-    if any(marker in text for marker in ["private message button not found", "private chat editor not found", "message editor not found"]):
+    if _dm_editor_lookup_failed(text):
         return "automation_changed"
     if any(marker in text for marker in ["second_verify", "二次验证", "verification required", "verification_required", "滑块验证", "请完成下列验证"]):
         return "verification_required"
@@ -12341,6 +12534,13 @@ def _dm_failure_metadata(error_code: str, failure_type: str, error_text: str, de
     failure_step = str(trace.get("failure_step") or "")
     failure_step_detail = str(trace.get("failure_step_detail") or "")
     failure_reason = str(profile.get("reason") or error_text or "")
+    combined_reason_text = " ".join(
+        part for part in [error_text, failure_step_detail, trace.get("demo_error") or ""] if part
+    )
+    if resolved_code == "recipient_privacy_restriction" and _dm_text_indicates_private_account_restriction(combined_reason_text):
+        failure_reason = "对方为私密账号，无法发送私信"
+        if not trace.get("failure_stage"):
+            failure_stage = "open_conversation"
     if trace.get("requires_login") and resolved_code not in {
         "login_required",
         "verification_required",
@@ -13482,10 +13682,16 @@ def process_douyin_dm_task_once(
             retryable = False
             manual_required = False
         elif "message send was not confirmed" in lower:
-            error_code = "message_send_unconfirmed"
-            failure_type = "final"
-            retryable = False
-            manual_required = False
+            if _dm_text_indicates_private_account_restriction(lower):
+                error_code = "recipient_privacy_restriction"
+                failure_type = "final"
+                retryable = False
+                manual_required = False
+            else:
+                error_code = "message_send_unconfirmed"
+                failure_type = "final"
+                retryable = False
+                manual_required = False
         elif any(marker in lower for marker in ["login", "second_verify", "二次验证", "verification required"]):
             error_code = "verification_required" if any(marker in lower for marker in ["second_verify", "二次验证", "verification required"]) else "login_required"
             failure_type = "manual"
@@ -13496,11 +13702,17 @@ def process_douyin_dm_task_once(
             failure_type = "manual"
             retryable = False
             manual_required = True
-        elif any(marker in lower for marker in ["private message button not found", "private chat editor not found", "message editor not found"]):
-            error_code = "automation_changed"
-            failure_type = "manual"
-            retryable = False
-            manual_required = True
+        elif _dm_editor_lookup_failed(lower):
+            if _dm_text_indicates_private_account_restriction(lower):
+                error_code = "recipient_privacy_restriction"
+                failure_type = "final"
+                retryable = False
+                manual_required = False
+            else:
+                error_code = "automation_changed"
+                failure_type = "manual"
+                retryable = False
+                manual_required = True
         elif any(marker in lower for marker in ["timeout", "timed out", "model timeout"]):
             error_code = "model_timeout" if any(marker in lower for marker in ["model", "llm", "minimax", "openai", "deepseek", "anthropic"]) else "network_timeout"
             failure_type = "retryable"
@@ -13550,7 +13762,7 @@ def process_douyin_dm_task_once(
         # these tasks in failed/dead-letter queues and expose why delivery did
         # not occur to the data hub.
         if error_code == "recipient_privacy_restriction":
-            privacy_reason = failure_state.get("failure_reason") or "对方设置了仅互关用户可发送私信"
+            privacy_reason = failure_state.get("failure_reason") or "对方隐私设置不允许接收私信（含私密账号 / 仅互关等）"
             privacy_fields = {
                 "status": "success",
                 "queue_status": "done",

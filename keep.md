@@ -39,6 +39,7 @@ Web：`0.0.0.0:7860` → `http://127.0.0.1:7860`
 - 单条回复检测 / 任务 replies：已有
 - 对接说明：`docs/数据中台对接回复与未读.md`
 - `start.bat` 改为本地启动，不再强制 Git 对齐
+- 私密账号主页态：识别「私密账号 / 发起关注请求…」→ `recipient_privacy_restriction`，不再误报 `automation_changed` /「发送结果未确认」
 
 ### 进行中 / 待办
 

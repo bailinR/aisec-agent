@@ -90,6 +90,7 @@ from aisec_agent.web.session_rag_chat import (
     _dm_send_failure_notice_code,
     _dm_wait_message_sent,
     _douyin_detect_login_requirement,
+    _douyin_detect_private_account_restriction,
     _douyin_private_message_playwright_executor,
     _format_sender_identity_context,
     process_douyin_dm_task_once,
@@ -2110,7 +2111,121 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(metadata["failure_code"], "recipient_privacy_restriction")
         self.assertEqual(metadata["failure_stage"], "send_confirm")
         self.assertEqual(metadata["failure_category"], "recipient")
-        self.assertTrue(metadata["failure_summary"].startswith("对方设置了仅互关用户可发送私信"))
+        self.assertTrue(metadata["failure_summary"].startswith("对方隐私设置不允许接收私信"))
+
+    def test_douyin_dm_private_account_restriction_not_automation_changed(self):
+        private_copy = "私密账号 发起关注请求，通过后即可查看该账号内容"
+        self.assertEqual(
+            _dm_send_failure_notice_code(private_copy),
+            "recipient_privacy_restriction",
+        )
+        self.assertEqual(
+            _dm_infer_failure_code(
+                "",
+                "private chat editor not found: no trusted editor in the conversation panel",
+                {
+                    "steps": [
+                        {"name": "open_profile", "ok": True, "detail": "opened"},
+                        {
+                            "name": "playwright_error",
+                            "ok": False,
+                            "detail": f"private chat editor not found; page shows {private_copy}",
+                        },
+                    ],
+                    "error": f"private chat editor not found; {private_copy}",
+                },
+            ),
+            "recipient_privacy_restriction",
+        )
+        self.assertEqual(
+            _dm_infer_failure_code(
+                "",
+                "private chat editor not found: no trusted editor in the conversation panel",
+            ),
+            "automation_changed",
+        )
+        metadata = _dm_failure_metadata(
+            "automation_changed",
+            "manual",
+            f"private chat editor not found: no trusted editor; {private_copy}",
+            detail={
+                "steps": [
+                    {"name": "recipient_privacy_restriction", "ok": False, "detail": private_copy},
+                ],
+                "error": f"recipient_privacy_restriction: 对方为私密账号，无法发送私信；{private_copy}",
+            },
+        )
+        self.assertEqual(metadata["failure_code"], "recipient_privacy_restriction")
+        self.assertEqual(metadata["failure_category"], "recipient")
+        self.assertEqual(metadata["failure_reason"], "对方为私密账号，无法发送私信")
+        self.assertEqual(metadata["failure_stage"], "open_conversation")
+        self.assertIn("无需重试", metadata["failure_summary"])
+
+        state = _douyin_detect_private_account_restriction(
+            type(
+                "DummyPage",
+                (),
+                {
+                    "evaluate": lambda self, *_args, **_kwargs: {
+                        "is_private_account": True,
+                        "body_text": private_copy,
+                    }
+                },
+            )()
+        )
+        self.assertTrue(state["is_private_account"])
+
+        redis = FakeRedis()
+        build_douyin_dm_task_submit_response(
+            {
+                "task_id": "dm_private_account_001",
+                "video_info": "video",
+                "account_cookie": "cookie",
+                "comment_info": "comment",
+                "target_profile_url": "https://www.douyin.com/user/private-sec-uid",
+                "project_name": "test project",
+            },
+            redis_client=redis,
+        )
+        failing_demo_result = {
+            "success": False,
+            "opened": True,
+            "prefilled": False,
+            "sent": False,
+            "resolved_browser": "edge",
+            "engine": "playwright",
+            "steps": [
+                {"name": "open_profile", "ok": True, "detail": "opened"},
+                {
+                    "name": "recipient_privacy_restriction",
+                    "ok": False,
+                    "detail": "after_open_profile: 对方为私密账号，无法发送私信",
+                },
+            ],
+            "error": "recipient_privacy_restriction: after_open_profile: 对方为私密账号，无法发送私信",
+        }
+        with patch(
+            "aisec_agent.web.session_rag_chat.build_public_private_message_response",
+            return_value={"reply": "hello"},
+        ), patch(
+            "aisec_agent.web.session_rag_chat.build_douyin_private_message_demo_response",
+            return_value=failing_demo_result,
+        ):
+            processed = process_douyin_dm_task_once(redis_client=redis, mode="send", block_timeout=1)
+
+        self.assertEqual(processed["status"], "success")
+        self.assertFalse(processed["sent"])
+        self.assertEqual(processed["send_status"], "recipient_privacy_restriction")
+        self.assertEqual(processed["failure_code"], "recipient_privacy_restriction")
+        self.assertEqual(processed["failure_category"], "recipient")
+        self.assertEqual(processed["failure_reason"], "对方为私密账号，无法发送私信")
+        self.assertFalse(processed["manual_required"])
+        self.assertFalse(processed["dead_letter"])
+        self.assertEqual(processed["next_retry_at"], "")
+        self.assertEqual(redis.zcard(DM_REDIS_RETRY_ZSET), 0)
+        account_hash = redis.hashes.get(f"{DM_REDIS_ACCOUNT_PREFIX}cookie_cookie", {})
+        self.assertNotEqual(str(account_hash.get("status") or ""), "login_invalid")
+        self.assertNotEqual(str(account_hash.get("status") or ""), "cooldown")
 
     def test_douyin_dm_send_and_confirm_uses_enter_before_click_fallback(self):
         class DummyKeyboard:
@@ -2361,7 +2476,7 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(response["failure_code"], "recipient_privacy_restriction")
         self.assertEqual(response["failure_stage"], "send_confirm")
         self.assertEqual(response["failure_category"], "recipient")
-        self.assertIn("对方设置了仅互关用户可发送私信", response["failure_summary"])
+        self.assertIn("对方隐私设置不允许接收私信", response["failure_summary"])
 
     def test_douyin_private_message_demo_prefills_by_default(self):
         response = build_douyin_private_message_demo_response(
