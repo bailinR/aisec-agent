@@ -368,6 +368,46 @@
       min-width: 0;
     }
     .dm-send-actions button { width: 100%; }
+    .dm-input-compact textarea {
+      min-height: 52px;
+      max-height: 72px;
+      resize: vertical;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .dm-reply-main {
+      display: grid;
+      gap: 8px;
+    }
+    .dm-reply-main > label {
+      font-weight: 800;
+      font-size: 13px;
+    }
+    .dm-reply-editor {
+      min-height: 300px;
+      border: 1px solid rgba(15,118,110,.22);
+      border-radius: 8px;
+      background: var(--accent-soft);
+      padding: 14px 16px;
+      font-size: 15px;
+      line-height: 1.7;
+      resize: vertical;
+      font-family: "Inter", "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+    }
+    .dm-reply-editor::placeholder { color: var(--muted); }
+    .dm-send-compact {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .dm-send-compact-main {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+      flex: 1;
+    }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
     .inline-check { width: auto; min-height: 0; }
     button.mini { min-height: 30px; padding: 0 9px; font-size: 12px; }
@@ -3550,12 +3590,33 @@
                 </div>
                 <div class="panel-actions">
                   <button class="secondary mini" @click="pauseDmAction" :disabled="!dmRunning">暂停</button>
-                  <button @click="generateDm" :disabled="dmRunning">
-                    {{ dmRunning ? '生成中...' : (dmAnswer ? '重新生成' : '生成私信') }}
-                  </button>
+                  <button @click="generateDm" :disabled="dmRunning">{{ dmRunning ? '生成中...' : '生成' }}</button>
+                  <button
+                    :class="dmForm.demo_mode === 'send' ? 'danger' : 'secondary'"
+                    @click="runDouyinDmDemo(false)"
+                    :disabled="!dmSendContent || !dmForm.target_profile_url || dmRunning"
+                  >发送</button>
                 </div>
               </div>
               <div class="panel-body">
+                <div class="field-grid dm-input-compact">
+                  <div>
+                    <label>模拟用户评论 / 私信</label>
+                    <textarea rows="2" v-model="dmForm.question" placeholder="输入用户评论或私信内容"></textarea>
+                  </div>
+                  <div>
+                    <label>视频概述</label>
+                    <textarea rows="2" v-model="dmForm.video_overview" placeholder="可选，补充视频背景"></textarea>
+                  </div>
+                </div>
+                <div class="dm-reply-main">
+                  <label>生成的回复</label>
+                  <textarea
+                    class="dm-reply-editor"
+                    v-model="dmSendContent"
+                    placeholder="点击「生成」后，回复会显示在这里，也可直接编辑"
+                  ></textarea>
+                </div>
                 <div class="dm-demo-strip">
                   <div>
                     <label>抖音主页</label>
@@ -3633,63 +3694,28 @@
                   ></textarea>
                   <div class="panel-meta">Cookie 只会传给本地调试接口，不写入代码；未粘贴时会优先使用所选账号管理里的 Cookie。</div>
                 </div>
-                <div class="field-grid">
-                  <div>
-                    <label>模拟用户评论 / 私信</label>
-                    <textarea rows="5" v-model="dmForm.question"></textarea>
-                  </div>
-                  <div>
-                    <label>视频概述</label>
-                    <textarea rows="5" v-model="dmForm.video_overview"></textarea>
-                  </div>
-                </div>
-                <div class="chat-box">
-                  <div class="bubble user" v-if="dmForm.question">{{ dmForm.question }}</div>
-                  <div class="bubble ai" v-if="dmAnswer">{{ dmAnswer }}</div>
-                  <div class="empty" v-if="!dmAnswer">生成后，回复会显示在这里。</div>
-                </div>
               </div>
             </section>
             <section class="panel dm-send-panel" data-testid="dm-browser-send-card">
               <div class="panel-head">
                 <div>
                   <div class="panel-title">浏览器发送</div>
-                  <div class="panel-meta">打开目标主页，或按演示动作预填、发送当前私信。</div>
+                  <div class="panel-meta">打开目标主页；顶部「发送」会按演示动作预填或发送当前回复。</div>
                 </div>
                 <span class="tag" :class="dmRunning ? 'amber' : (dmSendContent ? 'ok' : '')">
                   {{ dmRunning ? dmAction : (dmSendContent ? '内容已就绪' : '等待生成') }}
                 </span>
               </div>
-              <div class="panel-body">
-                <div class="dm-send-layout">
-                  <div class="dm-send-editor">
-                    <label>发送内容（可修改）</label>
-                    <textarea
-                      v-model="dmSendContent"
-                      rows="5"
-                      placeholder="先生成私信，或直接输入要预填、发送的内容"
-                    ></textarea>
-                    <div class="panel-meta">执行时使用这里的最终文本；生成后手动修改也会按修改后的内容发送。</div>
+              <div class="panel-body dm-send-compact">
+                <div class="dm-send-compact-main">
+                  <div class="dm-send-status">
+                    <span class="tag" :class="dmForm.target_profile_url ? 'ok' : 'amber'">{{ dmForm.target_profile_url ? '目标已填写' : '缺少目标' }}</span>
+                    <span class="tag" :class="dmSendContent ? 'ok' : 'amber'">{{ dmSendContent ? (dmSendContent.length + ' 字') : '缺少内容' }}</span>
                   </div>
-                  <div class="dm-send-side">
-                    <div>
-                      <div class="dm-send-status">
-                        <span class="tag" :class="dmForm.target_profile_url ? 'ok' : 'amber'">{{ dmForm.target_profile_url ? '目标已填写' : '缺少目标' }}</span>
-                        <span class="tag" :class="dmSendContent ? 'ok' : 'amber'">{{ dmSendContent ? (dmSendContent.length + ' 字') : '缺少内容' }}</span>
-                      </div>
-                      <div class="panel-meta">{{ dmSendAccountLabel }}</div>
-                      <div class="dm-send-target" :title="dmForm.target_profile_url || ''">{{ dmForm.target_profile_url || '请先填写抖音主页链接' }}</div>
-                    </div>
-                    <div class="dm-send-actions">
-                      <button class="secondary" @click="openDouyinDmBrowser" :disabled="!dmForm.target_profile_url || dmRunning">打开浏览器</button>
-                      <button
-                        :class="dmForm.demo_mode === 'send' ? 'danger' : ''"
-                        @click="runDouyinDmDemo(false)"
-                        :disabled="!dmSendContent || !dmForm.target_profile_url || dmRunning"
-                      >{{ dmForm.demo_mode === 'send' ? '发送私信' : '预填私信' }}</button>
-                    </div>
-                  </div>
+                  <div class="panel-meta">{{ dmSendAccountLabel }}</div>
+                  <div class="dm-send-target" :title="dmForm.target_profile_url || ''">{{ dmForm.target_profile_url || '请先填写抖音主页链接' }}</div>
                 </div>
+                <button class="secondary" @click="openDouyinDmBrowser" :disabled="!dmForm.target_profile_url || dmRunning">打开浏览器</button>
               </div>
             </section>
             <section class="panel">
