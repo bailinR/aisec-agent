@@ -9824,11 +9824,7 @@ def _dm_cleanup_closed_playwright_sessions() -> int:
             stale_sessions.append(session)
 
     for session in stale_sessions:
-        _dm_stop_playwright_context(
-            session.get("context"),
-            session.get("browser"),
-            session.get("playwright"),
-        )
+        _dm_stop_playwright_session(session)
     return len(stale_sessions)
 
 
@@ -9890,8 +9886,8 @@ def _dm_get_playwright_context(sync_playwright_factory: Any, browser_name: str, 
         if session and _dm_persistent_context_alive(session.get("context")):
             return session["playwright"], session["context"], None, keep_browser_open
         if session:
-            _DM_PLAYWRIGHT_SESSIONS.pop(key, None)
-            _dm_stop_playwright_context(session.get("context"), None, session.get("playwright"))
+            _dm_drop_playwright_session(key)
+        _dm_reset_sync_thread_runtime()
         manager = sync_playwright_factory()
         playwright = None
         context = None
@@ -9909,6 +9905,7 @@ def _dm_get_playwright_context(sync_playwright_factory: Any, browser_name: str, 
         }
         return playwright, context, None, keep_browser_open
 
+    _dm_reset_sync_thread_runtime()
     manager = sync_playwright_factory()
     playwright = None
     browser = None
@@ -9986,6 +9983,68 @@ def _dm_stop_playwright_context(context: Any, browser: Any, playwright: Any) -> 
             playwright.stop()
     except Exception:
         pass
+
+
+def _dm_reset_sync_thread_runtime() -> None:
+    import asyncio
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        pass
+    else:
+        return
+    try:
+        loop = asyncio.get_event_loop()
+        if not loop.is_running():
+            loop.close()
+    except Exception:
+        pass
+    try:
+        asyncio.set_event_loop(None)
+    except Exception:
+        pass
+
+
+def _dm_stop_playwright_session(session: Optional[Dict[str, Any]]) -> None:
+    if not isinstance(session, dict):
+        return
+    _dm_stop_playwright_context(
+        session.get("context"),
+        session.get("browser"),
+        session.get("playwright"),
+    )
+    manager = session.get("manager")
+    if manager is not None:
+        try:
+            manager.__exit__(None, None, None)
+        except Exception:
+            pass
+    _dm_reset_sync_thread_runtime()
+
+
+def _dm_drop_playwright_session(key: str) -> None:
+    session = _DM_PLAYWRIGHT_SESSIONS.pop(str(key or ""), None)
+    _dm_stop_playwright_session(session)
+
+
+def _dm_reset_all_playwright_sessions() -> None:
+    for key in list(_DM_PLAYWRIGHT_SESSIONS.keys()):
+        _dm_drop_playwright_session(key)
+    _dm_reset_sync_thread_runtime()
+
+
+def _dm_should_retry_playwright_runtime(error_text: str) -> bool:
+    text = str(error_text or "").lower()
+    return any(
+        marker in text
+        for marker in (
+            "asyncio loop",
+            "async api instead",
+            "sync api inside",
+            "cannot switch to a different thread",
+        )
+    )
 
 
 def _dm_screenshot_failure(page: Any, options: Dict[str, Any], reason: str = "") -> Dict[str, Any]:
@@ -11924,9 +11983,16 @@ def _douyin_private_message_playwright_executor(
             steps.append({"name": "playwright_error", "ok": False, "detail": detail})
             failure = _dm_screenshot_failure(page, options, detail)
             combined_steps.extend(steps)
-            if attempt == 0 and _dm_should_retry_browser_closed(detail, steps):
-                _dm_stop_playwright_context(context, browser, playwright)
-                combined_steps.append({"name": "restart_browser", "ok": True, "detail": "browser or context was closed; relaunching a fresh browser"})
+            if attempt == 0 and (
+                _dm_should_retry_browser_closed(detail, steps)
+                or _dm_should_retry_playwright_runtime(detail)
+            ):
+                _dm_reset_all_playwright_sessions()
+                combined_steps.append({
+                    "name": "restart_browser",
+                    "ok": True,
+                    "detail": "browser runtime was reset after a closed browser or Playwright sync runtime error",
+                })
                 continue
             if not _dm_should_keep_browser_open_on_failure(detail, keep_browser_open):
                 _dm_stop_playwright_context(context, browser, playwright)
@@ -12114,7 +12180,14 @@ _douyin_account_cookie_playwright_executor.needs_raw_cookies = True
 def _run_web_playwright_call(callable_obj: Any, *args: Any) -> Any:
     """Run sync Playwright work on the stable web runtime thread."""
     future = _DM_WEB_PLAYWRIGHT_EXECUTOR.submit(callable_obj, *args)
-    return future.result()
+    try:
+        return future.result()
+    except Exception as exc:
+        if not _dm_should_retry_playwright_runtime(str(exc)):
+            raise
+        _dm_reset_all_playwright_sessions()
+        retry_future = _DM_WEB_PLAYWRIGHT_EXECUTOR.submit(callable_obj, *args)
+        return retry_future.result()
 
 
 def _web_douyin_private_message_playwright_executor(

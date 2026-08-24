@@ -74,7 +74,10 @@ from aisec_agent.web.session_rag_chat import (
     _dm_infer_failure_code,
     _dm_message_editor_text,
     _dm_should_retry_browser_closed,
+    _dm_should_retry_playwright_runtime,
     _dm_should_keep_browser_open_on_failure,
+    _dm_reset_all_playwright_sessions,
+    _dm_stop_playwright_session,
     build_model_config_save_response,
     build_project_create_response,
     build_project_material_save_response,
@@ -2815,6 +2818,55 @@ class SessionRAGWebTest(unittest.TestCase):
             pages = []
 
         self.assertFalse(_dm_persistent_context_alive(FakeContext()))
+
+    def test_dm_should_retry_playwright_runtime_for_asyncio_conflict(self):
+        detail = "It looks like you are using Playwright Sync API inside the asyncio loop."
+        self.assertTrue(_dm_should_retry_playwright_runtime(detail))
+
+    def test_dm_stop_playwright_session_tears_down_manager(self):
+        _DM_PLAYWRIGHT_SESSIONS.clear()
+        calls = {"exit": 0}
+
+        class FakeManager:
+            def __exit__(self, exc_type, exc, tb):
+                calls["exit"] += 1
+
+        _DM_PLAYWRIGHT_SESSIONS["edge|demo"] = {
+            "manager": FakeManager(),
+            "playwright": None,
+            "context": None,
+        }
+        _dm_reset_all_playwright_sessions()
+        self.assertEqual(calls["exit"], 1)
+        self.assertEqual(_DM_PLAYWRIGHT_SESSIONS, {})
+
+    def test_douyin_private_message_playwright_executor_retries_runtime_error(self):
+        calls = {"count": 0}
+
+        def fake_get_context(factory, browser_name, options):
+            calls["count"] += 1
+            if calls["count"] == 1:
+                raise RuntimeError("It looks like you are using Playwright Sync API inside the asyncio loop.")
+            raise RuntimeError("stop after retry")
+
+        with patch(
+            "aisec_agent.web.session_rag_chat._dm_get_playwright_context",
+            side_effect=fake_get_context,
+        ), patch(
+            "aisec_agent.web.session_rag_chat._dm_reset_all_playwright_sessions",
+        ) as reset_mock:
+            result = _douyin_private_message_playwright_executor(
+                "https://www.douyin.com/user/test-sec-uid",
+                "hello",
+                "edge",
+                False,
+                {"headless": False, "persistent_context": True, "keep_browser_open": True},
+            )
+
+        reset_mock.assert_called_once()
+        self.assertEqual(calls["count"], 2)
+        self.assertFalse(result["success"])
+        self.assertIn("stop after retry", result["error"])
 
     def test_dm_message_page_reuses_initial_blank_page(self):
         class FakePage:
