@@ -96,6 +96,7 @@ from aisec_agent.web.session_rag_chat import (
     _douyin_detect_private_account_restriction,
     _douyin_private_message_playwright_executor,
     _douyin_account_cookie_playwright_executor,
+    _dm_launch_playwright_browser,
     _format_sender_identity_context,
     process_douyin_dm_task_once,
     reconcile_douyin_dm_queue_state,
@@ -2896,6 +2897,25 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertIn("stop after retry", result["error"])
         step_names = [step.get("name") for step in result.get("steps") or []]
         self.assertIn("restart_browser", step_names)
+
+    def test_dm_launch_playwright_browser_falls_back_to_msedge(self):
+        calls = []
+
+        class FakeChromium:
+            def launch(self, **kwargs):
+                calls.append(dict(kwargs))
+                channel = kwargs.get("channel")
+                if channel in (None, "chrome"):
+                    raise RuntimeError("BrowserType.launch: Target page, context or browser has been closed")
+                return f"browser-{channel}"
+
+        browser = _dm_launch_playwright_browser(
+            type("Playwright", (), {"chromium": FakeChromium()})(),
+            "chrome",
+            {"headless": True},
+        )
+        self.assertEqual(browser, "browser-msedge")
+        self.assertEqual([item.get("channel") for item in calls], ["chrome", None, "msedge"])
 
     def test_dm_stop_playwright_context_tears_down_thread_local_manager(self):
         calls = {"exit": 0}

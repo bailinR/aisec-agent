@@ -145,7 +145,7 @@ def build_douyin_account_verify_response(
     if not raw_cookies:
         raise sr.WebInputError("account_cookie is required")
 
-    browser = str(normalized.get("browser_name") or normalized.get("browser") or "chrome").strip() or "chrome"
+    browser = str(normalized.get("browser_name") or normalized.get("browser") or "edge").strip() or "edge"
     # API default: headless closed browser for server-side verify.
     if "headless" in normalized:
         headless = sr._dm_bool_text(normalized.get("headless"))

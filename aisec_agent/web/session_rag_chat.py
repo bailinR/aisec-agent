@@ -9745,13 +9745,26 @@ def _dm_launch_playwright_browser(playwright: Any, browser_name: str, options: D
         "args": _dm_browser_launch_args(options),
     }
     channel = _dm_browser_channel(browser_name)
+    attempts: List[Dict[str, Any]] = []
     if channel:
-        launch_options["channel"] = channel
-    try:
-        return playwright.chromium.launch(**launch_options)
-    except Exception:
-        launch_options.pop("channel", None)
-        return playwright.chromium.launch(**launch_options)
+        attempts.append({"channel": channel})
+    attempts.append({})
+    if channel != "msedge":
+        attempts.append({"channel": "msedge"})
+
+    last_exc: Optional[Exception] = None
+    for extra in attempts:
+        opts = dict(launch_options)
+        opts.update(extra)
+        if "channel" not in extra:
+            opts.pop("channel", None)
+        try:
+            return playwright.chromium.launch(**opts)
+        except Exception as exc:
+            last_exc = exc
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError("playwright browser launch failed")
 
 
 def _dm_playwright_user_data_dir(browser_name: str, options: Dict[str, Any]) -> Path:
@@ -9866,13 +9879,26 @@ def _dm_launch_persistent_playwright_context(playwright: Any, browser_name: str,
         "device_scale_factor": float(options.get("device_scale_factor") or 1.0),
     }
     channel = _dm_browser_channel(browser_name)
+    attempts: List[Dict[str, Any]] = []
     if channel:
-        launch_options["channel"] = channel
-    try:
-        return playwright.chromium.launch_persistent_context(str(user_data_dir), **launch_options)
-    except Exception:
-        launch_options.pop("channel", None)
-        return playwright.chromium.launch_persistent_context(str(user_data_dir), **launch_options)
+        attempts.append({"channel": channel})
+    attempts.append({})
+    if channel != "msedge":
+        attempts.append({"channel": "msedge"})
+
+    last_exc: Optional[Exception] = None
+    for extra in attempts:
+        opts = dict(launch_options)
+        opts.update(extra)
+        if "channel" not in extra:
+            opts.pop("channel", None)
+        try:
+            return playwright.chromium.launch_persistent_context(str(user_data_dir), **opts)
+        except Exception as exc:
+            last_exc = exc
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError("playwright persistent context launch failed")
 
 
 def _dm_get_playwright_context(sync_playwright_factory: Any, browser_name: str, options: Dict[str, Any]):

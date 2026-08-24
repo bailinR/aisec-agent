@@ -112,7 +112,7 @@ class DouyinAccountVerifyTests(unittest.TestCase):
         response = build_douyin_account_verify_response(
             {
                 "account_cookie": "sessionid=SECRET; sid_guard=x",
-                "browser_name": "chrome",
+                "browser_name": "edge",
             },
             executor=executor,
         )
