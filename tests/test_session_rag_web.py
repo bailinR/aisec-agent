@@ -97,6 +97,9 @@ from aisec_agent.web.session_rag_chat import (
     _douyin_private_message_playwright_executor,
     _douyin_account_cookie_playwright_executor,
     _dm_launch_playwright_browser,
+    _douyin_profile_dict_usable,
+    _douyin_detect_account_profile_from_dom,
+    _douyin_pick_profile_dict,
     _format_sender_identity_context,
     process_douyin_dm_task_once,
     reconcile_douyin_dm_queue_state,
@@ -2762,6 +2765,32 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(profile["account_type"], "personal")
         self.assertEqual(profile["account_type_label"], "普通账号")
         self.assertFalse(profile["is_blue_v"])
+
+    def test_douyin_profile_dict_usable_accepts_nickname_only(self):
+        self.assertTrue(_douyin_profile_dict_usable({"nickname": "普通创作者"}))
+        self.assertFalse(_douyin_profile_dict_usable({}))
+
+    def test_douyin_pick_profile_dict_finds_nested_user_with_nickname_only(self):
+        profile = _douyin_pick_profile_dict({
+            "status_code": 0,
+            "user": {"nickname": "中科启创信息技术"},
+        })
+        self.assertEqual(profile.get("nickname"), "中科启创信息技术")
+        self.assertTrue(_douyin_profile_dict_usable(profile))
+
+    def test_douyin_detect_account_profile_from_dom_marks_personal(self):
+        class FakePage:
+            def evaluate(self, script):
+                return {
+                    "nickname": "普通创作者",
+                    "unique_id": "creator_01",
+                    "enterprise_verify_reason": "",
+                    "custom_verify": "",
+                }
+
+        profile = _douyin_detect_account_profile_from_dom(FakePage())
+        self.assertEqual(profile["account_type"], "personal")
+        self.assertEqual(profile["account_type_label"], "普通账号")
 
     def test_douyin_account_cookie_apply_exposes_account_type_fields(self):
         def executor(raw_cookies, browser, options):

@@ -11444,6 +11444,69 @@ def _douyin_account_profile(payload: Any, source: str = "", error: str = "") -> 
     }
 
 
+def _douyin_profile_dict_usable(profile: Dict[str, Any]) -> bool:
+    if not isinstance(profile, dict) or not profile:
+        return False
+    if _douyin_profile_score(profile) >= 4:
+        return True
+    nickname = _douyin_first_text(profile.get("nickname"), profile.get("name"))
+    if not nickname:
+        return False
+    identity_keys = ("uid", "user_id", "sec_uid", "unique_id", "short_id")
+    if any(_douyin_first_text(profile.get(key)) for key in identity_keys):
+        return True
+    for key in ("custom_verify", "enterprise_verify_reason", "enterprise_verify_reason_v2", "verify_info", "signature"):
+        if _douyin_first_text(profile.get(key)):
+            return True
+    return True
+
+
+def _douyin_detect_account_profile_from_dom(page: Any) -> Dict[str, Any]:
+    payload = page.evaluate(
+        """
+        () => {
+          const bodyText = String(document.body && document.body.innerText || "").slice(0, 12000);
+          const enterprisePattern = /企业认证|官方账号|品牌官方|蓝V认证|已认证企业|Enterprise/i;
+          const isBlueV = enterprisePattern.test(bodyText);
+          let nickname = "";
+          const selectors = [
+            '[data-e2e="user-info"] span',
+            '[data-e2e="user-info"] h1',
+            'h1',
+            '[class*="nickname"]',
+            '[class*="Nickname"]',
+            '[class*="user-name"]',
+            '[class*="UserName"]',
+          ];
+          for (const selector of selectors) {
+            const nodes = Array.from(document.querySelectorAll(selector));
+            for (const el of nodes) {
+              const text = String((el.innerText || el.textContent || "")).trim().replace(/\\s+/g, " ");
+              if (!text || text.length > 40) continue;
+              if (/登录|扫码|验证码|抖音号|粉丝|关注|获赞|作品/.test(text)) continue;
+              nickname = text;
+              break;
+            }
+            if (nickname) break;
+          }
+          let uniqueId = "";
+          const idMatch = bodyText.match(/抖音号[：:]\\s*([A-Za-z0-9_.-]+)/);
+          if (idMatch) uniqueId = idMatch[1];
+          if (!nickname && !uniqueId) return null;
+          return {
+            nickname,
+            unique_id: uniqueId,
+            enterprise_verify_reason: isBlueV ? "dom_detected_enterprise" : "",
+            custom_verify: "",
+          };
+        }
+        """
+    )
+    if not isinstance(payload, dict):
+        return _douyin_account_profile({}, error="profile_unavailable")
+    return _douyin_account_profile(payload, source="dom")
+
+
 def _douyin_detect_account_profile(page: Any) -> Dict[str, Any]:
     payload = page.evaluate(
         """
@@ -11476,6 +11539,16 @@ def _douyin_detect_account_profile(page: Any) -> Dict[str, Any]:
             if (raw.signature) score += 1;
             return score;
           };
+          const profileUsable = (raw) => {
+            if (!raw || typeof raw !== "object") return false;
+            if (scoreProfile(raw) >= 4) return true;
+            const nickname = String(raw.nickname || raw.name || "").trim();
+            if (!nickname) return false;
+            for (const key of ["uid", "user_id", "sec_uid", "unique_id", "short_id", "custom_verify", "enterprise_verify_reason", "signature"]) {
+              if (String(raw[key] || "").trim()) return true;
+            }
+            return true;
+          };
           const seen = new WeakSet();
           const walk = (value, depth = 0) => {
             if (!value || typeof value !== "object" || depth > 6 || seen.has(value)) return null;
@@ -11494,7 +11567,7 @@ def _douyin_detect_account_profile(page: Any) -> Dict[str, Any]:
                 if (found) return found;
               }
             }
-            if (scoreProfile(value) >= 4) return slimProfile(value);
+            if (profileUsable(value)) return slimProfile(value);
             for (const key of Object.keys(value).slice(0, 40)) {
               const found = walk(value[key], depth + 1);
               if (found) return found;
@@ -11502,6 +11575,7 @@ def _douyin_detect_account_profile(page: Any) -> Dict[str, Any]:
             return null;
           };
 
+          const fetched = [];
           let lastError = "";
           for (const endpoint of endpoints) {
             try {
@@ -11510,9 +11584,10 @@ def _douyin_detect_account_profile(page: Any) -> Dict[str, Any]:
                 headers: {accept: "application/json, text/plain, */*"},
               });
               const text = await response.text();
-              let payload = null;
-              try { payload = text ? JSON.parse(text) : null; } catch (_) {}
-              const profile = walk(payload);
+              let body = null;
+              try { body = text ? JSON.parse(text) : null; } catch (_) {}
+              fetched.push({endpoint, status: response.status, body});
+              const profile = walk(body);
               if (profile) return {source: endpoint, profile};
               lastError = `no profile from ${endpoint} (${response.status})`;
             } catch (error) {
@@ -11529,17 +11604,43 @@ def _douyin_detect_account_profile(page: Any) -> Dict[str, Any]:
             const profile = walk(candidate);
             if (profile) return {source: "window", profile};
           }
-          return {source: "", error: lastError || "profile unavailable"};
+          return {source: "", profile: null, fetched, error: lastError || "profile unavailable"};
         }
         """,
         {"endpoints": DOUYIN_SELF_PROFILE_ENDPOINTS},
     )
     if not isinstance(payload, dict):
         return _douyin_account_profile({}, error="profile_unavailable")
+
+    inline_profile = payload.get("profile")
+    if isinstance(inline_profile, dict) and inline_profile:
+        return _douyin_account_profile(
+            inline_profile,
+            source=str(payload.get("source") or ""),
+            error=str(payload.get("error") or ""),
+        )
+
+    last_error = str(payload.get("error") or "")
+    for item in payload.get("fetched") or []:
+        if not isinstance(item, dict):
+            continue
+        body = item.get("body")
+        profile = _douyin_pick_profile_dict(body)
+        if _douyin_profile_dict_usable(profile):
+            return _douyin_account_profile(
+                profile,
+                source=str(item.get("endpoint") or ""),
+                error=last_error,
+            )
+
+    dom_profile = _douyin_detect_account_profile_from_dom(page)
+    if dom_profile.get("account_type") in {"blue_v", "personal"}:
+        return dom_profile
+
     return _douyin_account_profile(
-        payload.get("profile") or {},
+        {},
         source=str(payload.get("source") or ""),
-        error=str(payload.get("error") or ""),
+        error=last_error or str(dom_profile.get("reason") or "profile_unavailable"),
     )
 
 
