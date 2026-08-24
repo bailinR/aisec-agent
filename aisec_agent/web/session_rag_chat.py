@@ -8891,9 +8891,21 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
         except FileNotFoundError:
             self._send_json({"ok": False, "error": "html file not found"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
             return
+        stat = html_file.stat()
+        etag = f'"{int(stat.st_mtime)}-{stat.st_size}"'
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(HTTPStatus.NOT_MODIFIED)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.end_headers()
+            self._audit_finish(HTTPStatus.NOT_MODIFIED, {"content_type": "text/html", "file": str(html_file.name)})
+            return
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+        self.send_header("ETag", etag)
         self.send_header("Content-Length", str(len(content)))
         self.end_headers()
         self.wfile.write(content)

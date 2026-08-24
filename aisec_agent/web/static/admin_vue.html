@@ -1,8 +1,12 @@
 <!doctype html>
+<!-- admin-vue-ui: 20260824-dm-v3 -->
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>私信智能体工作台</title>
   <link rel="icon" href="data:,">
   <style>
@@ -29,18 +33,23 @@
     }
 
     * { box-sizing: border-box; }
-    html, body, #app {
+    html {
       height: 100%;
-      max-height: 100%;
-      overflow: hidden;
     }
     body {
+      height: 100%;
       margin: 0;
+      overflow: hidden;
       background: linear-gradient(135deg, #f9fbff 0%, var(--bg) 48%, #eef4ff 100%);
       color: var(--text);
       font-family: "Inter", "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
       font-size: 14px;
       letter-spacing: 0;
+    }
+    #app {
+      height: 100%;
+      min-height: 0;
+      overflow: hidden;
     }
     button, input, select, textarea { font: inherit; }
     button {
@@ -97,30 +106,24 @@
 
     .layout {
       height: 100%;
-      max-height: 100%;
+      min-height: 0;
       display: grid;
       grid-template-columns: 228px minmax(0, 1fr);
       gap: 14px;
       padding: 18px;
       overflow: hidden;
-      align-items: stretch;
     }
     .sidebar, .main-shell {
       border: 1px solid var(--line);
       background: var(--panel);
       box-shadow: var(--shadow);
       min-width: 0;
-      border-radius: 26px;
       min-height: 0;
-      max-height: 100%;
-      height: auto;
-      align-self: stretch;
+      border-radius: 26px;
+      height: 100%;
+      overflow: hidden;
     }
     .sidebar {
-      position: sticky;
-      top: 16px;
-      height: auto;
-      max-height: 100%;
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -206,13 +209,13 @@
     .status.ok { color: var(--ok); }
     .status.error { color: var(--danger); }
     .content {
-      flex: 1 1 auto;
+      flex: 1 1 0;
       padding: 18px 24px 28px;
       min-width: 0;
       min-height: 0;
       overflow-x: hidden;
-      overflow-y: auto;
-      overscroll-behavior: contain;
+      overflow-y: scroll;
+      -webkit-overflow-scrolling: touch;
     }
 
     .metric-grid {
@@ -403,21 +406,80 @@
       font-size: 13px;
     }
     .dm-reply-editor {
-      min-height: 220px;
-      max-height: 46vh;
+      width: 100%;
+      min-height: 140px;
+      height: clamp(140px, 32vh, 280px);
+      max-height: 280px;
       border: 1px solid rgba(15,118,110,.22);
       border-radius: 8px;
       background: var(--accent-soft);
       padding: 14px 16px;
       font-size: 15px;
       line-height: 1.7;
-      resize: vertical;
+      resize: none;
       overflow-y: auto;
-      overscroll-behavior: contain;
       font-family: "Inter", "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
     }
     .dm-reply-editor::placeholder { color: var(--muted); }
-    .dm-board > .panel { overflow: visible; }
+    .dm-board {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+      gap: 14px;
+      align-items: start;
+    }
+    .dm-board > .dm-panel-extra {
+      grid-column: 1 / -1;
+    }
+    .dm-board > .panel {
+      overflow: visible;
+    }
+    .dm-panel-config .panel-body {
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }
+    .dm-panel-config .dm-demo-strip {
+      grid-template-columns: 1fr;
+    }
+    .dm-panel-config .dm-cookie-textarea {
+      min-height: 120px;
+      max-height: 200px;
+    }
+    .dm-config-foot {
+      display: grid;
+      gap: 10px;
+      padding-top: 4px;
+      border-top: 1px dashed var(--line);
+    }
+    .dm-followup-field summary {
+      cursor: pointer;
+      font-weight: 800;
+      color: var(--muted);
+      font-size: 12px;
+      list-style: none;
+    }
+    .dm-followup-field summary::-webkit-details-marker { display: none; }
+    .dm-followup-field[open] {
+      display: grid;
+      gap: 8px;
+    }
+    .dm-panel-extra summary {
+      cursor: pointer;
+      font-weight: 900;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel-soft);
+    }
+    .dm-panel-extra summary::-webkit-details-marker { display: none; }
+    .dm-panel-extra[open] summary { border-bottom-color: var(--line); }
+    .dm-panel-extra > .panel-body {
+      padding-top: 12px;
+    }
     .dm-send-compact {
       display: flex;
       align-items: center;
@@ -1886,11 +1948,6 @@
     }
     .bubble.user { justify-self: end; background: var(--blue-soft); border: 1px solid rgba(36,84,166,.2); }
     .bubble.ai { justify-self: start; background: var(--accent-soft); border: 1px solid rgba(15,118,110,.22); }
-    .dm-board {
-      display: grid;
-      gap: 14px;
-      align-items: start;
-    }
     .dm-flow {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2131,6 +2188,7 @@
       .model-settings-board { grid-template-columns: 1fr; }
       .knowledge-workbench { grid-template-columns: 1fr; }
       .dm-flow { grid-template-columns: 1fr; }
+      .dm-board { grid-template-columns: 1fr; }
       .account-workspace,
       .activity-workspace { grid-template-columns: 1fr; }
       .account-queue-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -3608,7 +3666,7 @@
           </section>
 
           <section v-if="activeMenu === 'dm'" class="dm-board">
-            <section class="panel">
+            <section class="panel dm-panel-generate">
               <div class="panel-head">
                 <div>
                   <div class="panel-title">私信生成调试</div>
@@ -3645,19 +3703,22 @@
                 </div>
               </div>
             </section>
-            <section class="panel">
+            <aside class="panel dm-panel-config" data-testid="dm-browser-send-card">
               <div class="panel-head">
                 <div>
                   <div class="panel-title">发送配置</div>
-                  <div class="panel-meta">目标主页、浏览器与账号 Cookie</div>
+                  <div class="panel-meta">目标主页、浏览器与 Cookie</div>
                 </div>
+                <span class="tag" :class="dmRunning ? 'amber' : (dmSendContent ? 'ok' : '')">
+                  {{ dmRunning ? dmAction : (dmSendContent ? '内容已就绪' : '等待生成') }}
+                </span>
               </div>
               <div class="panel-body">
-                <div class="dm-demo-strip">
-                  <div>
-                    <label>抖音主页</label>
-                    <input v-model.trim="dmForm.target_profile_url" placeholder="https://www.douyin.com/user/...">
-                  </div>
+                <div>
+                  <label>抖音主页</label>
+                  <input v-model.trim="dmForm.target_profile_url" placeholder="https://www.douyin.com/user/...">
+                </div>
+                <div class="field-grid">
                   <div>
                     <label>打开浏览器</label>
                     <select v-model="dmForm.browser_name">
@@ -3673,27 +3734,11 @@
                       <option value="send">预填并发送</option>
                     </select>
                   </div>
-                  <div class="dm-demo-actions">
-                    <label class="actions">
-                      <input class="inline-check" type="checkbox" v-model="dmForm.headless">
-                      <span>无头模式</span>
-                    </label>
-                  </div>
                 </div>
-                <div class="dm-followup-field">
-                  <label>抖音群链接（可选）</label>
-                  <input
-                    v-model.trim="dmForm.douyin_group_link"
-                    placeholder="https://v.douyin.com/..."
-                    inputmode="url"
-                    autocomplete="off"
-                  >
-                  <label class="actions">
-                    <input class="inline-check" type="checkbox" v-model="dmForm.send_followup_group_link">
-                    <span>首条私信成功后，紧接着发送群链接</span>
-                  </label>
-                  <div class="panel-meta">未勾选时只发送首条私信；预填模式不会发送群链接。</div>
-                </div>
+                <label class="actions">
+                  <input class="inline-check" type="checkbox" v-model="dmForm.headless">
+                  <span>无头模式</span>
+                </label>
                 <div class="dm-cookie-panel">
                   <div class="dm-cookie-head">
                     <label class="dm-cookie-title">账号 Cookie / 登录信息</label>
@@ -3718,7 +3763,7 @@
                     </div>
                     <label class="actions">
                       <input class="inline-check" type="checkbox" v-model="dmForm.use_account_cookie">
-                      <span>使用 Cookie 访问抖音，留空时优先带入所选账号</span>
+                      <span>使用 Cookie 访问抖音</span>
                     </label>
                   </div>
                   <textarea
@@ -3728,37 +3773,36 @@
                     spellcheck="false"
                     placeholder='粘贴 {"cookies":[...]}，或 name=value; name2=value2'
                   ></textarea>
-                  <div class="panel-meta">Cookie 只会传给本地调试接口，不写入代码；未粘贴时会优先使用所选账号管理里的 Cookie。</div>
+                  <div class="panel-meta">Cookie 仅用于本地调试，优先使用所选账号的 Cookie。</div>
                 </div>
-              </div>
-            </section>
-            <section class="panel dm-send-panel" data-testid="dm-browser-send-card">
-              <div class="panel-head">
-                <div>
-                  <div class="panel-title">浏览器发送</div>
-                  <div class="panel-meta">打开目标主页；顶部「发送」会按演示动作预填或发送当前回复。</div>
-                </div>
-                <span class="tag" :class="dmRunning ? 'amber' : (dmSendContent ? 'ok' : '')">
-                  {{ dmRunning ? dmAction : (dmSendContent ? '内容已就绪' : '等待生成') }}
-                </span>
-              </div>
-              <div class="panel-body dm-send-compact">
-                <div class="dm-send-compact-main">
+                <details class="dm-followup-field">
+                  <summary>群链接（可选）</summary>
+                  <input
+                    v-model.trim="dmForm.douyin_group_link"
+                    placeholder="https://v.douyin.com/..."
+                    inputmode="url"
+                    autocomplete="off"
+                  >
+                  <label class="actions">
+                    <input class="inline-check" type="checkbox" v-model="dmForm.send_followup_group_link">
+                    <span>首条私信成功后，紧接着发送群链接</span>
+                  </label>
+                </details>
+                <div class="dm-config-foot">
                   <div class="dm-send-status">
                     <span class="tag" :class="dmForm.target_profile_url ? 'ok' : 'amber'">{{ dmForm.target_profile_url ? '目标已填写' : '缺少目标' }}</span>
                     <span class="tag" :class="dmSendContent ? 'ok' : 'amber'">{{ dmSendContent ? (dmSendContent.length + ' 字') : '缺少内容' }}</span>
                   </div>
                   <div class="panel-meta">{{ dmSendAccountLabel }}</div>
-                  <div class="dm-send-target" :title="dmForm.target_profile_url || ''">{{ dmForm.target_profile_url || '请先填写抖音主页链接' }}</div>
+                  <button class="secondary" @click="openDouyinDmBrowser" :disabled="!dmForm.target_profile_url || dmRunning">打开浏览器</button>
                 </div>
-                <button class="secondary" @click="openDouyinDmBrowser" :disabled="!dmForm.target_profile_url || dmRunning">打开浏览器</button>
               </div>
-            </section>
-            <section class="panel">
-              <div class="panel-head">
-                <div class="panel-title">提示词模块</div>
+            </aside>
+            <details class="panel dm-panel-extra">
+              <summary>
+                <span>提示词模块</span>
                 <span class="tag accent">{{ dmPrompts.length }} 项</span>
-              </div>
+              </summary>
               <div class="panel-body">
                 <div class="file-list" v-if="dmPrompts.length">
                   <button class="file-row" v-for="mod in dmPrompts" :key="mod.key" :class="{selected: activeDmPromptKey === mod.key}" @click="activeDmPromptKey = mod.key">
@@ -3769,14 +3813,12 @@
                 <div class="empty" v-else>生成后显示提示词模块。</div>
                 <textarea class="small-editor" v-if="activeDmPrompt.content" :value="activeDmPrompt.content" readonly></textarea>
               </div>
-            </section>
-            <section class="panel">
-              <div class="panel-head">
-                <div>
-                  <div class="panel-title">任务执行流程</div>
-                  <div class="panel-meta">从接收评论，到定位文件、组织提示词，再到调用模型输出私信。</div>
-                </div>
-              </div>
+            </details>
+            <details class="panel dm-panel-extra">
+              <summary>
+                <span>任务执行流程</span>
+                <span class="tag">6 步</span>
+              </summary>
               <div class="panel-body">
                 <div class="dm-flow">
                   <article class="dm-flow-step" v-for="(step, index) in dmTaskFlow" :key="step.key">
@@ -3793,7 +3835,7 @@
                   </article>
                 </div>
               </div>
-            </section>
+            </details>
           </section>
         </section>
       </main>
