@@ -29,7 +29,11 @@
     }
 
     * { box-sizing: border-box; }
-    html, body, #app { min-height: 100%; }
+    html, body, #app {
+      height: 100%;
+      max-height: 100%;
+      overflow: hidden;
+    }
     body {
       margin: 0;
       background: linear-gradient(135deg, #f9fbff 0%, var(--bg) 48%, #eef4ff 100%);
@@ -92,13 +96,14 @@
     a:hover { text-decoration: underline; }
 
     .layout {
-      height: 100vh;
-      min-height: 100vh;
+      height: 100%;
+      max-height: 100%;
       display: grid;
       grid-template-columns: 228px minmax(0, 1fr);
       gap: 14px;
       padding: 18px;
       overflow: hidden;
+      align-items: stretch;
     }
     .sidebar, .main-shell {
       border: 1px solid var(--line);
@@ -107,12 +112,15 @@
       min-width: 0;
       border-radius: 26px;
       min-height: 0;
-      height: 100%;
+      max-height: 100%;
+      height: auto;
+      align-self: stretch;
     }
     .sidebar {
       position: sticky;
       top: 16px;
-      height: calc(100vh - 32px);
+      height: auto;
+      max-height: 100%;
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -161,14 +169,17 @@
     }
     .menu button.active .menu-icon { background: #fff; color: var(--accent); }
     .sidebar-foot { display: none; }
-    .main-shell { display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
+    .main-shell {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
     .topbar {
+      flex: 0 0 auto;
       min-height: 78px;
       padding: 16px 24px;
       border-bottom: 1px solid var(--line);
       background: rgba(255,255,255,.86);
-      position: sticky;
-      top: 0;
       z-index: 2;
       display: flex;
       align-items: center;
@@ -194,7 +205,15 @@
     .status { color: var(--muted); font-size: 12px; line-height: 1.5; }
     .status.ok { color: var(--ok); }
     .status.error { color: var(--danger); }
-    .content { padding: 18px 24px 24px; min-width: 0; min-height: 0; overflow: auto; }
+    .content {
+      flex: 1 1 auto;
+      padding: 18px 24px 28px;
+      min-width: 0;
+      min-height: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
 
     .metric-grid {
       display: grid;
@@ -384,7 +403,8 @@
       font-size: 13px;
     }
     .dm-reply-editor {
-      min-height: 300px;
+      min-height: 220px;
+      max-height: 46vh;
       border: 1px solid rgba(15,118,110,.22);
       border-radius: 8px;
       background: var(--accent-soft);
@@ -392,15 +412,19 @@
       font-size: 15px;
       line-height: 1.7;
       resize: vertical;
+      overflow-y: auto;
+      overscroll-behavior: contain;
       font-family: "Inter", "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
     }
     .dm-reply-editor::placeholder { color: var(--muted); }
+    .dm-board > .panel { overflow: visible; }
     .dm-send-compact {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 12px;
       flex-wrap: wrap;
+      padding: 14px;
     }
     .dm-send-compact-main {
       display: grid;
@@ -3617,6 +3641,16 @@
                     placeholder="点击「生成」后，回复会显示在这里，也可直接编辑"
                   ></textarea>
                 </div>
+              </div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-title">发送配置</div>
+                  <div class="panel-meta">目标主页、浏览器与账号 Cookie</div>
+                </div>
+              </div>
+              <div class="panel-body">
                 <div class="dm-demo-strip">
                   <div>
                     <label>抖音主页</label>
@@ -3637,13 +3671,13 @@
                       <option value="send">预填并发送</option>
                     </select>
                   </div>
-                <div class="dm-demo-actions">
-                  <label class="actions">
-                    <input class="inline-check" type="checkbox" v-model="dmForm.headless">
-                    <span>无头模式</span>
-                  </label>
+                  <div class="dm-demo-actions">
+                    <label class="actions">
+                      <input class="inline-check" type="checkbox" v-model="dmForm.headless">
+                      <span>无头模式</span>
+                    </label>
+                  </div>
                 </div>
-              </div>
                 <div class="dm-followup-field">
                   <label>抖音群链接（可选）</label>
                   <input
