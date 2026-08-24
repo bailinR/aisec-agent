@@ -3709,9 +3709,12 @@
                   <div class="panel-title">发送配置</div>
                   <div class="panel-meta">目标主页、浏览器与 Cookie</div>
                 </div>
-                <span class="tag" :class="dmRunning ? 'amber' : (dmSendContent ? 'ok' : '')">
-                  {{ dmRunning ? dmAction : (dmSendContent ? '内容已就绪' : '等待生成') }}
-                </span>
+                <div class="panel-actions">
+                  <button class="secondary mini" @click="saveDmSettings">保存</button>
+                  <span class="tag" :class="dmRunning ? 'amber' : (dmSendContent ? 'ok' : '')">
+                    {{ dmRunning ? dmAction : (dmSendContent ? '内容已就绪' : '等待生成') }}
+                  </span>
+                </div>
               </div>
               <div class="panel-body">
                 <div>
@@ -3934,7 +3937,7 @@
               conversation_stage: "first_comment",
               session_id: this.uuid(),
               source_platform: "抖音",
-              target_profile_url: "https://www.douyin.com/user/MS4wLjABAAAA0VPGcVLBTV9KuvOPi18HdpZGEDnltASrLJOsMDqs5cY?from_tab_name=main",
+              target_profile_url: "https://www.douyin.com/user/MS4wLjABAAAAVKY1SUJq5LSS1MDvlYYxOARpChwW7adGbpCPv5FeyvU?from_tab_name=main",
               douyin_group_link: "",
               send_followup_group_link: true,
               browser_name: "edge",
@@ -5120,7 +5123,14 @@
               dmMeta: this.dmMeta || {},
               activeDmPromptKey: String(this.activeDmPromptKey || "final_prompt"),
             }));
-            if (!silent) this.setStatus("私信调试内容已自动保存", "info");
+            if (!silent) this.setStatus("私信调试配置已保存", "ok");
+          },
+          saveDmSettings() {
+            if (this.dmSaveTimer) {
+              window.clearTimeout(this.dmSaveTimer);
+              this.dmSaveTimer = null;
+            }
+            this.persistDmState(false);
           },
           scheduleDmStatePersist() {
             if (this.dmStateHydrating) return;
