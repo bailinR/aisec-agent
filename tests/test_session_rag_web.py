@@ -98,6 +98,7 @@ from aisec_agent.web.session_rag_chat import (
     _douyin_account_cookie_playwright_executor,
     _dm_launch_playwright_browser,
     _douyin_profile_dict_usable,
+    _douyin_profile_api_auth_state,
     _douyin_detect_account_profile_from_dom,
     _douyin_pick_profile_dict,
     _format_sender_identity_context,
@@ -2777,6 +2778,16 @@ class SessionRAGWebTest(unittest.TestCase):
         })
         self.assertEqual(profile.get("nickname"), "中科启创信息技术")
         self.assertTrue(_douyin_profile_dict_usable(profile))
+
+    def test_douyin_profile_api_auth_state_detects_not_logged_in(self):
+        self.assertEqual(
+            _douyin_profile_api_auth_state({"status_code": 8, "status_msg": "用户未登录", "user": None}),
+            "not_logged_in",
+        )
+        self.assertEqual(
+            _douyin_profile_api_auth_state({"status_code": 0, "user": {"nickname": "测试"}}),
+            "ok",
+        )
 
     def test_douyin_detect_account_profile_from_dom_marks_personal(self):
         class FakePage:

@@ -11444,6 +11444,22 @@ def _douyin_account_profile(payload: Any, source: str = "", error: str = "") -> 
     }
 
 
+def _douyin_profile_api_auth_state(body: Any) -> str:
+    if not isinstance(body, dict):
+        return ""
+    status_code = body.get("status_code")
+    status_msg = str(body.get("status_msg") or "")
+    if status_code in (0, "0") and isinstance(body.get("user"), dict):
+        return "ok"
+    if status_code in (8, "8") or "未登录" in status_msg:
+        return "not_logged_in"
+    if body.get("user") is None and "未登录" in status_msg:
+        return "not_logged_in"
+    if status_code not in (None, 0, "0") and not isinstance(body.get("user"), dict):
+        return "error"
+    return ""
+
+
 def _douyin_profile_dict_usable(profile: Dict[str, Any]) -> bool:
     if not isinstance(profile, dict) or not profile:
         return False
@@ -11625,6 +11641,13 @@ def _douyin_detect_account_profile(page: Any) -> Dict[str, Any]:
         if not isinstance(item, dict):
             continue
         body = item.get("body")
+        auth_state = _douyin_profile_api_auth_state(body)
+        if auth_state == "not_logged_in":
+            return _douyin_account_profile(
+                {},
+                source=str(item.get("endpoint") or ""),
+                error="profile_api_not_logged_in",
+            )
         profile = _douyin_pick_profile_dict(body)
         if _douyin_profile_dict_usable(profile):
             return _douyin_account_profile(
@@ -11649,16 +11672,18 @@ def _douyin_detect_login_requirement(page: Any) -> Dict[str, Any]:
         """
         () => {
           const bodyText = String(document.body && document.body.innerText || "").slice(0, 4000);
+          const titleText = String(document.title || "").trim();
           const hasLoginPanel = !!document.querySelector(
             '.login-full-panel, [class*="login-panel"], input[placeholder*="手机号"], input[placeholder*="验证码"]'
           );
           const loginModalText = /登录后免费|扫码登录|验证码登录|密码登录|打开[\\u300c\\u300d'"]*抖音APP|请输入手机号|获取验证码/.test(bodyText);
-          const requiresVerificationText = /二次验证|安全验证|请完成下列验证|滑块验证|完成下方验证/.test(bodyText);
-          const requires_login = (hasLoginPanel || loginModalText) && !requiresVerificationText;
+          const requiresVerificationText = /二次验证|安全验证|请完成下列验证|滑块验证|完成下方验证|验证中间页|captcha|中间页/.test(bodyText + titleText);
+          const requires_login = ((hasLoginPanel || loginModalText) && !requiresVerificationText) || /未登录/.test(bodyText + titleText);
           return {
             requires_login,
             requires_verification: requiresVerificationText,
             body_text: bodyText.slice(0, 200),
+            title_text: titleText.slice(0, 120),
           };
         }
         """
@@ -12281,6 +12306,8 @@ def _douyin_account_cookie_playwright_executor(raw_cookies: str, browser_name: s
                     pass
             account_profile = _douyin_detect_account_profile(page)
             login_state = _douyin_detect_login_requirement(page)
+            if str(account_profile.get("reason") or "") == "profile_api_not_logged_in":
+                login_state = {"requires_login": True, "requires_verification": bool(login_state.get("requires_verification"))}
             detected = account_profile.get("account_type") in {"blue_v", "personal"}
             steps.append({
                 "name": "detect_account_type",
@@ -12289,6 +12316,7 @@ def _douyin_account_cookie_playwright_executor(raw_cookies: str, browser_name: s
             })
             if not detected and login_state.get("requires_login"):
                 steps.append(_dm_login_required_step("before_account_type_detection"))
+            requires_login = bool(login_state.get("requires_login")) and not detected
             if not keep_browser_open:
                 _dm_stop_playwright_context(context, browser, playwright)
             return {
@@ -12300,7 +12328,9 @@ def _douyin_account_cookie_playwright_executor(raw_cookies: str, browser_name: s
                 "account_cookie_count": len(cookies),
                 "steps": steps,
                 "account_profile": account_profile,
-                "requires_login": bool(login_state.get("requires_login")) and not detected,
+                "requires_login": requires_login,
+                "account_type_skipped": requires_login or not detected,
+                "requires_verification": bool(login_state.get("requires_verification")) and not detected,
                 "keep_browser_open": keep_browser_open,
                 "user_data_dir": str(_dm_playwright_user_data_dir(browser_name, options)) if _dm_bool_text(options.get("persistent_context", keep_browser_open or options.get("user_data_dir"))) else "",
             }
