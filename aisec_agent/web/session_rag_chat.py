@@ -9095,6 +9095,7 @@ _DM_PLAYWRIGHT_SESSIONS: Dict[str, Dict[str, Any]] = {}
 # HTTP server is a ThreadingHTTPServer, so web requests must share one stable
 # execution thread when persistent contexts are kept alive between requests.
 _DM_WEB_PLAYWRIGHT_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="dm-web-playwright")
+_DM_PLAYWRIGHT_MANAGER = threading.local()
 
 
 DM_FAILURE_PROFILES = {
@@ -9907,6 +9908,7 @@ def _dm_get_playwright_context(sync_playwright_factory: Any, browser_name: str, 
 
     _dm_reset_sync_thread_runtime()
     manager = sync_playwright_factory()
+    _dm_bind_playwright_manager(manager)
     playwright = None
     browser = None
     context = None
@@ -9922,7 +9924,7 @@ def _dm_get_playwright_context(sync_playwright_factory: Any, browser_name: str, 
             device_scale_factor=float(options.get("device_scale_factor") or 1.0),
         )
     except Exception:
-        _dm_stop_playwright_context(context, browser, playwright)
+        _dm_stop_playwright_context(context, browser, playwright, manager)
         raise
     return playwright, context, browser, False
 
@@ -9967,7 +9969,18 @@ def _dm_apply_page_geometry(page: Any, options: Dict[str, Any]) -> Dict[str, Any
     }
 
 
-def _dm_stop_playwright_context(context: Any, browser: Any, playwright: Any) -> None:
+def _dm_bind_playwright_manager(manager: Any) -> None:
+    _DM_PLAYWRIGHT_MANAGER.manager = manager
+
+
+def _dm_take_playwright_manager() -> Any:
+    manager = getattr(_DM_PLAYWRIGHT_MANAGER, "manager", None)
+    if hasattr(_DM_PLAYWRIGHT_MANAGER, "manager"):
+        delattr(_DM_PLAYWRIGHT_MANAGER, "manager")
+    return manager
+
+
+def _dm_stop_playwright_context(context: Any, browser: Any, playwright: Any, manager: Any = None) -> None:
     try:
         if context is not None:
             context.close()
@@ -9983,6 +9996,14 @@ def _dm_stop_playwright_context(context: Any, browser: Any, playwright: Any) -> 
             playwright.stop()
     except Exception:
         pass
+    if manager is None:
+        manager = _dm_take_playwright_manager()
+    if manager is not None:
+        try:
+            manager.__exit__(None, None, None)
+        except Exception:
+            pass
+    _dm_reset_sync_thread_runtime()
 
 
 def _dm_reset_sync_thread_runtime() -> None:
@@ -12028,150 +12049,173 @@ _douyin_private_message_playwright_executor.needs_raw_cookies = True
 def _douyin_account_cookie_playwright_executor(raw_cookies: str, browser_name: str, options: Dict[str, Any]) -> Dict[str, Any]:
     from playwright.sync_api import sync_playwright
 
-    steps: List[Dict[str, Any]] = []
-    page = None
-    browser = None
-    context = None
-    playwright = None
-    keep_browser_open = False
     cookies = _dm_parse_account_cookies(raw_cookies)
-    try:
-        playwright, context, browser, keep_browser_open = _dm_get_playwright_context(sync_playwright, browser_name, options)
-        if context is None:
-            raise RuntimeError("playwright context unavailable")
-        target_url = str(options.get("open_url") or "https://www.douyin.com/").strip() or "https://www.douyin.com/"
-        timeout_ms = int(options.get("timeout_ms") or 45000)
-        if keep_browser_open and getattr(context, "pages", None):
-            page = context.pages[0]
-        else:
-            page = context.new_page()
-        _dm_apply_page_geometry(page, options)
-        if cookies:
-            try:
-                context.add_cookies(cookies)
-            except Exception:
-                if keep_browser_open and page:
-                    try:
-                        page.context.add_cookies(cookies)
-                    except Exception:
-                        raise
-                else:
-                    raise
-        steps.append({"name": "apply_account_cookies", "ok": True, "detail": f"{len(cookies)} cookies"})
-        page.goto(target_url, wait_until="domcontentloaded", timeout=timeout_ms)
-        steps.append({"name": "open_homepage", "ok": True, "detail": target_url})
+    combined_steps: List[Dict[str, Any]] = []
+    for attempt in range(2):
+        steps: List[Dict[str, Any]] = []
+        page = None
+        browser = None
+        context = None
+        playwright = None
+        keep_browser_open = False
         try:
-            page.wait_for_load_state("networkidle", timeout=min(timeout_ms, 12000))
-        except Exception:
-            pass
-        geometry = _dm_apply_page_geometry(page, options)
-        steps.append({
-            "name": "normalize_page_geometry",
-            "ok": True,
-            "detail": (
-                f"viewport {geometry['viewport_width']}x{geometry['viewport_height']} "
-                f"zoom {geometry['page_zoom_percent']}%"
-            ),
-        })
-        _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page))
-        # Verify API: check login before opening profile / type detection.
-        if _dm_bool_text(options.get("verify_login_first")):
-            early_login = _douyin_detect_login_requirement(page)
-            if early_login.get("requires_login"):
-                steps.append(_dm_login_required_step("before_account_activity_check"))
-                if not keep_browser_open:
-                    _dm_stop_playwright_context(context, browser, playwright)
-                return {
-                    "success": True,
-                    "opened": True,
-                    "resolved_browser": browser_name,
-                    "engine": "playwright",
-                    "account_cookie_loaded": bool(cookies),
-                    "account_cookie_count": len(cookies),
-                    "steps": steps,
-                    "account_profile": {},
-                    "requires_login": True,
-                    "account_type_skipped": True,
-                    "keep_browser_open": keep_browser_open,
-                    "user_data_dir": str(_dm_playwright_user_data_dir(browser_name, options)) if _dm_bool_text(options.get("persistent_context", keep_browser_open or options.get("user_data_dir"))) else "",
-                }
-            if early_login.get("requires_verification"):
-                steps.append({
-                    "name": "detect_login_state",
-                    "ok": False,
-                    "detail": "需要二次验证/安全验证",
-                })
-                if not keep_browser_open:
-                    _dm_stop_playwright_context(context, browser, playwright)
-                return {
-                    "success": True,
-                    "opened": True,
-                    "resolved_browser": browser_name,
-                    "engine": "playwright",
-                    "account_cookie_loaded": bool(cookies),
-                    "account_cookie_count": len(cookies),
-                    "steps": steps,
-                    "account_profile": {},
-                    "requires_login": False,
-                    "requires_verification": True,
-                    "account_type_skipped": True,
-                    "keep_browser_open": keep_browser_open,
-                    "user_data_dir": str(_dm_playwright_user_data_dir(browser_name, options)) if _dm_bool_text(options.get("persistent_context", keep_browser_open or options.get("user_data_dir"))) else "",
-                }
-        profile_surface = _douyin_open_profile_surface(page)
-        if profile_surface.get("clicked"):
-            steps.append({
-                "name": "open_profile_surface",
-                "ok": True,
-                "detail": profile_surface.get("label") or "clicked profile surface",
-            })
+            playwright, context, browser, keep_browser_open = _dm_get_playwright_context(sync_playwright, browser_name, options)
+            if context is None:
+                raise RuntimeError("playwright context unavailable")
+            target_url = str(options.get("open_url") or "https://www.douyin.com/").strip() or "https://www.douyin.com/"
+            timeout_ms = int(options.get("timeout_ms") or 45000)
+            if keep_browser_open and getattr(context, "pages", None):
+                page = context.pages[0]
+            else:
+                page = context.new_page()
+            _dm_apply_page_geometry(page, options)
+            if cookies:
+                try:
+                    context.add_cookies(cookies)
+                except Exception:
+                    if keep_browser_open and page:
+                        try:
+                            page.context.add_cookies(cookies)
+                        except Exception:
+                            raise
+                    else:
+                        raise
+            steps.append({"name": "apply_account_cookies", "ok": True, "detail": f"{len(cookies)} cookies"})
+            page.goto(target_url, wait_until="domcontentloaded", timeout=timeout_ms)
+            steps.append({"name": "open_homepage", "ok": True, "detail": target_url})
             try:
-                page.wait_for_load_state("networkidle", timeout=min(timeout_ms, 10000))
+                page.wait_for_load_state("networkidle", timeout=min(timeout_ms, 12000))
             except Exception:
                 pass
-        account_profile = _douyin_detect_account_profile(page)
-        login_state = _douyin_detect_login_requirement(page)
-        detected = account_profile.get("account_type") in {"blue_v", "personal"}
-        steps.append({
-            "name": "detect_account_type",
-            "ok": detected,
-            "detail": account_profile.get("account_type_label") if detected else (account_profile.get("reason") or "未识别"),
-        })
-        if not detected and login_state.get("requires_login"):
-            steps.append(_dm_login_required_step("before_account_type_detection"))
-        if not keep_browser_open:
-            _dm_stop_playwright_context(context, browser, playwright)
-        return {
-            "success": True,
-            "opened": True,
-            "resolved_browser": browser_name,
-            "engine": "playwright",
-            "account_cookie_loaded": bool(cookies),
-            "account_cookie_count": len(cookies),
-            "steps": steps,
-            "account_profile": account_profile,
-            "requires_login": bool(login_state.get("requires_login")) and not detected,
-            "keep_browser_open": keep_browser_open,
-            "user_data_dir": str(_dm_playwright_user_data_dir(browser_name, options)) if _dm_bool_text(options.get("persistent_context", keep_browser_open or options.get("user_data_dir"))) else "",
-        }
-    except Exception as exc:
-        detail = str(exc)
-        steps.append({"name": "apply_account_cookies", "ok": False, "detail": detail})
-        failure = _dm_screenshot_failure(page, options, detail)
-        if not _dm_should_keep_browser_open_on_failure(detail, keep_browser_open):
-            _dm_stop_playwright_context(context, browser, playwright)
-        return {
-            "success": False,
-            "opened": False,
-            "resolved_browser": browser_name,
-            "engine": "playwright",
-            "account_cookie_loaded": False,
-            "account_cookie_count": len(cookies),
-            "steps": steps,
-            "error": detail,
-            "keep_browser_open": keep_browser_open,
-            **failure,
-        }
+            geometry = _dm_apply_page_geometry(page, options)
+            steps.append({
+                "name": "normalize_page_geometry",
+                "ok": True,
+                "detail": (
+                    f"viewport {geometry['viewport_width']}x{geometry['viewport_height']} "
+                    f"zoom {geometry['page_zoom_percent']}%"
+                ),
+            })
+            _dm_append_optional_step(steps, _dm_handle_douyin_login_save_prompt(page))
+            # Verify API: check login before opening profile / type detection.
+            if _dm_bool_text(options.get("verify_login_first")):
+                early_login = _douyin_detect_login_requirement(page)
+                if early_login.get("requires_login"):
+                    steps.append(_dm_login_required_step("before_account_activity_check"))
+                    if not keep_browser_open:
+                        _dm_stop_playwright_context(context, browser, playwright)
+                    return {
+                        "success": True,
+                        "opened": True,
+                        "resolved_browser": browser_name,
+                        "engine": "playwright",
+                        "account_cookie_loaded": bool(cookies),
+                        "account_cookie_count": len(cookies),
+                        "steps": steps,
+                        "account_profile": {},
+                        "requires_login": True,
+                        "account_type_skipped": True,
+                        "keep_browser_open": keep_browser_open,
+                        "user_data_dir": str(_dm_playwright_user_data_dir(browser_name, options)) if _dm_bool_text(options.get("persistent_context", keep_browser_open or options.get("user_data_dir"))) else "",
+                    }
+                if early_login.get("requires_verification"):
+                    steps.append({
+                        "name": "detect_login_state",
+                        "ok": False,
+                        "detail": "需要二次验证/安全验证",
+                    })
+                    if not keep_browser_open:
+                        _dm_stop_playwright_context(context, browser, playwright)
+                    return {
+                        "success": True,
+                        "opened": True,
+                        "resolved_browser": browser_name,
+                        "engine": "playwright",
+                        "account_cookie_loaded": bool(cookies),
+                        "account_cookie_count": len(cookies),
+                        "steps": steps,
+                        "account_profile": {},
+                        "requires_login": False,
+                        "requires_verification": True,
+                        "account_type_skipped": True,
+                        "keep_browser_open": keep_browser_open,
+                        "user_data_dir": str(_dm_playwright_user_data_dir(browser_name, options)) if _dm_bool_text(options.get("persistent_context", keep_browser_open or options.get("user_data_dir"))) else "",
+                    }
+            profile_surface = _douyin_open_profile_surface(page)
+            if profile_surface.get("clicked"):
+                steps.append({
+                    "name": "open_profile_surface",
+                    "ok": True,
+                    "detail": profile_surface.get("label") or "clicked profile surface",
+                })
+                try:
+                    page.wait_for_load_state("networkidle", timeout=min(timeout_ms, 10000))
+                except Exception:
+                    pass
+            account_profile = _douyin_detect_account_profile(page)
+            login_state = _douyin_detect_login_requirement(page)
+            detected = account_profile.get("account_type") in {"blue_v", "personal"}
+            steps.append({
+                "name": "detect_account_type",
+                "ok": detected,
+                "detail": account_profile.get("account_type_label") if detected else (account_profile.get("reason") or "未识别"),
+            })
+            if not detected and login_state.get("requires_login"):
+                steps.append(_dm_login_required_step("before_account_type_detection"))
+            if not keep_browser_open:
+                _dm_stop_playwright_context(context, browser, playwright)
+            return {
+                "success": True,
+                "opened": True,
+                "resolved_browser": browser_name,
+                "engine": "playwright",
+                "account_cookie_loaded": bool(cookies),
+                "account_cookie_count": len(cookies),
+                "steps": steps,
+                "account_profile": account_profile,
+                "requires_login": bool(login_state.get("requires_login")) and not detected,
+                "keep_browser_open": keep_browser_open,
+                "user_data_dir": str(_dm_playwright_user_data_dir(browser_name, options)) if _dm_bool_text(options.get("persistent_context", keep_browser_open or options.get("user_data_dir"))) else "",
+            }
+        except Exception as exc:
+            detail = str(exc)
+            steps.append({"name": "apply_account_cookies", "ok": False, "detail": detail})
+            failure = _dm_screenshot_failure(page, options, detail)
+            combined_steps.extend(steps)
+            if attempt == 0 and _dm_should_retry_playwright_runtime(detail):
+                _dm_reset_all_playwright_sessions()
+                combined_steps.append({
+                    "name": "restart_browser",
+                    "ok": True,
+                    "detail": "browser runtime was reset after a Playwright sync runtime error",
+                })
+                continue
+            if not _dm_should_keep_browser_open_on_failure(detail, keep_browser_open):
+                _dm_stop_playwright_context(context, browser, playwright)
+            return {
+                "success": False,
+                "opened": False,
+                "resolved_browser": browser_name,
+                "engine": "playwright",
+                "account_cookie_loaded": False,
+                "account_cookie_count": len(cookies),
+                "steps": combined_steps,
+                "error": detail,
+                "keep_browser_open": keep_browser_open,
+                **failure,
+            }
+
+    return {
+        "success": False,
+        "opened": False,
+        "resolved_browser": browser_name,
+        "engine": "playwright",
+        "account_cookie_loaded": False,
+        "account_cookie_count": len(cookies),
+        "steps": combined_steps,
+        "error": "browser execution exhausted retries",
+        "keep_browser_open": False,
+    }
 
 
 _douyin_account_cookie_playwright_executor.needs_raw_cookies = True

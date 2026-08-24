@@ -95,6 +95,7 @@ from aisec_agent.web.session_rag_chat import (
     _douyin_detect_login_requirement,
     _douyin_detect_private_account_restriction,
     _douyin_private_message_playwright_executor,
+    _douyin_account_cookie_playwright_executor,
     _format_sender_identity_context,
     process_douyin_dm_task_once,
     reconcile_douyin_dm_queue_state,
@@ -2867,6 +2868,47 @@ class SessionRAGWebTest(unittest.TestCase):
         self.assertEqual(calls["count"], 2)
         self.assertFalse(result["success"])
         self.assertIn("stop after retry", result["error"])
+
+    def test_douyin_account_cookie_playwright_executor_retries_runtime_error(self):
+        calls = {"count": 0}
+
+        def fake_get_context(factory, browser_name, options):
+            calls["count"] += 1
+            if calls["count"] == 1:
+                raise RuntimeError("It looks like you are using Playwright Sync API inside the asyncio loop.")
+            raise RuntimeError("stop after retry")
+
+        with patch(
+            "aisec_agent.web.session_rag_chat._dm_get_playwright_context",
+            side_effect=fake_get_context,
+        ), patch(
+            "aisec_agent.web.session_rag_chat._dm_reset_all_playwright_sessions",
+        ) as reset_mock:
+            result = _douyin_account_cookie_playwright_executor(
+                "sessionid=test",
+                "chrome",
+                {"headless": True, "verify_login_first": True},
+            )
+
+        reset_mock.assert_called_once()
+        self.assertEqual(calls["count"], 2)
+        self.assertFalse(result["success"])
+        self.assertIn("stop after retry", result["error"])
+        step_names = [step.get("name") for step in result.get("steps") or []]
+        self.assertIn("restart_browser", step_names)
+
+    def test_dm_stop_playwright_context_tears_down_thread_local_manager(self):
+        calls = {"exit": 0}
+
+        class FakeManager:
+            def __exit__(self, exc_type, exc, tb):
+                calls["exit"] += 1
+
+        from aisec_agent.web.session_rag_chat import _dm_bind_playwright_manager, _dm_stop_playwright_context
+
+        _dm_bind_playwright_manager(FakeManager())
+        _dm_stop_playwright_context(None, None, None)
+        self.assertEqual(calls["exit"], 1)
 
     def test_dm_message_page_reuses_initial_blank_page(self):
         class FakePage:
