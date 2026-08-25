@@ -60,7 +60,7 @@ Web：`0.0.0.0:7860` → `http://127.0.0.1:7860`
 ### 生产机（机 23 / ALEX001）
 
 - 路径：`C:\sixin\aisec\new\aisec-agent`
-- 分支：`master` @ `e67fba8`（待部署）
+- 分支：`master` @ `e67fba8`
 - 访问：`http://192.168.18.100:7860`
 - 启停：便携运行时；远程重启须以交互用户 `starc` 跑 `start.ps1 -SkipGitUpdate`（可用 `/IT` 计划任务），**禁止** `schtasks /RU SYSTEM`（SYSTEM 下 Playwright 会 `browser_closed`）
 - Gitee HTTPS 在机 23 无交互凭证，更新代码用 git bundle 快进
