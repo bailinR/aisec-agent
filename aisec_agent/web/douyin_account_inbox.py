@@ -63,12 +63,16 @@ def shape_douyin_account_inbox_result(raw: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _run_inbox_playwright(payload: Dict[str, Any]) -> Dict[str, Any]:
+    import time
+
     from playwright.sync_api import sync_playwright
 
     from aisec_agent.web import douyin_conversation_monitor as monitor
 
     _dm_account_browser_profile_exists = monitor._dm_account_browser_profile_exists
     _dm_account_browser_user_data_dir = monitor._dm_account_browser_user_data_dir
+    _dm_detect_douyin_login_required = monitor._dm_detect_douyin_login_required
+    _dm_message_panel_visible = monitor._dm_message_panel_visible
     _dm_open_douyin_messages_surface = monitor._dm_open_douyin_messages_surface
     _dm_pick_account_cookie_payload = monitor._dm_pick_account_cookie_payload
     _dm_scan_inbox_summary = monitor._dm_scan_inbox_summary
@@ -86,8 +90,14 @@ def _run_inbox_playwright(payload: Dict[str, Any]) -> Dict[str, Any]:
     if raw_cookies:
         account_key = account_key or sr._dm_account_key_from_values(raw_cookies, account_id)
     browser_name = str(payload.get("browser_name") or payload.get("browser") or "edge").strip() or "edge"
-    headless = True if payload.get("headless") is None else sr._dm_bool_text(payload.get("headless"))
-    timeout_ms = int(sr._payload_float(payload, "timeout_ms", 45000))
+    # Reply-pool sync prefers headed; default remains headless unless caller sets false.
+    if "headless" in payload:
+        headless = sr._dm_bool_text(payload.get("headless"))
+    else:
+        headless = True
+    keep_open = sr._dm_bool_text(payload.get("keep_browser_open", False))
+    timeout_ms = int(sr._payload_float(payload, "timeout_ms", 120000 if not headless else 45000))
+    wait_verify_ms = int(sr._payload_float(payload, "wait_verification_ms", max(timeout_ms - 15000, 60000 if not headless else 0)))
 
     if not raw_cookies and not account_key:
         raise sr.WebInputError("account_cookie or account_key is required")
@@ -96,8 +106,9 @@ def _run_inbox_playwright(payload: Dict[str, Any]) -> Dict[str, Any]:
         "browser": browser_name,
         "browser_name": browser_name,
         "headless": headless,
-        "keep_browser_open": False,
-        "persistent_context": bool(account_key),
+        "keep_browser_open": keep_open,
+        # Headed sync should reuse account profile so post-verify session sticks.
+        "persistent_context": bool(account_key) or (not headless),
         "timeout_ms": timeout_ms,
         "slow_mo": int(sr._payload_float(payload, "slow_mo", 80)),
         "viewport_width": sr.DM_DEFAULT_VIEWPORT_WIDTH,
@@ -108,12 +119,16 @@ def _run_inbox_playwright(payload: Dict[str, Any]) -> Dict[str, Any]:
         options["user_data_dir"] = str(_dm_account_browser_user_data_dir(browser_name, account_key))
         if not raw_cookies and not _dm_account_browser_profile_exists(browser_name, account_key):
             raise sr.WebInputError(f"account profile not found for {browser_name}/{account_key}")
+    elif not headless:
+        # Ephemeral headed profile keyed by account_id so cookies persist for the wait loop.
+        fallback_key = account_id or "inbox_headed"
+        options["user_data_dir"] = str(_dm_account_browser_user_data_dir(browser_name, f"inbox_{fallback_key}"))
 
     playwright = None
     context = None
     browser = None
     try:
-        playwright, context, browser, _keep = sr._dm_get_playwright_context(
+        playwright, context, browser, keep_open = sr._dm_get_playwright_context(
             sync_playwright, browser_name, options
         )
         cookies = sr._dm_parse_account_cookies(raw_cookies) if raw_cookies else []
@@ -129,23 +144,52 @@ def _run_inbox_playwright(payload: Dict[str, Any]) -> Dict[str, Any]:
         sr._dm_append_optional_step([], sr._dm_handle_douyin_login_save_prompt(page))
 
         steps = _dm_open_douyin_messages_surface(page, timeout_ms=min(timeout_ms, 20000))
-        login_detail = ""
-        verify_detail = ""
-        for step in steps:
-            detail = str(step.get("detail") or "")
-            if not step.get("ok") and "requires_verification" in detail:
-                verify_detail = detail
-                break
-            if not step.get("ok") and "login_required" in detail:
-                login_detail = detail
-                break
+
+        def _step_auth_flags(step_list):
+            login_detail = ""
+            verify_detail = ""
+            for step in step_list:
+                detail = str(step.get("detail") or "")
+                if not step.get("ok") and "requires_verification" in detail and not verify_detail:
+                    verify_detail = detail
+                if not step.get("ok") and "login_required" in detail and not login_detail:
+                    login_detail = detail
+            return login_detail, verify_detail
+
+        login_detail, verify_detail = _step_auth_flags(steps)
+
+        # Headed mode: leave the window open and wait for operator to pass captcha.
+        if verify_detail and (not headless) and wait_verify_ms > 0:
+            steps.append({
+                "name": "wait_manual_verification",
+                "ok": True,
+                "detail": f"headed wait up to {wait_verify_ms}ms for verification",
+            })
+            deadline = time.time() + (wait_verify_ms / 1000.0)
+            while time.time() < deadline:
+                time.sleep(2.0)
+                state = _dm_detect_douyin_login_required(page)
+                if state.get("requires_verification") or state.get("required"):
+                    continue
+                retry_steps = _dm_open_douyin_messages_surface(page, timeout_ms=min(15000, timeout_ms))
+                steps.extend(retry_steps)
+                login_detail, verify_detail = _step_auth_flags(retry_steps)
+                if (not verify_detail and not login_detail) or _dm_message_panel_visible(page):
+                    verify_detail = ""
+                    break
+            else:
+                # timed out still on verification
+                pass
+
         if verify_detail:
             return {
                 "ok": False,
                 "requires_login": False,
                 "requires_verification": True,
                 "failure_code": "requires_verification",
-                "message": verify_detail,
+                "message": verify_detail if headless else (
+                    verify_detail + "；有头等待超时，请在弹出的浏览器完成验证后重试同步"
+                ),
                 "inbox_unread_count": 0,
                 "inbox_unread_people": 0,
                 "unread_conversations": [],
@@ -206,6 +250,7 @@ def _run_inbox_playwright(payload: Dict[str, Any]) -> Dict[str, Any]:
         return {
             "ok": True,
             "requires_login": False,
+            "requires_verification": False,
             "failure_code": "",
             "message": "；".join(detail_parts).strip(),
             "inbox_unread_count": unread_count,
@@ -217,7 +262,8 @@ def _run_inbox_playwright(payload: Dict[str, Any]) -> Dict[str, Any]:
             "steps": steps,
         }
     finally:
-        sr._dm_stop_playwright_context(context, browser, playwright)
+        if not keep_open:
+            sr._dm_stop_playwright_context(context, browser, playwright)
 
 
 def build_douyin_account_inbox_response(
