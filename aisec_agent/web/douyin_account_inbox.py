@@ -54,6 +54,7 @@ def shape_douyin_account_inbox_result(raw: Dict[str, Any]) -> Dict[str, Any]:
         "unread_conversations": conversations,
         "clears_unread": False,
         "requires_login": bool(payload.get("requires_login")),
+        "requires_verification": bool(payload.get("requires_verification")),
         "failure_code": failure_code,
         "message": str(payload.get("message") or payload.get("detail") or "").strip(),
         "browser": str(payload.get("browser") or payload.get("resolved_browser") or ""),
@@ -129,14 +130,35 @@ def _run_inbox_playwright(payload: Dict[str, Any]) -> Dict[str, Any]:
 
         steps = _dm_open_douyin_messages_surface(page, timeout_ms=min(timeout_ms, 20000))
         login_detail = ""
+        verify_detail = ""
         for step in steps:
-            if not step.get("ok") and "login_required" in str(step.get("detail") or ""):
-                login_detail = str(step.get("detail") or "login_required")
+            detail = str(step.get("detail") or "")
+            if not step.get("ok") and "requires_verification" in detail:
+                verify_detail = detail
                 break
+            if not step.get("ok") and "login_required" in detail:
+                login_detail = detail
+                break
+        if verify_detail:
+            return {
+                "ok": False,
+                "requires_login": False,
+                "requires_verification": True,
+                "failure_code": "requires_verification",
+                "message": verify_detail,
+                "inbox_unread_count": 0,
+                "inbox_unread_people": 0,
+                "unread_conversations": [],
+                "account_id": account_id,
+                "account_key": account_key,
+                "browser": browser_name,
+                "steps": steps,
+            }
         if login_detail:
             return {
                 "ok": False,
                 "requires_login": True,
+                "requires_verification": False,
                 "failure_code": "login_required",
                 "message": login_detail,
                 "inbox_unread_count": 0,

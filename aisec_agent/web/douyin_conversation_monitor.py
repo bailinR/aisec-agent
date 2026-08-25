@@ -290,11 +290,14 @@ def _dm_detect_douyin_login_required(page: Any) -> Dict[str, Any]:
         return rect.width >= 24 && rect.height >= 14 && rect.right > 0 && rect.bottom > 0 &&
           style.visibility !== 'hidden' && style.display !== 'none' && style.opacity !== '0';
       };
+      const title = String(document.title || '');
+      const bodyText = String(document.body && document.body.innerText || '').slice(0, 4000);
       const texts = Array.from(document.querySelectorAll('div, section, form, button, span, p, a'))
         .filter(visible)
         .map((el) => normalize(el.innerText || el.textContent || ''))
         .filter(Boolean);
-      const joined = texts.slice(0, 200).join(' ');
+      const joined = texts.slice(0, 200).join(' ') || bodyText;
+      const verificationPage = /验证码中间页|验证中间页|安全验证|请完成下列验证|滑块验证|captcha/i.test(title + joined);
       const modal = /扫码登录|验证码登录|密码登录|登录后免费|请输入手机号|获取验证码/.test(joined);
       const loginButton = texts.some((text) => text === '登录' || text === '立即登录');
       // Top-right primary 登录 button (logged-out chrome) — do not confuse with message drawer.
@@ -314,21 +317,26 @@ def _dm_detect_douyin_login_required(page: Any) -> Dict[str, Any]:
           const cls = String(el.className || '');
           const aria = String(el.getAttribute('aria-label') || '');
           return /im-entry|im-dialog|avatar|用户头像/.test(cls + ' ' + aria);
-        }) && !topRightLogin;
+        }) && !topRightLogin && !verificationPage;
       const required = Boolean(
-        modal ||
-        topRightLogin ||
-        (loginButton && loggedOutHint) ||
-        (loginButton && /扫码|验证码|手机号/.test(joined) && !alreadyLoggedIn)
+        (!verificationPage) && (
+          modal ||
+          topRightLogin ||
+          (loginButton && loggedOutHint) ||
+          (loginButton && /扫码|验证码|手机号/.test(joined) && !alreadyLoggedIn)
+        )
       );
       return {
         required,
-        reason: required
-          ? (modal ? 'login modal visible' : (topRightLogin ? 'top-right login button visible' : 'login button visible'))
-          : '',
+        requiresVerification: verificationPage,
+        reason: verificationPage
+          ? 'verification intermediate page'
+          : (required
+            ? (modal ? 'login modal visible' : (topRightLogin ? 'top-right login button visible' : 'login button visible'))
+            : ''),
         sampleText: joined.slice(0, 240),
         url: location.href,
-        title: document.title || '',
+        title,
         topRightLogin,
       };
     }
@@ -339,12 +347,18 @@ def _dm_detect_douyin_login_required(page: Any) -> Dict[str, Any]:
         data = {"required": False, "reason": str(exc)}
     if not isinstance(data, dict):
         data = {}
+    # Title-only fallback when body evaluate is empty (common on captcha intermediate page).
+    title = str(data.get("title") or getattr(page, "title", lambda: "")() or "")
+    if not data.get("requiresVerification") and re.search(r"验证码中间页|验证中间页|安全验证|captcha", title, re.I):
+        data["requiresVerification"] = True
+        data["reason"] = "verification intermediate page"
     return {
         "required": bool(data.get("required")),
+        "requires_verification": bool(data.get("requiresVerification")),
         "reason": str(data.get("reason") or ""),
         "sample_text": str(data.get("sampleText") or ""),
         "url": str(data.get("url") or ""),
-        "title": str(data.get("title") or ""),
+        "title": title,
     }
 
 
@@ -514,6 +528,13 @@ def _dm_open_douyin_messages_surface(page: Any, timeout_ms: int = 12000) -> List
             pass
         sr._dm_append_optional_step(steps, sr._dm_handle_douyin_login_save_prompt(page, timeout_ms=1500))
         login_state = _dm_detect_douyin_login_required(page)
+        if login_state.get("requires_verification"):
+            steps.append({
+                "name": "check_login",
+                "ok": False,
+                "detail": "requires_verification: " + str(login_state.get("reason") or "verification required"),
+            })
+            return steps
         if login_state.get("required"):
             steps.append({
                 "name": "check_login",
@@ -521,6 +542,30 @@ def _dm_open_douyin_messages_surface(page: Any, timeout_ms: int = 12000) -> List
                 "detail": "login_required: " + str(login_state.get("reason") or "login required"),
             })
             return steps
+        # 404 / soft pages never expose IM chrome.
+        try:
+            title = str(page.title() or "")
+            body_snip = str(page.evaluate("() => String(document.body && document.body.innerText || '').slice(0, 200)") or "")
+            if re.search(r"页面不见|404", title + body_snip):
+                page.goto("https://www.douyin.com/", wait_until="domcontentloaded", timeout=timeout_ms)
+                page.wait_for_timeout(1500)
+                login_state = _dm_detect_douyin_login_required(page)
+                if login_state.get("requires_verification"):
+                    steps.append({
+                        "name": "check_login",
+                        "ok": False,
+                        "detail": "requires_verification: " + str(login_state.get("reason") or "verification required"),
+                    })
+                    return steps
+                if login_state.get("required"):
+                    steps.append({
+                        "name": "check_login",
+                        "ok": False,
+                        "detail": "login_required: " + str(login_state.get("reason") or "login required"),
+                    })
+                    return steps
+        except Exception:
+            pass
         if _dm_message_panel_visible(page):
             steps.append({"name": "detect_message_panel", "ok": True, "detail": "message panel already visible"})
             return steps
@@ -558,6 +603,22 @@ def _dm_open_douyin_messages_surface(page: Any, timeout_ms: int = 12000) -> List
         url_open = _dm_try_open_messages_via_url(page, timeout_ms=timeout_ms)
         if url_open.get("ok"):
             steps.append({"name": "open_message_center_url", "ok": True, "detail": str(url_open.get("detail") or "")})
+            return steps
+        # Final auth/risk re-check: captcha pages often lack IM controls entirely.
+        login_state = _dm_detect_douyin_login_required(page)
+        if login_state.get("requires_verification"):
+            steps.append({
+                "name": "check_login",
+                "ok": False,
+                "detail": "requires_verification: " + str(login_state.get("reason") or "verification required"),
+            })
+            return steps
+        if login_state.get("required"):
+            steps.append({
+                "name": "check_login",
+                "ok": False,
+                "detail": "login_required: " + str(login_state.get("reason") or "login required"),
+            })
             return steps
         steps.append({
             "name": "open_message_center",
@@ -1489,14 +1550,27 @@ class DouyinConversationMonitor:
         steps = _dm_open_douyin_messages_surface(page)
         login_required = False
         login_detail = ""
+        verify_required = False
+        verify_detail = ""
         for step in steps:
-            if not step.get("ok"):
-                detail = str(step.get("detail") or "")
-                if "login_required" in detail:
-                    login_required = True
-                    login_detail = detail
-                    continue
-                self.log("打开消息入口未确认：" + detail, "warn", {"step": step.get("name")})
+            if step.get("ok"):
+                continue
+            detail = str(step.get("detail") or "")
+            if "requires_verification" in detail:
+                verify_required = True
+                verify_detail = detail
+                continue
+            if "login_required" in detail:
+                login_required = True
+                login_detail = detail
+                continue
+            self.log("打开消息入口未确认：" + detail, "warn", {"step": step.get("name")})
+        if verify_required:
+            extra = self._maybe_capture_diagnostic(page, verify_detail)
+            with self.lock:
+                self.last_error = verify_detail
+            self.log("命中验证中间页，需有头人工验证后再盯号：" + verify_detail, "warn", extra)
+            return
         if login_required:
             extra = self._maybe_capture_diagnostic(page, login_detail)
             with self.lock:
