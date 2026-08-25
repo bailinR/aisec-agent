@@ -57,6 +57,8 @@ Web：`0.0.0.0:7860` → `http://127.0.0.1:7860`
 - [x] 机 23 部署到 `e67fba8`（验活文档 + profile/个人号修复批次）
 - [x] 回复池协作：inbox / 盯号补齐 `unread_conversations`；回传见 `docs/回复池协作-私信侧回传.md`
 - [x] 修复 inbox 500（运行时未加载新函数）+ 未登录误判导致扫不到消息面板
+- [x] 修复 inbox HTTP 500：Playwright 跨线程复用（走 web executor）+ 同步前暂停同 profile 盯号
+- [x] 修复未读列表昵称/预览粘连（如「白林 2222 ·」→ 昵称白林 / 正文 2222）
 - [ ] 数据中台（comment-kit）按回复池协作文档接盯号 + inbox 明细 + tasks 跟进发送；本机可二需有效 Cookie 后复测同步
 
 ### 生产机（机 23 / ALEX001）

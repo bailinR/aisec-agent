@@ -780,6 +780,43 @@ def _dm_scan_inbox_summary(page: Any) -> Dict[str, Any]:
     }
 
 
+def _dm_repair_inbox_peer_fields(
+    nickname: str,
+    last_message: str,
+    unread_count: int = 1,
+) -> Dict[str, str]:
+    """Split mashed Douyin list labels like '白林 2222 ·' with badge '2' as reply."""
+    nick = _dm_normalize_text(nickname)
+    msg = _dm_normalize_text(last_message)
+    label = nick or msg
+    matched = re.match(r"^(?P<name>.+?)\s+(?P<preview>\S+)\s*·\s*$", label)
+    badge_like = bool(re.fullmatch(r"[1-9]\d?|99\+?", msg or "")) and (
+        not msg or msg == str(int(unread_count or 1)) or len(msg) <= 3
+    )
+    if matched:
+        split_name = _dm_normalize_text(matched.group("name"))
+        split_preview = _dm_normalize_text(matched.group("preview"))
+        if split_preview and (
+            not nick
+            or not msg
+            or badge_like
+            or msg == split_preview
+            or msg == label
+            or nick == label
+        ):
+            return {"peer_nickname": split_name or nick, "last_message": split_preview}
+    if badge_like and nick and " " in nick and "·" not in nick:
+        parts = nick.split()
+        if len(parts) >= 2 and not re.fullmatch(r"[1-9]\d?", parts[0] or ""):
+            return {
+                "peer_nickname": parts[0],
+                "last_message": " ".join(parts[1:]).strip(" ·"),
+            }
+    if badge_like:
+        msg = ""
+    return {"peer_nickname": nick, "last_message": msg}
+
+
 def _dm_scan_unread_conversations(page: Any) -> Dict[str, Any]:
     """List unread DM conversations from the inbox panel without clicking rows.
 
@@ -886,27 +923,46 @@ def _dm_scan_unread_conversations(page: Any) -> Dict[str, Any]:
         }
         return best;
       };
-      const extractPeer = (rawText) => {
+      const extractPeer = (rawText, badgeCount) => {
         const raw = normalize(rawText);
-        const parts = raw.split(/\\s+/).filter(Boolean);
+        let work = raw;
+        const badgeNum = Number(badgeCount) || 0;
+        if (badgeNum > 0) {
+          work = work.replace(new RegExp('\\\\s+' + String(badgeNum) + '\\\\s*$'), '').trim();
+        }
+        work = work.replace(/\\s+[1-9]\\d?\\s*$/, '').trim();
+        // Douyin list cells often look like: "昵称 预览 ·"
+        const mash = work.match(/^(.+?)\\s+(\\S+)\\s*·\\s*$/);
+        if (mash) {
+          const nick = normalize(mash[1]);
+          const preview = normalize(mash[2]);
+          if (nick && preview && !/^[1-9]\\d?$/.test(nick)) {
+            return {nickname: nick.slice(0, 64), lastMessage: preview.slice(0, 200), timeLabel: '', raw: raw.slice(0, 240)};
+          }
+        }
+        const parts = work.split(/\\s+/).filter(Boolean);
         let nickname = '';
-        let lastMessage = raw;
+        let lastMessage = work;
         let timeLabel = '';
         const timeIdx = parts.findIndex((p) => timeToken.test(p));
         if (timeIdx >= 0) {
           nickname = parts.slice(0, timeIdx).join(' ').trim();
           timeLabel = parts[timeIdx];
-          lastMessage = parts.slice(timeIdx + 1).join(' ').replace(/\\s+[1-9]\\d?\\s*$/, '').trim();
+          lastMessage = parts.slice(timeIdx + 1).join(' ').trim();
         } else {
           nickname = parts[0] || '';
-          lastMessage = parts.slice(1).join(' ').replace(/\\s+[1-9]\\d?\\s*$/, '').trim();
+          lastMessage = parts.slice(1).join(' ').trim();
         }
         lastMessage = lastMessage
           .replace(/^转发\\[.*?\\]:\\s*/, '')
-          .replace(/\\s+[1-9]\\d?\\s*$/, '')
+          .replace(/\\s*·\\s*$/, '')
           .trim();
         if (!nickname || nickname.length > 32 || /^[1-9]\\d?$/.test(nickname)) {
           nickname = '';
+        }
+        // Never treat a lone badge digit as the message preview.
+        if (/^[1-9]\\d?$|^99\\+?$/.test(lastMessage)) {
+          lastMessage = '';
         }
         if (/群聊|群公告|被设置为管理员/.test(raw)) {
           return null;
@@ -943,7 +999,7 @@ def _dm_scan_unread_conversations(page: Any) -> Dict[str, Any]:
       for (const badge of uniqueBadges) {
         const row = rowForBadge(badge);
         if (!row) continue;
-        const parsed = extractPeer(row.text);
+        const parsed = extractPeer(row.text, badge.count);
         if (!parsed) continue;
         const identity = extractIdentity(row.node);
         const key = [
@@ -959,7 +1015,7 @@ def _dm_scan_unread_conversations(page: Any) -> Dict[str, Any]:
           peer_uid: identity.peerUid,
           peer_sec_uid: identity.peerSecUid,
           peer_profile_url: identity.peerProfileUrl,
-          last_message: parsed.lastMessage || parsed.raw,
+          last_message: parsed.lastMessage || (parsed.nickname ? '' : parsed.raw),
           unread_count: Number(badge.count) || 1,
           conversation_id: identity.peerSecUid || identity.peerUid || parsed.nickname || '',
           updated_at: parsed.timeLabel || '',
@@ -998,6 +1054,10 @@ def _dm_scan_unread_conversations(page: Any) -> Dict[str, Any]:
         peer_sec_uid = _dm_normalize_text(item.get("peer_sec_uid"))
         peer_uid = _dm_normalize_text(item.get("peer_uid"))
         peer_profile_url = _dm_normalize_text(item.get("peer_profile_url"))
+        unread_count = max(1, int(item.get("unread_count") or 1))
+        repaired = _dm_repair_inbox_peer_fields(nickname, last_message, unread_count)
+        nickname = repaired["peer_nickname"]
+        last_message = repaired["last_message"]
         if not peer_profile_url and peer_sec_uid:
             peer_profile_url = f"https://www.douyin.com/user/{peer_sec_uid}"
         if not nickname and not last_message and not peer_sec_uid:
@@ -1009,7 +1069,7 @@ def _dm_scan_unread_conversations(page: Any) -> Dict[str, Any]:
                 "peer_sec_uid": peer_sec_uid,
                 "peer_profile_url": peer_profile_url,
                 "last_message": last_message,
-                "unread_count": max(1, int(item.get("unread_count") or 1)),
+                "unread_count": unread_count,
                 "conversation_id": _dm_normalize_text(item.get("conversation_id"))
                 or peer_sec_uid
                 or peer_uid

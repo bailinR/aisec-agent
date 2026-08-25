@@ -87,3 +87,15 @@ def test_build_inbox_uses_executor():
     assert data["inbox_unread_people"] == 4
     assert data["ok"] is True
     assert data["unread_conversations"][0]["peer_nickname"] == "乙"
+
+
+def test_repair_inbox_peer_fields_splits_mash():
+    from aisec_agent.web.douyin_conversation_monitor import _dm_repair_inbox_peer_fields
+
+    repaired = _dm_repair_inbox_peer_fields("白林 2222 ·", "2", unread_count=2)
+    assert repaired["peer_nickname"] == "白林"
+    assert repaired["last_message"] == "2222"
+
+    repaired2 = _dm_repair_inbox_peer_fields("", "白林 111 ·", unread_count=1)
+    assert repaired2["peer_nickname"] == "白林"
+    assert repaired2["last_message"] == "111"

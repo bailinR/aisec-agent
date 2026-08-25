@@ -7,6 +7,7 @@ once, scans unread badges, then closes the browser.
 
 from __future__ import annotations
 
+import time
 from typing import Any, Callable, Dict, Optional
 
 
@@ -14,6 +15,102 @@ def _sr():
     from aisec_agent.web import session_rag_chat as sr
 
     return sr
+
+
+def _resolve_inbox_account_key(payload: Dict[str, Any]) -> str:
+    """Resolve account_key the same way inbox / monitor start do."""
+    from aisec_agent.web import douyin_conversation_monitor as monitor
+
+    sr = _sr()
+    raw_cookies = sr._dm_cookie_text(monitor._dm_pick_account_cookie_payload(payload))
+    account_id = str(payload.get("account_id") or payload.get("account") or "").strip()
+    account_key = str(payload.get("account_key") or "").strip()
+    if raw_cookies:
+        account_key = account_key or sr._dm_account_key_from_values(raw_cookies, account_id)
+    return account_key
+
+
+def _temporarily_release_monitor_for_inbox(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Stop an alive monitor that holds the same browser profile, if any.
+
+    Inbox and conversation-monitors share persistent user_data_dir; opening a
+    second Chromium on the same profile fails. Pause watch during one-shot sync.
+    """
+    from aisec_agent.web import douyin_conversation_monitor as monitor
+
+    account_key = _resolve_inbox_account_key(payload)
+    if not account_key:
+        return None
+    with monitor._DM_ACCOUNT_CONTROLLERS_LOCK:
+        controller = monitor._DM_ACCOUNT_CONTROLLERS.get(account_key)
+    if not controller:
+        return None
+    snap = controller.snapshot()
+    if not snap.get("alive"):
+        return None
+    resume_payload = {
+        "account_id": snap.get("account_id"),
+        "account_name": snap.get("account_name"),
+        "account_key": account_key,
+        "account_cookie": getattr(controller, "account_cookies", "") or "",
+        "browser_name": snap.get("browser_name") or "chrome",
+        "headless": snap.get("headless", True),
+        "generate_reply": snap.get("generate_reply", False),
+        "auto_send": snap.get("auto_send", False),
+        "poll_seconds": snap.get("poll_seconds", 8),
+        "reply_backend": snap.get("reply_backend"),
+        "gpu_model": snap.get("gpu_model"),
+        "max_auto_replies_before_peer": snap.get("max_auto_replies_before_peer", 2),
+        "project_id": getattr(controller, "project_id", "") or "",
+        "company_id": getattr(controller, "company_id", "") or "",
+        "source_platform": getattr(controller, "source_platform", "") or "抖音",
+        "_logic": getattr(controller, "logic", None),
+        "_project_store": getattr(controller, "project_store", None),
+    }
+    controller.stop()
+    thread = getattr(controller, "thread", None)
+    if thread is not None and thread.is_alive():
+        thread.join(timeout=45)
+    # Drop any leftover sync-API session on this profile before re-launch.
+    sr = _sr()
+    browser_name = str(resume_payload.get("browser_name") or "chrome")
+    user_data_dir = monitor._dm_account_browser_user_data_dir(browser_name, account_key)
+    session_key = f"{browser_name.lower()}|{user_data_dir.resolve()}"
+    try:
+        sr._dm_drop_playwright_session(session_key)
+    except Exception:
+        pass
+    # Brief settle so Chromium releases the profile lock.
+    time.sleep(1.0)
+    return resume_payload
+
+
+def _resume_monitor_after_inbox(resume_payload: Optional[Dict[str, Any]]) -> None:
+    if not resume_payload:
+        return
+    from aisec_agent.web import douyin_conversation_monitor as monitor
+
+    logic = resume_payload.pop("_logic", None)
+    project_store = resume_payload.pop("_project_store", None)
+    try:
+        monitor.build_douyin_conversation_monitor_start_response(
+            resume_payload,
+            logic=logic,
+            project_store=project_store,
+        )
+    except Exception:
+        # Sync already finished; monitor restart is best-effort.
+        pass
+
+
+def _run_inbox_playwright_via_web_runtime(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Run inbox Playwright on the dedicated web thread; pause monitor if needed."""
+    sr = _sr()
+    resume = _temporarily_release_monitor_for_inbox(payload)
+    try:
+        return sr._run_web_playwright_call(_run_inbox_playwright, payload)
+    finally:
+        _resume_monitor_after_inbox(resume)
 
 
 def shape_douyin_account_inbox_result(raw: Dict[str, Any]) -> Dict[str, Any]:
@@ -63,8 +160,6 @@ def shape_douyin_account_inbox_result(raw: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _run_inbox_playwright(payload: Dict[str, Any]) -> Dict[str, Any]:
-    import time
-
     from playwright.sync_api import sync_playwright
 
     from aisec_agent.web import douyin_conversation_monitor as monitor
@@ -271,6 +366,8 @@ def build_douyin_account_inbox_response(
     executor: Optional[Callable[[Dict[str, Any]], Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Build one-shot inbox unread response for middle platform."""
-    runner = executor or _run_inbox_playwright
+    # Default path must use the single-thread web Playwright executor so we do
+    # not reuse a persistent context created on another thread (greenlet error).
+    runner = executor or _run_inbox_playwright_via_web_runtime
     raw = dict(runner(dict(payload or {})) or {})
     return shape_douyin_account_inbox_result(raw)
