@@ -85,7 +85,7 @@ def _run_inbox_playwright(payload: Dict[str, Any]) -> Dict[str, Any]:
     account_key = str(payload.get("account_key") or "").strip()
     if raw_cookies:
         account_key = account_key or sr._dm_account_key_from_values(raw_cookies, account_id)
-    browser_name = str(payload.get("browser_name") or payload.get("browser") or "chrome").strip() or "chrome"
+    browser_name = str(payload.get("browser_name") or payload.get("browser") or "edge").strip() or "edge"
     headless = True if payload.get("headless") is None else sr._dm_bool_text(payload.get("headless"))
     timeout_ms = int(sr._payload_float(payload, "timeout_ms", 45000))
 
