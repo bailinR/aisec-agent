@@ -99,3 +99,36 @@ def test_repair_inbox_peer_fields_splits_mash():
     repaired2 = _dm_repair_inbox_peer_fields("", "白林 111 ·", unread_count=1)
     assert repaired2["peer_nickname"] == "白林"
     assert repaired2["last_message"] == "111"
+
+
+def test_inbox_reuses_alive_monitor(monkeypatch):
+    class _FakeMonitor:
+        def request_fresh_inbox(self, timeout_seconds=90.0):
+            assert timeout_seconds >= 15
+            return {
+                "ok": True,
+                "account_id": "13",
+                "account_key": "cookie_k",
+                "inbox_unread_count": 1,
+                "inbox_unread_people": 1,
+                "unread_conversations": [
+                    {
+                        "peer_nickname": "白林",
+                        "last_message": "2222",
+                        "unread_count": 1,
+                    }
+                ],
+                "reused_monitor": True,
+                "browser": "edge",
+                "message": "reused_monitor=1",
+            }
+
+    monkeypatch.setattr(
+        "aisec_agent.web.douyin_conversation_monitor.find_alive_monitor_for_account",
+        lambda payload: _FakeMonitor(),
+    )
+    data = build_douyin_account_inbox_response({"account_id": "13", "timeout_ms": 30000})
+    assert data["ok"] is True
+    assert data["reused_monitor"] is True
+    assert data["unread_conversations"][0]["peer_nickname"] == "白林"
+    assert data["unread_conversations"][0]["last_message"] == "2222"

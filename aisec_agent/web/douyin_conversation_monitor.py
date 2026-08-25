@@ -1480,6 +1480,12 @@ class DouyinConversationMonitor:
         self.peer_auto_replies_since_peer: Dict[str, int] = {}
         self.peer_last_inbound_signature: Dict[str, str] = {}
         self.peer_last_outbound: Dict[str, str] = {}
+        # On-demand inbox reuse: HTTP sync asks monitor thread to scan its open page.
+        self._wake_event = threading.Event()
+        self._inbox_req_lock = threading.Lock()
+        self._inbox_pending = False
+        self._inbox_result: Optional[Dict[str, Any]] = None
+        self._inbox_done = threading.Event()
 
     def log(self, text: str, level: str = "info", extra: Optional[Dict[str, Any]] = None) -> None:
         item = {
@@ -1511,10 +1517,165 @@ class DouyinConversationMonitor:
 
     def stop(self) -> None:
         self.stop_event.set()
+        self._wake_event.set()
         with self.lock:
             self.status = "stopping"
             self.updated_at = _sr()._dm_now()
         self.log("已请求停止监控", "info")
+
+    def request_fresh_inbox(self, timeout_seconds: float = 90.0) -> Dict[str, Any]:
+        """Scan unread on the already-open monitor browser (same Playwright thread)."""
+        if not (self.thread and self.thread.is_alive()):
+            return {
+                "ok": False,
+                "requires_login": False,
+                "requires_verification": False,
+                "failure_code": "monitor_not_alive",
+                "message": "盯号未在运行，无法复用浏览器",
+                "inbox_unread_count": 0,
+                "inbox_unread_people": 0,
+                "unread_conversations": [],
+                "account_id": self.account_id,
+                "account_key": self.account_key,
+                "browser": self.browser_name,
+                "steps": [],
+                "reused_monitor": False,
+            }
+        with self._inbox_req_lock:
+            self._inbox_pending = True
+            self._inbox_result = None
+            self._inbox_done.clear()
+        self._wake_event.set()
+        wait_s = max(5.0, float(timeout_seconds or 90.0))
+        if not self._inbox_done.wait(timeout=wait_s):
+            with self._inbox_req_lock:
+                self._inbox_pending = False
+            return {
+                "ok": False,
+                "requires_login": False,
+                "requires_verification": False,
+                "failure_code": "monitor_inbox_timeout",
+                "message": f"复用盯号浏览器扫未读超时（{int(wait_s)}s）",
+                "inbox_unread_count": 0,
+                "inbox_unread_people": 0,
+                "unread_conversations": [],
+                "account_id": self.account_id,
+                "account_key": self.account_key,
+                "browser": self.browser_name,
+                "steps": [],
+                "reused_monitor": True,
+            }
+        with self._inbox_req_lock:
+            result = dict(self._inbox_result or {})
+        result.setdefault("reused_monitor", True)
+        result.setdefault("account_id", self.account_id)
+        result.setdefault("account_key", self.account_key)
+        result.setdefault("browser", self.browser_name)
+        return result
+
+    def _scan_inbox_snapshot_on_page(self, page: Any) -> Dict[str, Any]:
+        """One inbox-shaped snapshot using the monitor's live page (no new browser)."""
+        sr = _sr()
+        steps = _dm_open_douyin_messages_surface(page, timeout_ms=20000)
+        login_detail = ""
+        verify_detail = ""
+        for step in steps:
+            detail = str(step.get("detail") or "")
+            if not step.get("ok") and "requires_verification" in detail and not verify_detail:
+                verify_detail = detail
+            if not step.get("ok") and "login_required" in detail and not login_detail:
+                login_detail = detail
+        if verify_detail:
+            with self.lock:
+                self.last_error = verify_detail
+            return {
+                "ok": False,
+                "requires_login": False,
+                "requires_verification": True,
+                "failure_code": "requires_verification",
+                "message": verify_detail,
+                "inbox_unread_count": 0,
+                "inbox_unread_people": 0,
+                "unread_conversations": [],
+                "account_id": self.account_id,
+                "account_key": self.account_key,
+                "browser": self.browser_name,
+                "steps": steps,
+                "reused_monitor": True,
+            }
+        if login_detail:
+            with self.lock:
+                self.last_error = login_detail
+            return {
+                "ok": False,
+                "requires_login": True,
+                "requires_verification": False,
+                "failure_code": "login_required",
+                "message": login_detail,
+                "inbox_unread_count": 0,
+                "inbox_unread_people": 0,
+                "unread_conversations": [],
+                "account_id": self.account_id,
+                "account_key": self.account_key,
+                "browser": self.browser_name,
+                "steps": steps,
+                "reused_monitor": True,
+            }
+        conversations_scan = _dm_scan_unread_conversations(page)
+        conversations = list(conversations_scan.get("conversations") or [])
+        inbox = _dm_scan_inbox_summary(page)
+        unread_count = int(conversations_scan.get("unread_count") or 0)
+        unread_people = int(conversations_scan.get("unread_people") or 0)
+        if inbox.get("ok"):
+            unread_count = max(unread_count, int(inbox.get("unread_count") or 0))
+            unread_people = max(unread_people, int(inbox.get("unread_people") or 0))
+        if conversations and unread_people < len(conversations):
+            unread_people = len(conversations)
+        with self.lock:
+            self.inbox_unread_count = unread_count
+            self.inbox_unread_people = unread_people
+            self.inbox_summary_updated_at = sr._dm_now()
+            self.unread_conversations = conversations
+            self.updated_at = self.inbox_summary_updated_at
+        if not conversations_scan.get("ok") and not inbox.get("ok"):
+            return {
+                "ok": False,
+                "requires_login": False,
+                "requires_verification": False,
+                "failure_code": "inbox_scan_failed",
+                "message": str(
+                    conversations_scan.get("detail") or inbox.get("detail") or "收件箱摘要失败"
+                ),
+                "inbox_unread_count": 0,
+                "inbox_unread_people": 0,
+                "unread_conversations": [],
+                "account_id": self.account_id,
+                "account_key": self.account_key,
+                "browser": self.browser_name,
+                "steps": steps,
+                "reused_monitor": True,
+            }
+        detail_parts = []
+        if conversations_scan.get("detail"):
+            detail_parts.append(str(conversations_scan.get("detail")))
+        if inbox.get("detail"):
+            detail_parts.append(str(inbox.get("detail")))
+        detail_parts.append("reused_monitor=1")
+        return {
+            "ok": True,
+            "requires_login": False,
+            "requires_verification": False,
+            "failure_code": "",
+            "message": "；".join(detail_parts).strip(),
+            "inbox_unread_count": unread_count,
+            "inbox_unread_people": unread_people,
+            "unread_conversations": conversations,
+            "account_id": self.account_id,
+            "account_key": self.account_key,
+            "browser": self.browser_name,
+            "steps": steps,
+            "reused_monitor": True,
+        }
 
     def snapshot(self) -> Dict[str, Any]:
         sr = _sr()
@@ -1589,8 +1750,52 @@ class DouyinConversationMonitor:
                 with self.lock:
                     self.loop_count += 1
                     self.updated_at = sr._dm_now()
-                self._tick(page)
-                self.stop_event.wait(self.poll_seconds)
+                do_inbox = False
+                with self._inbox_req_lock:
+                    do_inbox = bool(self._inbox_pending)
+                if do_inbox:
+                    try:
+                        result = self._scan_inbox_snapshot_on_page(page)
+                        self.log(
+                            "复用盯号浏览器扫未读："
+                            + str(result.get("message") or result.get("failure_code") or "ok"),
+                            "ok" if result.get("ok") else "warn",
+                        )
+                    except Exception as scan_exc:
+                        result = {
+                            "ok": False,
+                            "requires_login": False,
+                            "requires_verification": False,
+                            "failure_code": "monitor_inbox_error",
+                            "message": str(scan_exc),
+                            "inbox_unread_count": 0,
+                            "inbox_unread_people": 0,
+                            "unread_conversations": [],
+                            "account_id": self.account_id,
+                            "account_key": self.account_key,
+                            "browser": self.browser_name,
+                            "steps": [],
+                            "reused_monitor": True,
+                        }
+                        self.log("复用盯号扫未读异常：" + str(scan_exc), "error")
+                    with self._inbox_req_lock:
+                        self._inbox_result = result
+                        self._inbox_pending = False
+                        self._inbox_done.set()
+                else:
+                    self._tick(page)
+                # Wait poll interval, but wake early for on-demand inbox or stop.
+                self._wake_event.clear()
+                deadline = time.time() + self.poll_seconds
+                while time.time() < deadline and not self.stop_event.is_set():
+                    remaining = deadline - time.time()
+                    if remaining <= 0:
+                        break
+                    if self._wake_event.wait(timeout=min(0.5, remaining)):
+                        self._wake_event.clear()
+                        break
+                    if self.stop_event.is_set():
+                        break
         except Exception as exc:
             with self.lock:
                 self.status = "error"
@@ -2041,6 +2246,30 @@ def build_douyin_conversation_monitor_list_response() -> Dict[str, Any]:
             "max_auto_replies_before_peer": 2,
         },
     }
+
+
+def find_alive_monitor_for_account(payload: Dict[str, Any]) -> Optional[DouyinConversationMonitor]:
+    """Locate a running monitor for inbox reuse (by account_key or account_id)."""
+    sr = _sr()
+    normalized = dict(payload or {})
+    raw_cookies = sr._dm_cookie_text(_dm_pick_account_cookie_payload(normalized))
+    account_id = str(
+        normalized.get("account_id") or normalized.get("account") or normalized.get("account_name") or ""
+    ).strip()
+    account_key = str(normalized.get("account_key") or "").strip()
+    if raw_cookies:
+        account_key = account_key or sr._dm_account_key_from_values(raw_cookies, account_id)
+    with _DM_ACCOUNT_CONTROLLERS_LOCK:
+        controllers = list(_DM_ACCOUNT_CONTROLLERS.values())
+    if account_key:
+        for controller in controllers:
+            if controller.account_key == account_key and controller.snapshot().get("alive"):
+                return controller
+    if account_id:
+        for controller in controllers:
+            if str(controller.account_id or "").strip() == account_id and controller.snapshot().get("alive"):
+                return controller
+    return None
 
 
 def build_douyin_conversation_monitor_sync_response(
