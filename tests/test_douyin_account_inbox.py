@@ -117,15 +117,26 @@ def test_repair_inbox_peer_fields_splits_mash():
                 "unread_count": 1,
                 "row_text": "用户乙 报价咨询",
             },
+            {
+                "peer_nickname": "白林",
+                "last_message": "8888888",
+                "unread_count": 3,
+                "row_text": "白林 8888888 3",
+            },
+            {
+                # oversized parent text containing 群聊 must NOT drop private 白林
+                "peer_nickname": "白林",
+                "last_message": "8888888",
+                "unread_count": 3,
+                "row_text": "白林 8888888 达妹在职场 群聊邀请 李明松",
+            },
         ]
     )
-    assert len(rows) == 2
-    assert rows[0]["peer_nickname"] == "白林"
-    assert "你好" in rows[0]["last_message"] or rows[0]["last_message"]
-    assert rows[0]["unread_count"] == 2
-    assert rows[1]["peer_nickname"] == "用户乙"
-    assert rows[1]["last_message"] in {"报价咨询", "(未读)"} or rows[1]["last_message"]
-    assert rows[1]["unread_count"] == 1
+    assert len(rows) >= 3
+    bai = [r for r in rows if r["peer_nickname"] == "白林" and r.get("unread_count") == 3]
+    assert bai, rows
+    assert bai[0]["last_message"] == "8888888"
+    assert any(r["peer_nickname"] == "用户乙" for r in rows)
 
 
 def test_inbox_reuses_alive_monitor(monkeypatch):

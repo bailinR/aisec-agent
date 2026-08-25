@@ -259,7 +259,7 @@ def _run_inbox_playwright(payload: Dict[str, Any]) -> Dict[str, Any]:
             unread_count = max(unread_count, int(inbox.get("unread_count") or 0))
             unread_people = max(unread_people, int(inbox.get("unread_people") or 0))
         if conversations:
-            unread_people = len(conversations)
+            unread_people = max(unread_people, len(conversations))
             unread_count = max(
                 unread_count,
                 sum(int(item.get("unread_count") or 0) for item in conversations),
@@ -283,7 +283,7 @@ def _run_inbox_playwright(payload: Dict[str, Any]) -> Dict[str, Any]:
                 )
                 if fallback:
                     conversations = fallback
-                    unread_people = len(conversations)
+                    unread_people = max(unread_people, len(conversations))
                     unread_count = max(
                         unread_count,
                         sum(int(item.get("unread_count") or 0) for item in conversations),

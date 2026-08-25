@@ -71,6 +71,20 @@ def _dm_is_group_or_system_chat(*parts: Any) -> bool:
     return bool(_GROUP_OR_SYSTEM_RE.search(blob))
 
 
+def _dm_is_group_unread_row(nickname: str, last_message: str, row_text: str = "") -> bool:
+    """Skip clear group/system rows without discarding a private row whose parent text is noisy."""
+    nick = _dm_normalize_text(nickname)
+    msg = _dm_normalize_text(last_message)
+    if nick and _GROUP_OR_SYSTEM_RE.search(nick):
+        return True
+    if msg and _GROUP_OR_SYSTEM_RE.search(msg):
+        return True
+    # Only use row_text when nickname is missing — oversized parents often contain「群聊」.
+    if not nick and _GROUP_OR_SYSTEM_RE.search(_dm_normalize_text(row_text)):
+        return True
+    return False
+
+
 def _dm_is_own_outbound(text: str, last_reply: str) -> bool:
     left = _dm_normalize_text(text)
     right = _dm_normalize_text(last_reply)
@@ -83,6 +97,51 @@ def _dm_is_own_outbound(text: str, last_reply: str) -> bool:
 
 def _dm_inbound_fingerprint(text: str) -> str:
     return _dm_normalize_text(text)[-180:]
+
+
+def _dm_scroll_message_list_to_top(page: Any) -> None:
+    """Scroll the IM conversation list to top so newest unread rows are in DOM view."""
+    script = """
+    () => {
+      const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+      const isVisible = (el) => {
+        if (!el || !el.getBoundingClientRect) return false;
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width >= 80 && rect.height >= 80 &&
+          style.visibility !== 'hidden' && style.display !== 'none' && Number(style.opacity || '1') > 0.05;
+      };
+      const nodes = Array.from(document.querySelectorAll('div, section, aside, ul'));
+      const panels = nodes.filter((el) => {
+        if (!isVisible(el)) return false;
+        const rect = el.getBoundingClientRect();
+        const text = normalize(el.innerText || '').slice(0, 160);
+        const cls = String(el.className || '');
+        const rightSide = rect.left > window.innerWidth * 0.38;
+        const sizeOk = rect.width >= 200 && rect.height >= 200;
+        const header = /(消息|私信)/.test(text) || /im-dialog|imContainer|imSaas|conversation|Message|chat-list/i.test(cls);
+        return rightSide && sizeOk && header;
+      }).sort((a, b) => b.getBoundingClientRect().width - a.getBoundingClientRect().width);
+      const panel = panels[0];
+      if (!panel) return {ok: false};
+      const scrollables = [panel, ...Array.from(panel.querySelectorAll('div, ul, section'))]
+        .filter((el) => el && el.scrollHeight > el.clientHeight + 40)
+        .sort((a, b) => (b.scrollHeight - b.clientHeight) - (a.scrollHeight - a.clientHeight));
+      let moved = 0;
+      for (const el of scrollables.slice(0, 4)) {
+        if (el.scrollTop > 0) {
+          el.scrollTop = 0;
+          moved += 1;
+        }
+      }
+      return {ok: true, moved};
+    }
+    """
+    try:
+        page.evaluate(script)
+        page.wait_for_timeout(280)
+    except Exception:
+        pass
 
 
 def _sr() -> Any:
@@ -881,12 +940,15 @@ def _dm_normalize_unread_conversation_items(raw_items: Any) -> List[Dict[str, An
                 last_message = work[:200]
         if not nickname and not last_message and not peer_sec_uid and not peer_uid:
             continue
-        if _dm_is_group_or_system_chat(nickname, last_message, row_text):
+        if _dm_is_group_unread_row(nickname, last_message, row_text):
             continue
         # Reply pool needs both labels; fill placeholders only when still blank.
         if not nickname:
             nickname = peer_sec_uid[:16] if peer_sec_uid else (peer_uid or "未读用户")
         if not last_message:
+            last_message = "(未读)"
+        # Keep long digit previews like 「8888888」— only strip 1~2 digit badge leftovers.
+        if re.fullmatch(r"[1-9]\d?|99\+?", last_message):
             last_message = "(未读)"
         if not peer_profile_url and peer_sec_uid:
             peer_profile_url = f"https://www.douyin.com/user/{peer_sec_uid}"
@@ -911,12 +973,10 @@ def _dm_normalize_unread_conversation_items(raw_items: Any) -> List[Dict[str, An
 def _dm_scan_unread_conversations(page: Any) -> Dict[str, Any]:
     """List unread DM conversations from the inbox panel without clicking rows.
 
-    Does not open chats, so Douyin unread badges should stay. sec_uid / profile
-    URL are best-effort from list-row links when present.
-
-    Always tries to emit one unread_conversations item per unread row with at
-    least peer_nickname + last_message + unread_count for reply-pool sync.
+    Full-refreshes against the current visible list (scroll to top first). Does not
+    open chats. Each unread row should yield peer_nickname + last_message + unread_count.
     """
+    _dm_scroll_message_list_to_top(page)
     script = """
     () => {
       const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
@@ -972,22 +1032,33 @@ def _dm_scan_unread_conversations(page: Any) -> Dict[str, Any]:
       const withinPanel = (el) => {
         const rect = el.getBoundingClientRect();
         return rect.left >= panelRect.left - 12 && rect.right <= panelRect.right + 12 &&
-          rect.top >= panelRect.top + 18 && rect.bottom <= panelRect.bottom + 12;
+          rect.top >= panelRect.top + 12 && rect.bottom <= panelRect.bottom + 12;
       };
+      const isTightRow = (rect, text) => (
+        rect.width >= panelRect.width * 0.42 &&
+        rect.width <= panelRect.width * 1.08 &&
+        rect.height >= 40 &&
+        rect.height <= 130 &&
+        text.length >= 1 &&
+        text.length <= 180 &&
+        !/^(消息|私信|全部|未读|陌生人|联系人)$/.test(text)
+      );
       const isBadgeEl = (el) => {
-        if (!isVisible(el, 4, 4) || !withinPanel(el)) return null;
+        if (!isVisible(el, 3, 3) || !withinPanel(el)) return null;
         const rect = el.getBoundingClientRect();
         const style = window.getComputedStyle(el);
         const text = normalize(el.innerText || el.textContent || '');
         const aria = String(el.getAttribute('aria-label') || '');
         const cls = String(el.className || '') + ' ' + aria;
-        const compact = rect.width <= 52 && rect.height <= 52 && rect.width >= 4 && rect.height >= 4;
+        const compact = rect.width <= 56 && rect.height <= 56 && rect.width >= 3 && rect.height >= 3;
         if (!compact) return null;
         const numeric = /^[1-9]\\d?$|^99\\+?$/.test(text);
         const named = /badge|unread|red-?dot|未读/i.test(cls + ' ' + text + ' ' + aria);
-        const redDot = (!text || text.length <= 3) && isRedish(style) && rect.width <= 30 && rect.height <= 30;
+        const redDot = (!text || text.length <= 3) && isRedish(style) && rect.width <= 32 && rect.height <= 32;
         if (!(numeric || named || redDot)) return null;
-        const count = numeric || /\\d/.test(text) ? parseBadgeCount(text) : (named && /\\d/.test(aria) ? parseBadgeCount(aria) : 1);
+        const count = numeric || /\\d/.test(text)
+          ? parseBadgeCount(text)
+          : (named && /\\d/.test(aria) ? parseBadgeCount(aria) : 1);
         if (!count) return null;
         return {el, rect, text: text || '(dot)', count};
       };
@@ -1003,48 +1074,37 @@ def _dm_scan_unread_conversations(page: Any) -> Dict[str, Any]:
         const dup = uniqueBadges.some((item) => {
           const ix = item.rect.left + item.rect.width / 2;
           const iy = item.rect.top + item.rect.height / 2;
-          return Math.abs(ix - cx) < 16 && Math.abs(iy - cy) < 16;
+          return Math.abs(ix - cx) < 14 && Math.abs(iy - cy) < 14;
         });
         if (!dup) uniqueBadges.push(badge);
       }
-      const rowScore = (rect, text, badgeTop) => {
-        let score = rect.width - Math.abs(rect.height - 72) * 0.3;
-        if (badgeTop != null) score -= Math.abs(rect.top - badgeTop) * 0.8;
-        if (text.length >= 2 && text.length <= 240) score += 20;
-        if (/刚刚|\\d+\\s*秒前|\\d+\\s*分钟前|昨天|\\d{1,2}:\\d{2}/.test(text)) score += 30;
-        return score;
-      };
-      const rowForBadge = (badge) => {
-        let node = badge.el;
+      const tightRows = [];
+      for (const el of allNodes) {
+        if (!isVisible(el, 36, 30) || !withinPanel(el)) continue;
+        const rect = el.getBoundingClientRect();
+        const text = normalize(el.innerText || el.textContent || '');
+        if (!isTightRow(rect, text)) continue;
+        tightRows.push({node: el, rect, text, area: rect.width * rect.height});
+      }
+      const leafRows = tightRows.filter((row) => {
+        return !tightRows.some((other) => other.node !== row.node &&
+          other.rect.top >= row.rect.top - 1 &&
+          other.rect.bottom <= row.rect.bottom + 1 &&
+          other.rect.left >= row.rect.left - 1 &&
+          other.rect.right <= row.rect.right + 1 &&
+          other.area < row.area * 0.92);
+      }).sort((a, b) => a.rect.top - b.rect.top || a.area - b.area);
+
+      const badgeInside = (rowEl, rowRect) => {
         let best = null;
-        for (let depth = 0; node && depth < 14; depth += 1, node = node.parentElement) {
-          if (!withinPanel(node)) continue;
-          const rect = node.getBoundingClientRect();
-          const text = normalize(node.innerText || node.textContent || '');
-          if (rect.width >= panelRect.width * 0.5 && rect.height >= 36 && rect.height <= 180 &&
-              text.length >= 1 && text.length <= 420) {
-            const score = rowScore(rect, text, badge.rect.top);
-            if (!best || score > best.score) best = {node, rect, text, score};
-          }
+        for (const badge of uniqueBadges) {
+          const by = badge.rect.top + badge.rect.height / 2;
+          const bx = badge.rect.left + badge.rect.width / 2;
+          if (by < rowRect.top - 4 || by > rowRect.bottom + 4) continue;
+          if (bx < rowRect.left - 8 || bx > rowRect.right + 8) continue;
+          if (!best || badge.count > best.count) best = badge;
         }
         if (best) return best;
-        // Nearest wide row in panel by vertical distance.
-        let nearest = null;
-        for (const el of allNodes) {
-          if (!isVisible(el, 40, 30) || !withinPanel(el)) continue;
-          const rect = el.getBoundingClientRect();
-          const text = normalize(el.innerText || el.textContent || '');
-          if (rect.width < panelRect.width * 0.5 || rect.height < 36 || rect.height > 180) continue;
-          if (text.length < 1 || text.length > 420) continue;
-          const dy = Math.abs((rect.top + rect.height / 2) - (badge.rect.top + badge.rect.height / 2));
-          if (dy > 70) continue;
-          const score = rowScore(rect, text, badge.rect.top) - dy;
-          if (!nearest || score > nearest.score) nearest = {node: el, rect, text, score};
-        }
-        return nearest;
-      };
-      const badgeInside = (rowEl) => {
-        let best = null;
         const kids = Array.from(rowEl.querySelectorAll(
           'div, span, i, em, b, strong, [class*=badge], [class*=Badge], [class*=unread], [class*=dot], [class*=red]'
         ));
@@ -1054,6 +1114,28 @@ def _dm_scan_unread_conversations(page: Any) -> Dict[str, Any]:
           if (!best || badge.count > best.count) best = badge;
         }
         return best;
+      };
+      const rowForBadge = (badge) => {
+        let best = null;
+        for (const row of leafRows) {
+          const by = badge.rect.top + badge.rect.height / 2;
+          if (by < row.rect.top - 6 || by > row.rect.bottom + 6) continue;
+          const dy = Math.abs(by - (row.rect.top + row.rect.height / 2));
+          const score = 1000 - row.area / 100 - dy * 8;
+          if (!best || score > best.score) best = Object.assign({}, row, {score});
+        }
+        if (best) return best;
+        let node = badge.el;
+        let ancestor = null;
+        for (let depth = 0; node && depth < 12; depth += 1, node = node.parentElement) {
+          if (!withinPanel(node)) continue;
+          const rect = node.getBoundingClientRect();
+          const text = normalize(node.innerText || node.textContent || '');
+          if (!isTightRow(rect, text)) continue;
+          const area = rect.width * rect.height;
+          if (!ancestor || area < ancestor.area) ancestor = {node, rect, text, area};
+        }
+        return ancestor;
       };
       const extractPeer = (rawText, badgeCount) => {
         const raw = normalize(rawText);
@@ -1094,9 +1176,6 @@ def _dm_scan_unread_conversations(page: Any) -> Dict[str, Any]:
         if (/^[1-9]\\d?$|^99\\+?$/.test(lastMessage)) {
           lastMessage = '';
         }
-        if (/群聊|群公告|被设置为管理员/.test(raw)) {
-          return null;
-        }
         return {nickname, lastMessage: lastMessage.slice(0, 200), timeLabel, raw: raw.slice(0, 240)};
       };
       const extractIdentity = (rowEl) => {
@@ -1126,13 +1205,17 @@ def _dm_scan_unread_conversations(page: Any) -> Dict[str, Any]:
       };
       const conversations = [];
       const seenTops = [];
+      const seenNames = new Set();
       const pushConversation = (row, unreadCount) => {
-        if (!row) return;
+        if (!row) return false;
         const parsed = extractPeer(row.text, unreadCount);
-        if (!parsed) return;
+        if (!parsed) return false;
         const top = Math.round(row.rect.top);
-        if (seenTops.some((y) => Math.abs(y - top) < 18)) return;
+        if (seenTops.some((y) => Math.abs(y - top) < 16)) return false;
+        const nameKey = (parsed.nickname || parsed.raw || '').slice(0, 40);
+        if (nameKey && seenNames.has(nameKey)) return false;
         seenTops.push(top);
+        if (nameKey) seenNames.add(nameKey);
         const identity = extractIdentity(row.node);
         conversations.push({
           peer_nickname: parsed.nickname,
@@ -1145,38 +1228,35 @@ def _dm_scan_unread_conversations(page: Any) -> Dict[str, Any]:
           updated_at: parsed.timeLabel || '',
           row_text: parsed.raw,
         });
+        return true;
       };
-      // Path A: badge -> row
+
+      for (const row of leafRows) {
+        const badge = badgeInside(row.node, row.rect);
+        if (!badge) continue;
+        pushConversation(row, badge.count);
+      }
       for (const badge of uniqueBadges) {
+        const by = badge.rect.top + badge.rect.height / 2;
+        const already = leafRows.some((row) => {
+          return seenTops.some((y) => Math.abs(y - Math.round(row.rect.top)) < 2) &&
+            by >= row.rect.top - 6 && by <= row.rect.bottom + 6;
+        });
+        if (already) continue;
         pushConversation(rowForBadge(badge), badge.count);
       }
-      // Path B: row-first — list rows that contain an unread badge/dot
-      if (conversations.length < uniqueBadges.length || !conversations.length) {
-        const rowCandidates = [];
-        for (const el of allNodes) {
-          if (!isVisible(el, 40, 30) || !withinPanel(el)) continue;
-          const rect = el.getBoundingClientRect();
-          const text = normalize(el.innerText || el.textContent || '');
-          if (rect.width < panelRect.width * 0.5 || rect.height < 36 || rect.height > 180) continue;
-          if (text.length < 1 || text.length > 420) continue;
-          if (/^(消息|私信|全部|未读|陌生人)$/.test(text)) continue;
-          const badge = badgeInside(el);
-          if (!badge) continue;
-          rowCandidates.push({node: el, rect, text, score: rowScore(rect, text, badge.rect.top), count: badge.count});
-        }
-        rowCandidates.sort((a, b) => a.rect.top - b.rect.top);
-        for (const row of rowCandidates) {
-          pushConversation(row, row.count);
-        }
-      }
-      conversations.sort((a, b) => (b.unread_count || 0) - (a.unread_count || 0) || 0);
+
+      conversations.sort((a, b) => (b.unread_count || 0) - (a.unread_count || 0));
       return {
         ok: true,
-        detail: 'unread conversations=' + conversations.length + '; badges=' + uniqueBadges.length,
+        detail: 'unread conversations=' + conversations.length +
+          '; badges=' + uniqueBadges.length +
+          '; rows=' + leafRows.length,
         conversations,
         unreadCount: conversations.reduce((sum, item) => sum + (Number(item.unread_count) || 0), 0),
         unreadPeople: conversations.length,
         badgeCount: uniqueBadges.length,
+        rowCount: leafRows.length,
         panelFound: true,
       };
     }
@@ -1198,16 +1278,18 @@ def _dm_scan_unread_conversations(page: Any) -> Dict[str, Any]:
     unread_count = sum(int(item.get("unread_count") or 0) for item in conversations)
     badge_count = int(data.get("badgeCount") or 0)
     detail = str(data.get("detail") or "")
-    if badge_count > 0 and unread_people == 0:
-        detail = (detail + "; badges_without_rows=" + str(badge_count)).strip("; ")
+    if badge_count > unread_people:
+        detail = (detail + f"; incomplete_details badges={badge_count} details={unread_people}").strip("; ")
     return {
         "ok": bool(data.get("ok")) if conversations or data.get("ok") is False else bool(conversations),
         "detail": detail,
         "conversations": conversations,
         "unread_count": max(int(data.get("unreadCount") or 0), unread_count),
-        "unread_people": max(int(data.get("unreadPeople") or 0), unread_people),
+        # Keep badge people when details lag, so middle-platform can flag incomplete.
+        "unread_people": max(int(data.get("unreadPeople") or 0), unread_people, badge_count),
         "panel_found": bool(data.get("panelFound")),
         "badge_count": badge_count,
+        "row_count": int(data.get("rowCount") or 0),
     }
 
 
@@ -1752,7 +1834,7 @@ class DouyinConversationMonitor:
             unread_count = max(unread_count, int(inbox.get("unread_count") or 0))
             unread_people = max(unread_people, int(inbox.get("unread_people") or 0))
         if conversations:
-            unread_people = len(conversations)
+            unread_people = max(unread_people, len(conversations))
             unread_count = max(
                 unread_count,
                 sum(int(item.get("unread_count") or 0) for item in conversations),
@@ -1775,7 +1857,7 @@ class DouyinConversationMonitor:
                 )
                 if fallback:
                     conversations = fallback
-                    unread_people = len(conversations)
+                    unread_people = max(unread_people, len(conversations))
                     unread_count = max(
                         unread_count,
                         sum(int(item.get("unread_count") or 0) for item in conversations),
@@ -1784,7 +1866,7 @@ class DouyinConversationMonitor:
             self.inbox_unread_count = unread_count
             self.inbox_unread_people = unread_people
             self.inbox_summary_updated_at = sr._dm_now()
-            self.unread_conversations = conversations
+            self.unread_conversations = list(conversations)
             self.updated_at = self.inbox_summary_updated_at
         if not conversations_scan.get("ok") and not inbox.get("ok") and not conversations:
             return {
@@ -2004,31 +2086,47 @@ class DouyinConversationMonitor:
                 int(conversations_scan.get("unread_people") or 0),
                 len(conversations),
             )
-            # Prefer list-row detail count when we successfully parsed rows.
+            # Prefer list-row detail when present, but never hide badge incompleteness.
             if conversations:
-                unread_people = len(conversations)
                 unread_count = max(
                     unread_count,
                     sum(int(item.get("unread_count") or 0) for item in conversations),
                 )
+                unread_people = max(unread_people, len(conversations))
+            # Always full-replace snapshot from this tick (no merge with stale rows).
             with self.lock:
                 self.inbox_unread_count = unread_count
                 self.inbox_unread_people = unread_people
                 self.inbox_summary_updated_at = sr._dm_now()
-                self.unread_conversations = conversations
+                self.unread_conversations = list(conversations)
             sample = inbox.get("badge_sample") or []
             sample_text = ",".join(
                 f"{item.get('kind')}:{item.get('text')}x{item.get('count')}"
                 for item in sample[:4]
                 if isinstance(item, dict)
             )
+            names = ",".join(
+                str(item.get("peer_nickname") or "")[:12]
+                for item in conversations[:6]
+                if isinstance(item, dict)
+            )
             self.log(
                 f"收件箱摘要：未读{self.inbox_unread_count}，未读会话{self.inbox_unread_people}"
                 + (f"，明细{len(conversations)}条" if conversations else "")
+                + (f"[{names}]" if names else "")
                 + (f"（{inbox.get('detail') or conversations_scan.get('detail') or ''}）" if (inbox.get("detail") or conversations_scan.get("detail")) else "")
                 + (f" badges=[{sample_text}]" if sample_text else ""),
                 "info",
             )
+            if unread_people > len(conversations):
+                self.log(
+                    f"未读明细不完整：角标/人数={unread_people}，回传明细={len(conversations)}",
+                    "warn",
+                    {
+                        "badge_count": conversations_scan.get("badge_count"),
+                        "scan_detail": conversations_scan.get("detail"),
+                    },
+                )
             if (unread_people > 0 or unread_count > 0) and not conversations:
                 self.log(
                     "有未读角标但未解析到 unread_conversations 明细，将尝试列表行兜底",
