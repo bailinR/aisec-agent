@@ -47,12 +47,19 @@ Web：`0.0.0.0:7860` → `http://127.0.0.1:7860`
 - [x] 机 23 部署到 `99c1f20`（路径 `C:\sixin\aisec\new\aisec-agent`，Web+worker 已重启）
 - [x] 机 23 部署到 `d03c613`（私密账号 → `recipient_privacy_restriction`）
 - [x] 知识库更新已提交并 push；机 23 部署到 `1f56bd6`（`starc` 交互会话重启）
+- [x] 机 23 部署到 `4146fb1`（私信调试 UI 双栏 + 滚动修复；`starc` `/IT` 重启）
+- [x] 机 23 部署到 `ce1942d`（私信调试默认主页 + 保存按钮）
+- [x] 机 23 部署到 `2d54d9f`（修复手动关浏览器后 Playwright asyncio 冲突）
+- [x] 本地 `192.168.31.162:7860` 修复 `accounts/verify` Playwright 同步运行时冲突（manager teardown + verify 重试）
+- [x] 机 23 部署到 `14e6df3`（`accounts/verify` Playwright 同步运行时冲突修复）
+- [x] 机 23 部署到 `5d0d8bb`（验活 chrome 无头启动失败回退系统 Edge）
+- [x] 机 23 部署到 `96d0d71`（验活 profile API 未登录识别 + 个人号昵称识别）
 - [ ] 数据中台（comment-kit）按 `docs/数据中台对接回复与未读.md` 接 sync + batch + 写回
 
 ### 生产机（机 23 / ALEX001）
 
 - 路径：`C:\sixin\aisec\new\aisec-agent`
-- 分支：`master` @ `1f56bd6`
+- 分支：`master` @ `5d0d8bb`
 - 访问：`http://192.168.18.100:7860`
 - 启停：便携运行时；远程重启须以交互用户 `starc` 跑 `start.ps1 -SkipGitUpdate`（可用 `/IT` 计划任务），**禁止** `schtasks /RU SYSTEM`（SYSTEM 下 Playwright 会 `browser_closed`）
 - Gitee HTTPS 在机 23 无交互凭证，更新代码用 git bundle 快进
