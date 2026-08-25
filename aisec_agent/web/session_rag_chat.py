@@ -7584,29 +7584,47 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
         return
 
     def _audit_begin(self, method: str, path: str, query: Optional[Dict[str, List[str]]] = None):
-        if not HTTP_AUDIT_ENABLED:
-            return
         self._audit_started_at = time.time()
         self._audit_request_id = uuid.uuid4().hex
         self._audit_method = method
         self._audit_path = path
         self._audit_query = dict(query or {})
         self._audit_body = None
-        self._audit_headers = _audit_normalize_headers(self.headers)
+        self._audit_headers = _audit_normalize_headers(self.headers) if HTTP_AUDIT_ENABLED else {}
 
     def _audit_set_body(self, body: Optional[Dict[str, Any]]):
-        if not HTTP_AUDIT_ENABLED:
-            return
         self._audit_body = dict(body or {})
 
     def _audit_finish(self, status: int, response_data: Any):
-        if not HTTP_AUDIT_ENABLED:
-            return
         started_at = getattr(self, "_audit_started_at", None)
         if started_at is None:
             return
         elapsed_ms = int((time.time() - float(started_at)) * 1000)
         remote_ip = self.client_address[0] if getattr(self, "client_address", None) else ""
+        request_id = getattr(self, "_audit_request_id", uuid.uuid4().hex)
+        timestamp = _dm_now()
+        try:
+            from aisec_agent.web.reply_pool_audit import maybe_record_reply_pool_audit
+
+            maybe_record_reply_pool_audit(
+                method=getattr(self, "_audit_method", ""),
+                path=getattr(self, "_audit_path", ""),
+                status=int(status),
+                request_id=str(request_id),
+                timestamp=timestamp,
+                elapsed_ms=elapsed_ms,
+                remote_ip=remote_ip,
+                body=getattr(self, "_audit_body", None),
+                response_data=response_data,
+                redis_client=getattr(getattr(self, "server", None), "redis_client", None),
+            )
+        except Exception as exc:
+            HTTP_AUDIT_LOGGER.debug("reply_pool audit hook failed: %s", exc)
+
+        if not HTTP_AUDIT_ENABLED:
+            self._audit_started_at = None
+            return
+
         forwarded_for = ""
         try:
             forwarded_for = str(self.headers.get("X-Forwarded-For") or "").strip()
@@ -7623,8 +7641,8 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
         if forwarded_for:
             headers_summary["x_forwarded_for"] = _audit_text(forwarded_for, 256)
         entry = {
-            "request_id": getattr(self, "_audit_request_id", uuid.uuid4().hex),
-            "timestamp": _dm_now(),
+            "request_id": request_id,
+            "timestamp": timestamp,
             "elapsed_ms": elapsed_ms,
             "remote_ip": remote_ip,
             "method": request_summary.get("method", ""),
@@ -7747,6 +7765,8 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self._handle_admin_state(parsed_url)
         elif path == "/api/admin/http-audit-logs":
             self._handle_http_audit_log_list(parsed_url)
+        elif path == "/api/admin/reply-pool-audit-logs":
+            self._handle_reply_pool_audit_log_list(parsed_url)
         elif path == "/api/health":
             self._send_json({"ok": True})
         else:
@@ -7973,6 +7993,10 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self._handle_http_audit_log_clear()
             return
 
+        if path == "/api/admin/reply-pool-audit-logs/clear":
+            self._handle_reply_pool_audit_log_clear()
+            return
+
         if path == "/api/open-url":
             self._handle_open_url()
             return
@@ -8155,6 +8179,41 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
     def _handle_http_audit_log_clear(self):
         try:
             data = build_http_audit_log_clear_response()
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_reply_pool_audit_log_list(self, parsed_url=None):
+        from aisec_agent.web.reply_pool_audit import build_reply_pool_audit_log_list_response
+
+        try:
+            params = parse_qs((parsed_url.query if parsed_url is not None else urlparse(self.path).query) or "")
+            limit = _to_int((params.get("limit") or ["50"])[0], 50)
+            offset = _to_int((params.get("offset") or ["0"])[0], 0)
+            action = str((params.get("action") or [""])[0] or "").strip()
+            account_id = str((params.get("account_id") or [""])[0] or "").strip()
+            data = build_reply_pool_audit_log_list_response(
+                redis_client=getattr(self.server, "redis_client", None),
+                limit=limit,
+                offset=offset,
+                action=action,
+                account_id=account_id,
+            )
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_reply_pool_audit_log_clear(self):
+        from aisec_agent.web.reply_pool_audit import build_reply_pool_audit_log_clear_response
+
+        try:
+            data = build_reply_pool_audit_log_clear_response(
+                redis_client=getattr(self.server, "redis_client", None),
+            )
             self._send_json({"ok": True, "data": data})
         except WebInputError as e:
             self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)

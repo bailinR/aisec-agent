@@ -60,6 +60,7 @@ Web：`0.0.0.0:7860` → `http://127.0.0.1:7860`
 - [x] 修复 inbox HTTP 500：Playwright 跨线程复用（走 web executor）+ 同步前暂停同 profile 盯号
 - [x] 修复未读列表昵称/预览粘连（如「白林 2222 ·」→ 昵称白林 / 正文 2222）
 - [x] inbox「同步未读」优先复用 alive 盯号浏览器（不再 stop/另开/restart）；无盯号才临时开窗
+- [x] 回复池专用审计日志：记录 monitors/inbox/read/batch/tasks 调用 + 未读明细/`has_reply`；`GET /api/admin/reply-pool-audit-logs`；文件 `runtime/logs/reply-pool-audit.log`
 - [ ] 数据中台（comment-kit）按回复池协作文档接盯号 + inbox 明细 + tasks 跟进发送；本机可二需有效 Cookie 后复测同步
 
 ### 生产机（机 23 / ALEX001）
@@ -86,6 +87,7 @@ Web：`0.0.0.0:7860` → `http://127.0.0.1:7860`
 | 盯号列表 | `GET /api/v1/douyin/private-message/conversation-monitors`（含 `unread_conversations`） |
 | 批量查回复 | `POST /api/v1/douyin/private-message/conversations/read/batch` |
 | 回复池回传 | `docs/回复池协作-私信侧回传.md` |
+| 回复池调用日志 | `GET /api/admin/reply-pool-audit-logs`（文件 `runtime/logs/reply-pool-audit.log`） |
 
 ---
 
