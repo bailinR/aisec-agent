@@ -56,7 +56,8 @@ Web：`0.0.0.0:7860` → `http://127.0.0.1:7860`
 - [x] 机 23 部署到 `96d0d71`（验活 profile API 未登录识别 + 个人号昵称识别）
 - [x] 机 23 部署到 `e67fba8`（验活文档 + profile/个人号修复批次）
 - [x] 回复池协作：inbox / 盯号补齐 `unread_conversations`；回传见 `docs/回复池协作-私信侧回传.md`
-- [ ] 数据中台（comment-kit）按回复池协作文档接盯号 + inbox 明细 + tasks 跟进发送
+- [x] 修复 inbox 500（运行时未加载新函数）+ 未登录误判导致扫不到消息面板
+- [ ] 数据中台（comment-kit）按回复池协作文档接盯号 + inbox 明细 + tasks 跟进发送；本机可二需有效 Cookie 后复测同步
 
 ### 生产机（机 23 / ALEX001）
 

@@ -290,27 +290,46 @@ def _dm_detect_douyin_login_required(page: Any) -> Dict[str, Any]:
         return rect.width >= 24 && rect.height >= 14 && rect.right > 0 && rect.bottom > 0 &&
           style.visibility !== 'hidden' && style.display !== 'none' && style.opacity !== '0';
       };
-      const texts = Array.from(document.querySelectorAll('div, section, form, button, span, p'))
+      const texts = Array.from(document.querySelectorAll('div, section, form, button, span, p, a'))
         .filter(visible)
         .map((el) => normalize(el.innerText || el.textContent || ''))
         .filter(Boolean);
-      const joined = texts.slice(0, 160).join(' ');
+      const joined = texts.slice(0, 200).join(' ');
       const modal = /扫码登录|验证码登录|密码登录|登录后免费|请输入手机号|获取验证码/.test(joined);
       const loginButton = texts.some((text) => text === '登录' || text === '立即登录');
+      // Top-right primary 登录 button (logged-out chrome) — do not confuse with message drawer.
+      const topRightLogin = Array.from(document.querySelectorAll('button, a, [role=button], div, span'))
+        .filter(visible)
+        .some((el) => {
+          const rect = el.getBoundingClientRect();
+          const text = normalize(el.innerText || el.textContent || '');
+          const topBar = rect.top >= 0 && rect.top < 120;
+          const rightSide = rect.left > window.innerWidth * 0.7;
+          return topBar && rightSide && (text === '登录' || text === '立即登录');
+        });
+      const loggedOutHint = /未登录/.test(joined);
       const alreadyLoggedIn = Array.from(document.querySelectorAll('[class*="im-"], [class*="avatar"], img, button, a'))
         .some((el) => {
           if (!visible(el)) return false;
           const cls = String(el.className || '');
           const aria = String(el.getAttribute('aria-label') || '');
-          return /im-entry|im-dialog|avatar|用户头像|消息/.test(cls + ' ' + aria);
-        });
-      const required = Boolean(modal || (loginButton && /扫码|验证码|手机号/.test(joined) && !alreadyLoggedIn));
+          return /im-entry|im-dialog|avatar|用户头像/.test(cls + ' ' + aria);
+        }) && !topRightLogin;
+      const required = Boolean(
+        modal ||
+        topRightLogin ||
+        (loginButton && loggedOutHint) ||
+        (loginButton && /扫码|验证码|手机号/.test(joined) && !alreadyLoggedIn)
+      );
       return {
         required,
-        reason: required ? (modal ? 'login modal visible' : 'login button visible') : '',
+        reason: required
+          ? (modal ? 'login modal visible' : (topRightLogin ? 'top-right login button visible' : 'login button visible'))
+          : '',
         sampleText: joined.slice(0, 240),
         url: location.href,
         title: document.title || '',
+        topRightLogin,
       };
     }
     """
@@ -340,12 +359,13 @@ def _dm_message_panel_visible(page: Any) -> bool:
                     const style = window.getComputedStyle(el);
                     const text = String(el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim();
                     const cls = String(el.className || '');
-                    const looksIm = /im-dialog|imContainer|imSaas|im-saas|semi-always-dark|imDark/i.test(cls) ||
+                    const looksIm = /im-dialog|imContainer|imSaas|im-saas|semi-always-dark|imDark|conversation|MessageList|chat-list/i.test(cls) ||
                       /(消息|私信)/.test(text.slice(0, 80));
+                    const rightish = rect.left > window.innerWidth * 0.28;
                     return looksIm &&
-                      rect.left > window.innerWidth * 0.48 &&
-                      rect.width >= 240 &&
-                      rect.height >= 260 &&
+                      rightish &&
+                      rect.width >= 200 &&
+                      rect.height >= 200 &&
                       style.visibility !== 'hidden' &&
                       style.display !== 'none' &&
                       style.opacity !== '0';
@@ -358,7 +378,7 @@ def _dm_message_panel_visible(page: Any) -> bool:
 
 
 def _dm_click_top_right_message_entry(page: Any) -> Dict[str, Any]:
-    """Click the Douyin top-right 消息 entry via coordinates (JS click is flaky)."""
+    """Click Douyin 消息 entry (top-right / nav) via coordinates; JS click is flaky."""
     try:
         target = page.evaluate(
             """
@@ -367,43 +387,51 @@ def _dm_click_top_right_message_entry(page: Any) -> Dict[str, Any]:
               const visible = (el) => {
                 const rect = el.getBoundingClientRect();
                 const style = window.getComputedStyle(el);
-                return rect.width >= 12 && rect.height >= 12 &&
-                  rect.top >= 0 && rect.top < 240 &&
-                  rect.left > window.innerWidth * 0.55 &&
+                return rect.width >= 10 && rect.height >= 10 &&
+                  rect.right > 0 && rect.bottom > 0 &&
                   style.visibility !== 'hidden' &&
                   style.display !== 'none' &&
-                  style.opacity !== '0';
+                  Number(style.opacity || '1') > 0.05;
               };
               const nodes = Array.from(document.querySelectorAll(
-                'a, button, [role=button], div, span, [class*=im-entry], [class*=ImEntry], [class*=uoylDJ5V]'
+                'a, button, [role=button], div, span, svg, path, [class*=im-entry], [class*=ImEntry], [class*=uoylDJ5V], [class*=message], [class*=Message]'
               ))
                 .filter(visible)
                 .map((el) => {
                   const rect = el.getBoundingClientRect();
-                  const target = el.closest('a, button, [role=button], [class*=im-entry]') || el;
+                  const target = el.closest('a, button, [role=button], [class*=im-entry], [class*=ImEntry]') || el;
                   const text = normalize([
                     el.innerText,
                     el.textContent,
                     el.getAttribute('aria-label'),
                     el.getAttribute('title'),
+                    el.getAttribute('alt'),
                     target.getAttribute('aria-label'),
+                    target.getAttribute('title'),
                   ].filter(Boolean).join(' '));
-                  const cls = String(el.className || '') + ' ' + String(target.className || '');
+                  const cls = String(el.className || '') + ' ' + String(target.className || '') +
+                    ' ' + String(el.getAttribute('data-e2e') || '');
                   let score = 0;
-                  if (/im-entry|ImEntry|uoylDJ5V/i.test(cls)) score += 140;
-                  if (text === '消息' || text === '私信') score += 100;
-                  if (/消息|私信|Message/i.test(text) && text.length <= 16) score += 70;
-                  if (/\\d/.test(text) && /消息|私信|im-entry/i.test(text + cls)) score += 20;
-                  if (rect.left > window.innerWidth * 0.75) score += 20;
-                  if (/发布|登录|搜索|上传|充值|下载|通知|壁纸|投稿|朋友|推荐/.test(text)) score -= 80;
+                  const topBar = rect.top >= 0 && rect.top < 280;
+                  const rightSide = rect.left > window.innerWidth * 0.42;
+                  const leftNav = rect.left < 220 && rect.width <= 120;
+                  if (/im-entry|ImEntry|uoylDJ5V|data-e2e=.?message/i.test(cls)) score += 160;
+                  if (text === '消息' || text === '私信') score += 120;
+                  if (/^消息\\d*$|^私信\\d*$|^消息\\s*\\d+|^私信\\s*\\d+/.test(text)) score += 110;
+                  if (/消息|私信|Message|Messages|Inbox/i.test(text) && text.length <= 20) score += 80;
+                  if (topBar && rightSide) score += 50;
+                  if (leftNav && /消息|私信|Message/i.test(text + cls)) score += 70;
+                  if (rect.left > window.innerWidth * 0.72) score += 25;
+                  if (/发布|登录|搜索|上传|充值|下载|通知|壁纸|投稿|朋友|推荐|首页|关注|放映厅|直播|精选|同城/.test(text)) score -= 100;
+                  if (!topBar && !leftNav) score -= 40;
                   return {
                     text,
                     score,
-                    x: rect.left + Math.min(rect.width / 2, 12),
-                    y: rect.top + Math.min(rect.height / 2, 18),
+                    x: rect.left + Math.min(Math.max(rect.width / 2, 6), 18),
+                    y: rect.top + Math.min(Math.max(rect.height / 2, 6), 18),
                   };
                 })
-                .filter((item) => item.score >= 60)
+                .filter((item) => item.score >= 50)
                 .sort((a, b) => b.score - a.score || b.x - a.x);
               return nodes[0] || null;
             }
@@ -412,6 +440,16 @@ def _dm_click_top_right_message_entry(page: Any) -> Dict[str, Any]:
     except Exception as exc:
         return {"clicked": False, "detail": str(exc)}
     if not isinstance(target, dict) or target.get("x") is None:
+        # Playwright text locator fallback (hash class names change often).
+        try:
+            loc = page.get_by_text("消息", exact=True).first
+            if loc.count() > 0:
+                box = loc.bounding_box()
+                if box and box.get("y", 999) < 280 and box.get("x", 0) > 200:
+                    page.mouse.click(float(box["x"]) + min(float(box["width"]) / 2, 12), float(box["y"]) + min(float(box["height"]) / 2, 18))
+                    return {"clicked": True, "detail": "消息(locator)", "x": box.get("x"), "y": box.get("y")}
+        except Exception:
+            pass
         return {"clicked": False, "detail": "top-right message control not found"}
     try:
         page.mouse.click(float(target["x"]), float(target["y"]))
@@ -425,6 +463,38 @@ def _dm_click_top_right_message_entry(page: Any) -> Dict[str, Any]:
         return {"clicked": False, "detail": str(exc)}
 
 
+def _dm_try_open_messages_via_url(page: Any, timeout_ms: int = 12000) -> Dict[str, Any]:
+    """Fallback: open known Douyin message entry URLs when DOM click fails."""
+    candidates = [
+        "https://www.douyin.com/?modal_id=0&enter_from_merge=message",
+        "https://www.douyin.com/user/self?from_tab_name=main&showTab=message",
+        "https://www.douyin.com/message",
+    ]
+    last_detail = "url open failed"
+    for url in candidates:
+        try:
+            page.goto(url, wait_until="domcontentloaded", timeout=min(timeout_ms, 20000))
+            try:
+                page.wait_for_timeout(1200)
+            except Exception:
+                time.sleep(1.0)
+            if _dm_message_panel_visible(page) or _dm_detect_latest_douyin_message(page).get("has_editor"):
+                return {"ok": True, "detail": f"opened via {url}"}
+            # Some routes land on home with drawer still closed; try one click.
+            clicked = _dm_click_top_right_message_entry(page)
+            if clicked.get("clicked"):
+                try:
+                    page.wait_for_timeout(1200)
+                except Exception:
+                    time.sleep(1.0)
+                if _dm_message_panel_visible(page) or _dm_detect_latest_douyin_message(page).get("has_editor"):
+                    return {"ok": True, "detail": f"opened via {url} + click"}
+            last_detail = f"no panel after {url}"
+        except Exception as exc:
+            last_detail = str(exc)
+    return {"ok": False, "detail": last_detail}
+
+
 def _dm_open_douyin_messages_surface(page: Any, timeout_ms: int = 12000) -> List[Dict[str, Any]]:
     sr = _sr()
     steps: List[Dict[str, Any]] = []
@@ -434,7 +504,12 @@ def _dm_open_douyin_messages_surface(page: Any, timeout_ms: int = 12000) -> List
             page.goto("https://www.douyin.com/", wait_until="domcontentloaded", timeout=timeout_ms)
             steps.append({"name": "open_douyin_home", "ok": True, "detail": "opened home"})
         try:
-            page.wait_for_timeout(min(1500, timeout_ms))
+            page.wait_for_timeout(min(1800, timeout_ms))
+        except Exception:
+            pass
+        # Headless / slow networks: wait for top chrome a bit longer.
+        try:
+            page.wait_for_selector("body", timeout=min(3000, timeout_ms))
         except Exception:
             pass
         sr._dm_append_optional_step(steps, sr._dm_handle_douyin_login_save_prompt(page, timeout_ms=1500))
@@ -453,10 +528,19 @@ def _dm_open_douyin_messages_surface(page: Any, timeout_ms: int = 12000) -> List
             steps.append({"name": "detect_message_surface", "ok": True, "detail": "editor already visible"})
             return steps
         last_detail = "message entry not found"
-        for attempt in range(3):
+        for attempt in range(4):
             clicked = _dm_click_top_right_message_entry(page)
             if not clicked.get("clicked"):
                 last_detail = str(clicked.get("detail") or last_detail)
+                # Scroll top / nudge viewport once if entry missing.
+                if attempt == 1:
+                    try:
+                        page.evaluate("() => window.scrollTo(0, 0)")
+                        vp = page.viewport_size or {}
+                        width = int(vp.get("width") or 1280)
+                        page.mouse.move(max(40, int(width * 0.9)), 40)
+                    except Exception:
+                        pass
                 continue
             steps.append({
                 "name": "open_message_center",
@@ -464,14 +548,22 @@ def _dm_open_douyin_messages_surface(page: Any, timeout_ms: int = 12000) -> List
                 "detail": f"clicked DOM control (try {attempt + 1}): " + str(clicked.get("detail") or ""),
             })
             try:
-                page.wait_for_timeout(1400)
+                page.wait_for_timeout(1500)
             except Exception:
                 time.sleep(1.2)
             if _dm_message_panel_visible(page) or _dm_detect_latest_douyin_message(page).get("has_editor"):
                 steps.append({"name": "confirm_message_panel", "ok": True, "detail": "message panel visible after click"})
                 return steps
             last_detail = "clicked but panel not visible"
-        steps.append({"name": "open_message_center", "ok": False, "detail": last_detail})
+        url_open = _dm_try_open_messages_via_url(page, timeout_ms=timeout_ms)
+        if url_open.get("ok"):
+            steps.append({"name": "open_message_center_url", "ok": True, "detail": str(url_open.get("detail") or "")})
+            return steps
+        steps.append({
+            "name": "open_message_center",
+            "ok": False,
+            "detail": last_detail + " | url_fallback=" + str(url_open.get("detail") or ""),
+        })
         return steps
     except Exception as exc:
         return [{"name": "open_message_center", "ok": False, "detail": str(exc)}]

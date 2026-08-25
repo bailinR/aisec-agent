@@ -64,14 +64,19 @@ def shape_douyin_account_inbox_result(raw: Dict[str, Any]) -> Dict[str, Any]:
 def _run_inbox_playwright(payload: Dict[str, Any]) -> Dict[str, Any]:
     from playwright.sync_api import sync_playwright
 
-    from aisec_agent.web.douyin_conversation_monitor import (
-        _dm_account_browser_profile_exists,
-        _dm_account_browser_user_data_dir,
-        _dm_open_douyin_messages_surface,
-        _dm_pick_account_cookie_payload,
-        _dm_scan_inbox_summary,
-        _dm_scan_unread_conversations,
-    )
+    from aisec_agent.web import douyin_conversation_monitor as monitor
+
+    _dm_account_browser_profile_exists = monitor._dm_account_browser_profile_exists
+    _dm_account_browser_user_data_dir = monitor._dm_account_browser_user_data_dir
+    _dm_open_douyin_messages_surface = monitor._dm_open_douyin_messages_surface
+    _dm_pick_account_cookie_payload = monitor._dm_pick_account_cookie_payload
+    _dm_scan_inbox_summary = monitor._dm_scan_inbox_summary
+    scan_unread = getattr(monitor, "_dm_scan_unread_conversations", None)
+    if not callable(scan_unread):
+        raise RuntimeError(
+            "aisec runtime missing _dm_scan_unread_conversations; "
+            "restart Web/worker so accounts/inbox loads the reply-pool code"
+        )
 
     sr = _sr()
     raw_cookies = sr._dm_cookie_text(_dm_pick_account_cookie_payload(payload))
@@ -143,7 +148,7 @@ def _run_inbox_playwright(payload: Dict[str, Any]) -> Dict[str, Any]:
                 "steps": steps,
             }
 
-        conversations_scan = _dm_scan_unread_conversations(page)
+        conversations_scan = scan_unread(page)
         conversations = list(conversations_scan.get("conversations") or [])
         inbox = _dm_scan_inbox_summary(page)
         unread_count = int(conversations_scan.get("unread_count") or 0)
