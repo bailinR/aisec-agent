@@ -9,18 +9,35 @@ def test_shape_inbox_success():
     shaped = shape_douyin_account_inbox_result(
         {
             "ok": True,
+            "account_id": "acc_1",
             "inbox_unread_count": 3,
             "inbox_unread_people": 2,
             "account_key": "cookie_abc",
             "browser": "chrome",
+            "unread_conversations": [
+                {
+                    "peer_nickname": "用户甲",
+                    "peer_sec_uid": "MS4wLjABAAAA",
+                    "peer_profile_url": "https://www.douyin.com/user/MS4wLjABAAAA",
+                    "last_message": "你好",
+                    "unread_count": 2,
+                    "conversation_id": "MS4wLjABAAAA",
+                    "updated_at": "刚刚",
+                }
+            ],
         }
     )
     assert shaped["ok"] is True
+    assert shaped["account_id"] == "acc_1"
     assert shaped["inbox_unread_count"] == 3
     assert shaped["unread_count"] == 3
     assert shaped["inbox_unread_people"] == 2
     assert shaped["unread_people"] == 2
     assert shaped["failure_code"] == ""
+    assert shaped["clears_unread"] is False
+    assert len(shaped["unread_conversations"]) == 1
+    assert shaped["unread_conversations"][0]["peer_nickname"] == "用户甲"
+    assert shaped["unread_conversations"][0]["peer_sec_uid"] == "MS4wLjABAAAA"
 
 
 def test_shape_inbox_login_required():
@@ -37,6 +54,7 @@ def test_shape_inbox_login_required():
     assert shaped["ok"] is False
     assert shaped["requires_login"] is True
     assert shaped["failure_code"] == "login_required"
+    assert shaped["unread_conversations"] == []
 
 
 def test_build_inbox_uses_executor():
@@ -46,10 +64,18 @@ def test_build_inbox_uses_executor():
         captured["cookie"] = payload.get("account_cookie")
         return {
             "ok": True,
+            "account_id": "acc_x",
             "inbox_unread_count": 5,
             "inbox_unread_people": 4,
             "account_key": "cookie_x",
             "browser": "chrome",
+            "unread_conversations": [
+                {
+                    "peer_nickname": "乙",
+                    "last_message": "在吗",
+                    "unread_count": 1,
+                }
+            ],
         }
 
     data = build_douyin_account_inbox_response(
@@ -60,3 +86,4 @@ def test_build_inbox_uses_executor():
     assert data["inbox_unread_count"] == 5
     assert data["inbox_unread_people"] == 4
     assert data["ok"] is True
+    assert data["unread_conversations"][0]["peer_nickname"] == "乙"

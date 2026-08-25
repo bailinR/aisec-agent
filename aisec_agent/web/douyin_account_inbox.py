@@ -23,16 +23,39 @@ def shape_douyin_account_inbox_result(raw: Dict[str, Any]) -> Dict[str, Any]:
     failure_code = str(payload.get("failure_code") or "").strip()
     unread_count = int(payload.get("inbox_unread_count") or payload.get("unread_count") or 0)
     unread_people = int(payload.get("inbox_unread_people") or payload.get("unread_people") or 0)
+    conversations = []
+    for item in payload.get("unread_conversations") or payload.get("conversations") or []:
+        if not isinstance(item, dict):
+            continue
+        conversations.append(
+            {
+                "peer_nickname": str(item.get("peer_nickname") or "").strip(),
+                "peer_uid": str(item.get("peer_uid") or "").strip(),
+                "peer_sec_uid": str(item.get("peer_sec_uid") or "").strip(),
+                "peer_profile_url": str(item.get("peer_profile_url") or "").strip(),
+                "last_message": str(item.get("last_message") or "").strip(),
+                "unread_count": max(1, int(item.get("unread_count") or 1)),
+                "conversation_id": str(item.get("conversation_id") or "").strip(),
+                "updated_at": str(item.get("updated_at") or "").strip(),
+            }
+        )
+    if conversations and unread_people <= 0:
+        unread_people = len(conversations)
+    if conversations and unread_count <= 0:
+        unread_count = sum(int(item.get("unread_count") or 0) for item in conversations)
     return {
         "ok": ok and not failure_code,
+        "account_id": str(payload.get("account_id") or "").strip(),
+        "account_key": str(payload.get("account_key") or ""),
         "inbox_unread_count": unread_count,
         "unread_count": unread_count,
         "inbox_unread_people": unread_people,
         "unread_people": unread_people,
+        "unread_conversations": conversations,
+        "clears_unread": False,
         "requires_login": bool(payload.get("requires_login")),
         "failure_code": failure_code,
         "message": str(payload.get("message") or payload.get("detail") or "").strip(),
-        "account_key": str(payload.get("account_key") or ""),
         "browser": str(payload.get("browser") or payload.get("resolved_browser") or ""),
         "steps": list(payload.get("steps") or []),
     }
@@ -47,6 +70,7 @@ def _run_inbox_playwright(payload: Dict[str, Any]) -> Dict[str, Any]:
         _dm_open_douyin_messages_surface,
         _dm_pick_account_cookie_payload,
         _dm_scan_inbox_summary,
+        _dm_scan_unread_conversations,
     )
 
     sr = _sr()
@@ -112,31 +136,55 @@ def _run_inbox_playwright(payload: Dict[str, Any]) -> Dict[str, Any]:
                 "message": login_detail,
                 "inbox_unread_count": 0,
                 "inbox_unread_people": 0,
+                "unread_conversations": [],
+                "account_id": account_id,
                 "account_key": account_key,
                 "browser": browser_name,
                 "steps": steps,
             }
 
+        conversations_scan = _dm_scan_unread_conversations(page)
+        conversations = list(conversations_scan.get("conversations") or [])
         inbox = _dm_scan_inbox_summary(page)
-        if not inbox.get("ok"):
+        unread_count = int(conversations_scan.get("unread_count") or 0)
+        unread_people = int(conversations_scan.get("unread_people") or 0)
+        if inbox.get("ok"):
+            unread_count = max(unread_count, int(inbox.get("unread_count") or 0))
+            unread_people = max(unread_people, int(inbox.get("unread_people") or 0))
+        if conversations and unread_people < len(conversations):
+            unread_people = len(conversations)
+        if not conversations_scan.get("ok") and not inbox.get("ok"):
             return {
                 "ok": False,
                 "requires_login": False,
                 "failure_code": "inbox_scan_failed",
-                "message": str(inbox.get("detail") or "收件箱摘要失败"),
+                "message": str(
+                    conversations_scan.get("detail")
+                    or inbox.get("detail")
+                    or "收件箱摘要失败"
+                ),
                 "inbox_unread_count": 0,
                 "inbox_unread_people": 0,
+                "unread_conversations": [],
+                "account_id": account_id,
                 "account_key": account_key,
                 "browser": browser_name,
                 "steps": steps,
             }
+        detail_parts = []
+        if conversations_scan.get("detail"):
+            detail_parts.append(str(conversations_scan.get("detail")))
+        if inbox.get("detail"):
+            detail_parts.append(str(inbox.get("detail")))
         return {
             "ok": True,
             "requires_login": False,
             "failure_code": "",
-            "message": str(inbox.get("detail") or "").strip(),
-            "inbox_unread_count": int(inbox.get("unread_count") or 0),
-            "inbox_unread_people": int(inbox.get("unread_people") or 0),
+            "message": "；".join(detail_parts).strip(),
+            "inbox_unread_count": unread_count,
+            "inbox_unread_people": unread_people,
+            "unread_conversations": conversations,
+            "account_id": account_id,
             "account_key": account_key,
             "browser": browser_name,
             "steps": steps,

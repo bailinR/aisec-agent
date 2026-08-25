@@ -55,7 +55,8 @@ Web：`0.0.0.0:7860` → `http://127.0.0.1:7860`
 - [x] 机 23 部署到 `5d0d8bb`（验活 chrome 无头启动失败回退系统 Edge）
 - [x] 机 23 部署到 `96d0d71`（验活 profile API 未登录识别 + 个人号昵称识别）
 - [x] 机 23 部署到 `e67fba8`（验活文档 + profile/个人号修复批次）
-- [ ] 数据中台（comment-kit）按 `docs/数据中台对接回复与未读.md` 接 sync + batch + 写回
+- [x] 回复池协作：inbox / 盯号补齐 `unread_conversations`；回传见 `docs/回复池协作-私信侧回传.md`
+- [ ] 数据中台（comment-kit）按回复池协作文档接盯号 + inbox 明细 + tasks 跟进发送
 
 ### 生产机（机 23 / ALEX001）
 
@@ -76,10 +77,11 @@ Web：`0.0.0.0:7860` → `http://127.0.0.1:7860`
 | 能力 | 路径 |
 |---|---|
 | 验活 | `POST /api/v1/douyin/private-message/accounts/verify` |
-| 未读快照 | `POST /api/v1/douyin/private-message/accounts/inbox` |
+| 未读快照 | `POST /api/v1/douyin/private-message/accounts/inbox`（含 `unread_conversations`） |
 | 盯号同步 | `POST /api/v1/douyin/private-message/conversation-monitors/sync` |
-| 盯号列表 | `GET /api/v1/douyin/private-message/conversation-monitors` |
+| 盯号列表 | `GET /api/v1/douyin/private-message/conversation-monitors`（含 `unread_conversations`） |
 | 批量查回复 | `POST /api/v1/douyin/private-message/conversations/read/batch` |
+| 回复池回传 | `docs/回复池协作-私信侧回传.md` |
 
 ---
 

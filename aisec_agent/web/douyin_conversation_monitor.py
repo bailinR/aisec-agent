@@ -627,6 +627,255 @@ def _dm_scan_inbox_summary(page: Any) -> Dict[str, Any]:
     }
 
 
+def _dm_scan_unread_conversations(page: Any) -> Dict[str, Any]:
+    """List unread DM conversations from the inbox panel without clicking rows.
+
+    Does not open chats, so Douyin unread badges should stay. sec_uid / profile
+    URL are best-effort from list-row links when present.
+    """
+    script = """
+    () => {
+      const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+      const isVisible = (el, minW = 4, minH = 4) => {
+        if (!el || !el.getBoundingClientRect) return false;
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width >= minW && rect.height >= minH && rect.right > 0 && rect.bottom > 0 &&
+          style.visibility !== 'hidden' && style.display !== 'none' && Number(style.opacity || '1') > 0.05;
+      };
+      const isRedish = (style) => {
+        const colors = [style.backgroundColor, style.color, style.borderColor].join(' ');
+        const m = colors.match(/rgba?\\((\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)/i);
+        if (!m) return /#f{0,1}[ef].{0,1}[0-4]|#e[0-9a-f]{2}[0-4]|red|tomato|crimson/i.test(colors);
+        const r = Number(m[1]), g = Number(m[2]), b = Number(m[3]);
+        return r >= 180 && g <= 120 && b <= 120 && (r - g) >= 50;
+      };
+      const parseBadgeCount = (text) => {
+        const t = normalize(text);
+        if (!t) return 1;
+        if (/^99\\+?$/.test(t)) return 99;
+        if (/^[1-9]\\d?$/.test(t)) return Number(t);
+        const m = t.match(/(?:未读)?([1-9]\\d?)\\+?/);
+        return m ? Number(m[1]) : 0;
+      };
+      const timeToken = /^(刚刚|\\d+\\s*秒前|\\d+\\s*分钟前|\\d+\\s*小时前|昨天|\\d{1,2}:\\d{2}|周[一二三四五六日])$/;
+      const allNodes = Array.from(document.querySelectorAll(
+        'div, section, aside, ul, li, a, button, span, i, em, b, strong, [class*=badge], [class*=Badge], [class*=unread], [class*=Unread], [class*=dot], [class*=Dot], [class*=red]'
+      ));
+      const panelCandidates = allNodes
+        .filter((el) => isVisible(el, 36, 24))
+        .map((el) => {
+          const rect = el.getBoundingClientRect();
+          const text = normalize(el.innerText || el.textContent || '');
+          const style = window.getComputedStyle(el);
+          const rightSide = rect.left > window.innerWidth * 0.42 && rect.right > window.innerWidth * 0.62;
+          const panelSize = rect.width >= 220 && rect.width <= window.innerWidth * 0.72 &&
+            rect.height >= 220 && rect.height <= window.innerHeight * 0.99;
+          const cls = String(el.className || '');
+          const hasPrivateHeader = /(消息|私信)/.test(text.slice(0, 120)) ||
+            /im-dialog|imContainer|imSaas|im-saas|imDark|semi-always-dark|conversation|Message/i.test(cls);
+          if (!rightSide || !panelSize || !hasPrivateHeader || style.visibility === 'hidden' ||
+              style.display === 'none' || style.opacity === '0') return null;
+          return {el, rect, text, score: 100 + rect.width - rect.height / 1000};
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.score - a.score || a.rect.left - b.rect.left);
+      const panel = panelCandidates[0] || null;
+      if (!panel) {
+        return {ok: false, detail: 'private message panel not found', conversations: []};
+      }
+      const panelRect = panel.rect;
+      const withinPanel = (el) => {
+        const rect = el.getBoundingClientRect();
+        return rect.left >= panelRect.left - 8 && rect.right <= panelRect.right + 8 &&
+          rect.top >= panelRect.top + 24 && rect.bottom <= panelRect.bottom + 8;
+      };
+      const badges = [];
+      for (const el of allNodes) {
+        if (!isVisible(el, 4, 4) || !withinPanel(el)) continue;
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        const text = normalize(el.innerText || el.textContent || '');
+        const cls = String(el.className || '') + ' ' + String(el.getAttribute('aria-label') || '');
+        const compact = rect.width <= 48 && rect.height <= 48 && rect.width >= 5 && rect.height >= 5;
+        if (!compact) continue;
+        const numeric = /^[1-9]\\d?$|^99\\+?$/.test(text);
+        const named = /badge|unread|red-?dot|未读/i.test(cls + ' ' + text);
+        const redDot = (!text || text.length <= 3) && isRedish(style) && rect.width <= 28 && rect.height <= 28;
+        if (!(numeric || named || redDot)) continue;
+        const count = numeric || /\\d/.test(text) ? parseBadgeCount(text) : 1;
+        if (!count) continue;
+        badges.push({el, rect, text: text || '(dot)', count});
+      }
+      const uniqueBadges = [];
+      for (const badge of badges) {
+        const cx = badge.rect.left + badge.rect.width / 2;
+        const cy = badge.rect.top + badge.rect.height / 2;
+        const dup = uniqueBadges.some((item) => {
+          const ix = item.rect.left + item.rect.width / 2;
+          const iy = item.rect.top + item.rect.height / 2;
+          return Math.abs(ix - cx) < 14 && Math.abs(iy - cy) < 14;
+        });
+        if (!dup) uniqueBadges.push(badge);
+      }
+      const rowForBadge = (badge) => {
+        let node = badge.el;
+        let best = null;
+        for (let depth = 0; node && depth < 10; depth += 1, node = node.parentElement) {
+          if (!withinPanel(node)) continue;
+          const rect = node.getBoundingClientRect();
+          const text = normalize(node.innerText || node.textContent || '');
+          if (rect.width >= panelRect.width * 0.68 && rect.height >= 44 && rect.height <= 160 &&
+              text.length >= 1 && text.length <= 360) {
+            const score = rect.width - Math.abs(rect.top - badge.rect.top) * 0.5;
+            if (!best || score > best.score) best = {node, rect, text, score};
+          }
+        }
+        return best;
+      };
+      const extractPeer = (rawText) => {
+        const raw = normalize(rawText);
+        const parts = raw.split(/\\s+/).filter(Boolean);
+        let nickname = '';
+        let lastMessage = raw;
+        let timeLabel = '';
+        const timeIdx = parts.findIndex((p) => timeToken.test(p));
+        if (timeIdx >= 0) {
+          nickname = parts.slice(0, timeIdx).join(' ').trim();
+          timeLabel = parts[timeIdx];
+          lastMessage = parts.slice(timeIdx + 1).join(' ').replace(/\\s+[1-9]\\d?\\s*$/, '').trim();
+        } else {
+          nickname = parts[0] || '';
+          lastMessage = parts.slice(1).join(' ').replace(/\\s+[1-9]\\d?\\s*$/, '').trim();
+        }
+        lastMessage = lastMessage
+          .replace(/^转发\\[.*?\\]:\\s*/, '')
+          .replace(/\\s+[1-9]\\d?\\s*$/, '')
+          .trim();
+        if (!nickname || nickname.length > 32 || /^[1-9]\\d?$/.test(nickname)) {
+          nickname = '';
+        }
+        if (/群聊|群公告|被设置为管理员/.test(raw)) {
+          return null;
+        }
+        return {nickname, lastMessage: lastMessage.slice(0, 200), timeLabel, raw: raw.slice(0, 240)};
+      };
+      const extractIdentity = (rowEl) => {
+        let peerUid = '';
+        let peerSecUid = '';
+        let peerProfileUrl = '';
+        const anchors = Array.from(rowEl.querySelectorAll('a[href]'));
+        for (const a of anchors) {
+          const href = String(a.getAttribute('href') || '');
+          if (!href) continue;
+          const abs = href.startsWith('http') ? href : ('https://www.douyin.com' + (href.startsWith('/') ? href : ('/' + href)));
+          const userMatch = abs.match(/douyin\\.com\\/user\\/([A-Za-z0-9_-]+)/i);
+          if (userMatch) {
+            peerSecUid = userMatch[1];
+            peerProfileUrl = 'https://www.douyin.com/user/' + peerSecUid;
+            break;
+          }
+          const uidMatch = abs.match(/[?&](?:uid|user_id)=(\\d+)/i);
+          if (uidMatch) peerUid = uidMatch[1];
+          const secMatch = abs.match(/[?&]sec_uid=([A-Za-z0-9_-]+)/i);
+          if (secMatch) {
+            peerSecUid = secMatch[1];
+            peerProfileUrl = 'https://www.douyin.com/user/' + peerSecUid;
+          }
+        }
+        return {peerUid, peerSecUid, peerProfileUrl};
+      };
+      const conversations = [];
+      const seen = new Set();
+      for (const badge of uniqueBadges) {
+        const row = rowForBadge(badge);
+        if (!row) continue;
+        const parsed = extractPeer(row.text);
+        if (!parsed) continue;
+        const identity = extractIdentity(row.node);
+        const key = [
+          parsed.nickname || '',
+          identity.peerSecUid || '',
+          identity.peerUid || '',
+          Math.round(row.rect.top),
+        ].join('|');
+        if (seen.has(key)) continue;
+        seen.add(key);
+        conversations.push({
+          peer_nickname: parsed.nickname,
+          peer_uid: identity.peerUid,
+          peer_sec_uid: identity.peerSecUid,
+          peer_profile_url: identity.peerProfileUrl,
+          last_message: parsed.lastMessage || parsed.raw,
+          unread_count: Number(badge.count) || 1,
+          conversation_id: identity.peerSecUid || identity.peerUid || parsed.nickname || '',
+          updated_at: parsed.timeLabel || '',
+          row_text: parsed.raw,
+        });
+      }
+      conversations.sort((a, b) => (b.unread_count || 0) - (a.unread_count || 0));
+      return {
+        ok: true,
+        detail: 'unread conversations=' + conversations.length,
+        conversations,
+        unreadCount: conversations.reduce((sum, item) => sum + (Number(item.unread_count) || 0), 0),
+        unreadPeople: conversations.length,
+        panelFound: true,
+      };
+    }
+    """
+    try:
+        data = page.evaluate(script) or {}
+    except Exception as exc:
+        return {
+            "ok": False,
+            "detail": str(exc),
+            "conversations": [],
+            "unread_count": 0,
+            "unread_people": 0,
+        }
+    if not isinstance(data, dict):
+        data = {}
+    conversations: List[Dict[str, Any]] = []
+    for item in data.get("conversations") or []:
+        if not isinstance(item, dict):
+            continue
+        nickname = _dm_normalize_text(item.get("peer_nickname"))
+        last_message = _dm_normalize_text(item.get("last_message"))
+        peer_sec_uid = _dm_normalize_text(item.get("peer_sec_uid"))
+        peer_uid = _dm_normalize_text(item.get("peer_uid"))
+        peer_profile_url = _dm_normalize_text(item.get("peer_profile_url"))
+        if not peer_profile_url and peer_sec_uid:
+            peer_profile_url = f"https://www.douyin.com/user/{peer_sec_uid}"
+        if not nickname and not last_message and not peer_sec_uid:
+            continue
+        conversations.append(
+            {
+                "peer_nickname": nickname,
+                "peer_uid": peer_uid,
+                "peer_sec_uid": peer_sec_uid,
+                "peer_profile_url": peer_profile_url,
+                "last_message": last_message,
+                "unread_count": max(1, int(item.get("unread_count") or 1)),
+                "conversation_id": _dm_normalize_text(item.get("conversation_id"))
+                or peer_sec_uid
+                or peer_uid
+                or nickname,
+                "updated_at": _dm_normalize_text(item.get("updated_at")),
+            }
+        )
+    unread_people = len(conversations)
+    unread_count = sum(int(item.get("unread_count") or 0) for item in conversations)
+    return {
+        "ok": bool(data.get("ok")),
+        "detail": str(data.get("detail") or ""),
+        "conversations": conversations,
+        "unread_count": int(data.get("unreadCount") or unread_count or 0),
+        "unread_people": int(data.get("unreadPeople") or unread_people or 0),
+        "panel_found": bool(data.get("panelFound")),
+    }
+
+
 def _dm_click_unread_or_latest_chat(page: Any, timeout_ms: int = 5000, *, click: bool = True) -> Dict[str, Any]:
     sr = _sr()
     script = """
@@ -1010,6 +1259,7 @@ class DouyinConversationMonitor:
         self.inbox_unread_count = 0
         self.inbox_unread_people = 0
         self.inbox_summary_updated_at = ""
+        self.unread_conversations: List[Dict[str, Any]] = []
         self.logs: List[Dict[str, Any]] = []
         self.histories: Dict[str, List[Dict[str, str]]] = {}
         self.send_failed_signatures: Dict[str, int] = {}
@@ -1092,6 +1342,7 @@ class DouyinConversationMonitor:
                 "inbox_unread_people": self.inbox_unread_people,
                 "unread_count": self.inbox_unread_count,
                 "inbox_summary_updated_at": self.inbox_summary_updated_at,
+                "unread_conversations": list(self.unread_conversations),
                 "logs": list(self.logs[-30:]),
             }
 
@@ -1161,11 +1412,23 @@ class DouyinConversationMonitor:
             self.log("账号登录态不可用，需人工扫码/更新 cookie 后再监控：" + login_detail, "warn", extra)
             return
         inbox = _dm_scan_inbox_summary(page)
-        if inbox.get("ok"):
+        conversations_scan = _dm_scan_unread_conversations(page)
+        conversations = list(conversations_scan.get("conversations") or [])
+        if inbox.get("ok") or conversations_scan.get("ok"):
+            unread_count = max(
+                int(inbox.get("unread_count") or 0),
+                int(conversations_scan.get("unread_count") or 0),
+            )
+            unread_people = max(
+                int(inbox.get("unread_people") or 0),
+                int(conversations_scan.get("unread_people") or 0),
+                len(conversations),
+            )
             with self.lock:
-                self.inbox_unread_count = int(inbox.get("unread_count") or 0)
-                self.inbox_unread_people = int(inbox.get("unread_people") or 0)
+                self.inbox_unread_count = unread_count
+                self.inbox_unread_people = unread_people
                 self.inbox_summary_updated_at = sr._dm_now()
+                self.unread_conversations = conversations
             sample = inbox.get("badge_sample") or []
             sample_text = ",".join(
                 f"{item.get('kind')}:{item.get('text')}x{item.get('count')}"
@@ -1174,17 +1437,37 @@ class DouyinConversationMonitor:
             )
             self.log(
                 f"收件箱摘要：未读{self.inbox_unread_count}，未读会话{self.inbox_unread_people}"
-                + (f"（{inbox.get('detail') or ''}）" if inbox.get("detail") else "")
+                + (f"，明细{len(conversations)}条" if conversations else "")
+                + (f"（{inbox.get('detail') or conversations_scan.get('detail') or ''}）" if (inbox.get("detail") or conversations_scan.get("detail")) else "")
                 + (f" badges=[{sample_text}]" if sample_text else ""),
                 "info",
             )
         else:
-            self.log("收件箱摘要失败：" + str(inbox.get("detail") or "unknown"), "warn")
+            self.log(
+                "收件箱摘要失败："
+                + str(conversations_scan.get("detail") or inbox.get("detail") or "unknown"),
+                "warn",
+            )
         # 盯号模式（不生成/不发送）：只扫收件箱角标 + 列表预览，禁止点开会话。
         # 点开会话会清未读，中台气泡会被实时同步成长期 00/00。
         if not self.generate_reply:
             unread_people = int(self.inbox_unread_people or 0)
             unread_count = int(self.inbox_unread_count or 0)
+            if conversations:
+                first = conversations[0]
+                message = str(first.get("last_message") or "").strip()
+                peer_key = str(first.get("peer_nickname") or first.get("conversation_id") or "").strip()
+                if message:
+                    inbound = _dm_inbound_fingerprint(message)
+                    signature = f"{peer_key}|{inbound}"
+                    if signature != self.last_seen_signature:
+                        with self.lock:
+                            self.last_seen_signature = signature
+                            self.last_message = message
+                            self.last_peer = peer_key
+                            self.updated_at = sr._dm_now()
+                        self.log("识别到新消息（会话明细）：" + message[:120], "ok", {"peer": peer_key or ""})
+                return
             if unread_people <= 0 and unread_count <= 0:
                 return
             peek = _dm_click_unread_or_latest_chat(page, click=False)

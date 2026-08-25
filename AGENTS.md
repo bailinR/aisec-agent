@@ -11,6 +11,7 @@
 - 遇到“服务器部署、Docker、打包上传、Nginx、Redis URL、worker 容器、服务器时区”时，先读 `docs/部署.md`。
 - 遇到“接口怎么调、Postman、任务提交、任务查询、模型 key、HTTP 审计日志接口”时，先读 `docs/常用接口.md`。
 - 遇到“数据中台未读监控、按最近私信查回复、conversation-monitors/sync、conversations/read/batch、inbox 未读”时，先读 `docs/数据中台对接回复与未读.md`。
+- 遇到“回复池、未读会话明细、unread_conversations、跟进发送复用 tasks、红点是否消失”时，先读 `docs/回复池协作-私信侧回传.md`（中台协作原文在 comment-kit `deploy/pm-reply-pool-collaboration-for-pm-system.md`）。
 - 遇到“任务 pending/queued/running/failed/manual_required、失败截图、失败字段、Redis 队列、worker 没消费、日志怎么看”时，先读 `docs/运行维护与排查.md`。
 - 遇到“抖音私信任务 API、Redis 队列 key、failure_code、failure_stage、failure_summary、manual_required、dead_letter”时，先读 `docs/douyin_private_message_redis_api.md`。
 - 遇到“服务器无头浏览器、扫码、二次验证、风控、人工机接管、唯一执行点、异常恢复后回到服务器继续执行”时，先读 `docs/浏览器异常人工接管.md`。
