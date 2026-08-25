@@ -175,6 +175,9 @@ class DouyinConversationMonitorTests(unittest.TestCase):
             "aisec_agent.web.douyin_conversation_monitor._dm_scan_inbox_summary",
             return_value={"ok": True, "unread_count": 1, "unread_people": 1, "detail": "scanned"},
         ), patch(
+            "aisec_agent.web.douyin_conversation_monitor._dm_scan_unread_conversations",
+            return_value={"ok": True, "conversations": [], "unread_count": 0, "unread_people": 0, "detail": "empty"},
+        ), patch(
             "aisec_agent.web.douyin_conversation_monitor._dm_click_unread_or_latest_chat",
             return_value={"ok": True, "unread": True, "detail": "用户甲 刚刚 多少钱", "preview_text": "多少钱"},
         ) as mock_click:
@@ -183,6 +186,10 @@ class DouyinConversationMonitorTests(unittest.TestCase):
         self.assertEqual(monitor.last_message, "多少钱")
         self.assertEqual(monitor.last_reply, "")
         self.assertEqual(monitor.reply_count, 0)
+        self.assertEqual(len(monitor.unread_conversations), 1)
+        self.assertEqual(monitor.unread_conversations[0]["peer_nickname"], "用户甲")
+        self.assertEqual(monitor.unread_conversations[0]["last_message"], "多少钱")
+        self.assertGreaterEqual(int(monitor.unread_conversations[0]["unread_count"] or 0), 1)
         mock_click.assert_called_once_with(page, click=False)
 
     def test_tick_watch_only_skips_peek_when_no_unread(self):
@@ -208,11 +215,15 @@ class DouyinConversationMonitorTests(unittest.TestCase):
             "aisec_agent.web.douyin_conversation_monitor._dm_scan_inbox_summary",
             return_value={"ok": True, "unread_count": 0, "unread_people": 0, "detail": "scanned"},
         ), patch(
+            "aisec_agent.web.douyin_conversation_monitor._dm_scan_unread_conversations",
+            return_value={"ok": True, "conversations": [], "unread_count": 0, "unread_people": 0},
+        ), patch(
             "aisec_agent.web.douyin_conversation_monitor._dm_click_unread_or_latest_chat",
         ) as mock_click:
             monitor._tick(page)
 
         self.assertEqual(monitor.last_message, "")
+        self.assertEqual(monitor.unread_conversations, [])
         mock_click.assert_not_called()
 
     def test_tick_gpu_pool_generates_and_sends(self):

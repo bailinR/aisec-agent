@@ -90,7 +90,10 @@ def test_build_inbox_uses_executor():
 
 
 def test_repair_inbox_peer_fields_splits_mash():
-    from aisec_agent.web.douyin_conversation_monitor import _dm_repair_inbox_peer_fields
+    from aisec_agent.web.douyin_conversation_monitor import (
+        _dm_normalize_unread_conversation_items,
+        _dm_repair_inbox_peer_fields,
+    )
 
     repaired = _dm_repair_inbox_peer_fields("白林 2222 ·", "2", unread_count=2)
     assert repaired["peer_nickname"] == "白林"
@@ -99,6 +102,30 @@ def test_repair_inbox_peer_fields_splits_mash():
     repaired2 = _dm_repair_inbox_peer_fields("", "白林 111 ·", unread_count=1)
     assert repaired2["peer_nickname"] == "白林"
     assert repaired2["last_message"] == "111"
+
+    rows = _dm_normalize_unread_conversation_items(
+        [
+            {
+                "peer_nickname": "",
+                "last_message": "",
+                "unread_count": 2,
+                "row_text": "白林 刚刚 你好还在吗 2",
+            },
+            {
+                "peer_nickname": "用户乙",
+                "last_message": "",
+                "unread_count": 1,
+                "row_text": "用户乙 报价咨询",
+            },
+        ]
+    )
+    assert len(rows) == 2
+    assert rows[0]["peer_nickname"] == "白林"
+    assert "你好" in rows[0]["last_message"] or rows[0]["last_message"]
+    assert rows[0]["unread_count"] == 2
+    assert rows[1]["peer_nickname"] == "用户乙"
+    assert rows[1]["last_message"] in {"报价咨询", "(未读)"} or rows[1]["last_message"]
+    assert rows[1]["unread_count"] == 1
 
 
 def test_inbox_reuses_alive_monitor(monkeypatch):

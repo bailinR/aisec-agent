@@ -61,6 +61,7 @@ Web：`0.0.0.0:7860` → `http://127.0.0.1:7860`
 - [x] 修复未读列表昵称/预览粘连（如「白林 2222 ·」→ 昵称白林 / 正文 2222）
 - [x] inbox「同步未读」优先复用 alive 盯号浏览器（不再 stop/另开/restart）；无盯号才临时开窗
 - [x] 回复池专用审计日志：记录 monitors/inbox/read/batch/tasks 调用 + 未读明细/`has_reply`；`GET /api/admin/reply-pool-audit-logs`；文件 `runtime/logs/reply-pool-audit.log`
+- [x] 盯号/inbox 扫列表后强制填充 `unread_conversations`（至少 nickname+preview+count）；角标有未读但行解析失败时列表预览兜底
 - [ ] 数据中台（comment-kit）按回复池协作文档接盯号 + inbox 明细 + tasks 跟进发送；本机可二需有效 Cookie 后复测同步
 
 ### 生产机（机 23 / ALEX001）

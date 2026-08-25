@@ -50,14 +50,23 @@ def shape_douyin_account_inbox_result(raw: Dict[str, Any]) -> Dict[str, Any]:
     for item in payload.get("unread_conversations") or payload.get("conversations") or []:
         if not isinstance(item, dict):
             continue
+        nickname = str(item.get("peer_nickname") or "").strip()
+        last_message = str(item.get("last_message") or "").strip()
+        unread = max(1, int(item.get("unread_count") or 1))
+        if not nickname and not last_message:
+            continue
+        if not nickname:
+            nickname = "未读用户"
+        if not last_message:
+            last_message = "(未读)"
         conversations.append(
             {
-                "peer_nickname": str(item.get("peer_nickname") or "").strip(),
+                "peer_nickname": nickname,
                 "peer_uid": str(item.get("peer_uid") or "").strip(),
                 "peer_sec_uid": str(item.get("peer_sec_uid") or "").strip(),
                 "peer_profile_url": str(item.get("peer_profile_url") or "").strip(),
-                "last_message": str(item.get("last_message") or "").strip(),
-                "unread_count": max(1, int(item.get("unread_count") or 1)),
+                "last_message": last_message,
+                "unread_count": unread,
                 "conversation_id": str(item.get("conversation_id") or "").strip(),
                 "updated_at": str(item.get("updated_at") or "").strip(),
             }
@@ -98,6 +107,9 @@ def _run_inbox_playwright(payload: Dict[str, Any]) -> Dict[str, Any]:
     _dm_open_douyin_messages_surface = monitor._dm_open_douyin_messages_surface
     _dm_pick_account_cookie_payload = monitor._dm_pick_account_cookie_payload
     _dm_scan_inbox_summary = monitor._dm_scan_inbox_summary
+    _dm_click_unread_or_latest_chat = monitor._dm_click_unread_or_latest_chat
+    _dm_peer_key_from_row = monitor._dm_peer_key_from_row
+    _dm_normalize_unread_conversation_items = monitor._dm_normalize_unread_conversation_items
     scan_unread = getattr(monitor, "_dm_scan_unread_conversations", None)
     if not callable(scan_unread):
         raise RuntimeError(
@@ -246,9 +258,37 @@ def _run_inbox_playwright(payload: Dict[str, Any]) -> Dict[str, Any]:
         if inbox.get("ok"):
             unread_count = max(unread_count, int(inbox.get("unread_count") or 0))
             unread_people = max(unread_people, int(inbox.get("unread_people") or 0))
-        if conversations and unread_people < len(conversations):
+        if conversations:
             unread_people = len(conversations)
-        if not conversations_scan.get("ok") and not inbox.get("ok"):
+            unread_count = max(
+                unread_count,
+                sum(int(item.get("unread_count") or 0) for item in conversations),
+            )
+        elif unread_people > 0 or unread_count > 0:
+            # One-shot inbox: if badge scan has unread but row parse failed, peek list text.
+            peek = _dm_click_unread_or_latest_chat(page, click=False)
+            if peek.get("ok"):
+                preview = str(peek.get("preview_text") or "").strip()
+                detail = str(peek.get("detail") or "").strip()
+                peer_key = _dm_peer_key_from_row(detail, preview)
+                fallback = _dm_normalize_unread_conversation_items(
+                    [
+                        {
+                            "peer_nickname": peer_key,
+                            "last_message": preview or detail,
+                            "unread_count": max(1, unread_count if unread_people <= 1 else 1),
+                            "row_text": detail,
+                        }
+                    ]
+                )
+                if fallback:
+                    conversations = fallback
+                    unread_people = len(conversations)
+                    unread_count = max(
+                        unread_count,
+                        sum(int(item.get("unread_count") or 0) for item in conversations),
+                    )
+        if not conversations_scan.get("ok") and not inbox.get("ok") and not conversations:
             return {
                 "ok": False,
                 "requires_login": False,
