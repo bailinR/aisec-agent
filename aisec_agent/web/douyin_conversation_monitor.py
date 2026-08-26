@@ -1800,6 +1800,12 @@ class DouyinConversationMonitor:
         self._inbox_pending = False
         self._inbox_result: Optional[Dict[str, Any]] = None
         self._inbox_done = threading.Event()
+        # On-demand DM send via the same monitor browser (reply-pool follow-up).
+        self._send_req_lock = threading.Lock()
+        self._send_pending = False
+        self._send_payload: Optional[Dict[str, Any]] = None
+        self._send_result: Optional[Dict[str, Any]] = None
+        self._send_done = threading.Event()
 
     def log(self, text: str, level: str = "info", extra: Optional[Dict[str, Any]] = None) -> None:
         item = {
@@ -1886,6 +1892,177 @@ class DouyinConversationMonitor:
         result.setdefault("account_key", self.account_key)
         result.setdefault("browser", self.browser_name)
         return result
+
+    def request_send_dm(self, payload: Dict[str, Any], timeout_seconds: float = 120.0) -> Dict[str, Any]:
+        """Send a private message using the already-open monitor browser."""
+        if not (self.thread and self.thread.is_alive()):
+            return {
+                "success": False,
+                "opened": False,
+                "prefilled": False,
+                "sent": False,
+                "error": "盯号未在运行，无法复用浏览器发送",
+                "failure_code": "monitor_not_alive",
+                "reused_monitor": False,
+                "resolved_browser": self.browser_name,
+                "engine": "monitor",
+                "steps": [],
+            }
+        with self._send_req_lock:
+            self._send_pending = True
+            self._send_payload = dict(payload or {})
+            self._send_result = None
+            self._send_done.clear()
+        self._wake_event.set()
+        wait_s = max(15.0, float(timeout_seconds or 120.0))
+        if not self._send_done.wait(timeout=wait_s):
+            with self._send_req_lock:
+                self._send_pending = False
+            return {
+                "success": False,
+                "opened": False,
+                "prefilled": False,
+                "sent": False,
+                "error": f"复用盯号浏览器发送超时（{int(wait_s)}s）",
+                "failure_code": "monitor_send_timeout",
+                "reused_monitor": True,
+                "resolved_browser": self.browser_name,
+                "engine": "monitor",
+                "steps": [],
+            }
+        with self._send_req_lock:
+            result = dict(self._send_result or {})
+        result.setdefault("reused_monitor", True)
+        result.setdefault("resolved_browser", self.browser_name)
+        result.setdefault("engine", "monitor")
+        return result
+
+    def _send_dm_on_page(self, page: Any, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Open target profile on the monitor page and send message (+ optional followup)."""
+        sr = _sr()
+        profile_url = str(
+            payload.get("profile_url")
+            or payload.get("target_profile_url")
+            or ""
+        ).strip()
+        message = str(payload.get("message") or payload.get("reply") or "").strip()
+        followup_message = str(payload.get("followup_message") or "").strip()
+        auto_send = True if payload.get("auto_send") is None else sr._dm_bool_text(payload.get("auto_send"))
+        timeout_ms = int(sr._payload_float(payload, "timeout_ms", 45000))
+        steps: List[Dict[str, Any]] = []
+        if not profile_url:
+            return {
+                "success": False,
+                "opened": False,
+                "prefilled": False,
+                "sent": False,
+                "error": "target_profile_url is required",
+                "steps": steps,
+                "reused_monitor": True,
+            }
+        if not message:
+            return {
+                "success": False,
+                "opened": False,
+                "prefilled": False,
+                "sent": False,
+                "error": "message is required",
+                "steps": steps,
+                "reused_monitor": True,
+            }
+        try:
+            page.goto(profile_url, wait_until="domcontentloaded", timeout=timeout_ms)
+            steps.append({"name": "open_profile", "ok": True, "detail": "opened_via_monitor"})
+            try:
+                page.wait_for_load_state("networkidle", timeout=min(timeout_ms, 12000))
+            except Exception:
+                pass
+            login_abort = sr._dm_abort_on_login_requirement(page, steps, stage="after_open_profile")
+            if login_abort:
+                return {
+                    "success": False,
+                    "opened": True,
+                    "prefilled": False,
+                    "sent": False,
+                    "error": str(login_abort.get("error") or "login_required"),
+                    "requires_login": bool(login_abort.get("requires_login")),
+                    "requires_verification": bool(login_abort.get("requires_verification")),
+                    "steps": steps,
+                    "reused_monitor": True,
+                }
+            steps.append(sr._dm_click_profile_private_message(page, timeout_ms=min(timeout_ms, 12000)))
+            steps.append(sr._dm_fill_message_editor(page, message, timeout_ms=min(timeout_ms, 12000)))
+            sent = False
+            if auto_send:
+                send_steps = sr._dm_send_and_confirm_current_message(
+                    page,
+                    message,
+                    timeout_ms=min(timeout_ms, 15000),
+                    prefer_click_send=True,
+                    accept_editor_cleared=True,
+                )
+                steps.extend(list(send_steps or []))
+                sent = True
+            followup_sent = False
+            followup_status = ""
+            followup_detail = ""
+            if sent and followup_message:
+                try:
+                    fill_step = sr._dm_fill_message_editor(
+                        page, followup_message, timeout_ms=min(timeout_ms, 12000)
+                    )
+                    fill_step["name"] = "paste_followup_message"
+                    steps.append(fill_step)
+                    followup_steps = sr._dm_send_and_confirm_current_message(
+                        page,
+                        followup_message,
+                        timeout_ms=min(timeout_ms, 10000),
+                        retry_enter_before_click=True,
+                    )
+                    for item in followup_steps or []:
+                        item["name"] = f"followup_{item.get('name') or 'send'}"
+                    steps.extend(list(followup_steps or []))
+                    followup_sent = True
+                    followup_status = "sent"
+                    followup_detail = "followup private message sent via monitor"
+                except Exception as followup_exc:
+                    followup_status = "failed_ignored"
+                    followup_detail = str(followup_exc)
+                    steps.append({
+                        "name": "followup_send_error",
+                        "ok": False,
+                        "detail": followup_detail,
+                    })
+            # Return to messages surface so monitor loop can continue watch-only.
+            try:
+                _dm_open_douyin_messages_surface(page, timeout_ms=15000)
+            except Exception:
+                pass
+            return {
+                "success": bool(sent) if auto_send else True,
+                "opened": True,
+                "prefilled": True,
+                "sent": bool(sent),
+                "followup_private_message": followup_sent,
+                "followup_private_message_status": followup_status,
+                "followup_private_message_detail": followup_detail,
+                "steps": steps,
+                "reused_monitor": True,
+                "keep_browser_open": True,
+                "error": "" if (sent or not auto_send) else "message send was not confirmed",
+            }
+        except Exception as exc:
+            steps.append({"name": "monitor_send_error", "ok": False, "detail": str(exc)})
+            return {
+                "success": False,
+                "opened": any(s.get("name") == "open_profile" and s.get("ok") for s in steps),
+                "prefilled": any(s.get("name") == "paste_message" and s.get("ok") for s in steps),
+                "sent": False,
+                "error": str(exc),
+                "steps": steps,
+                "reused_monitor": True,
+                "keep_browser_open": True,
+            }
 
     def _scan_inbox_snapshot_on_page(self, page: Any) -> Dict[str, Any]:
         """One inbox-shaped snapshot using the monitor's live page (no new browser)."""
@@ -2090,9 +2267,40 @@ class DouyinConversationMonitor:
                     self.loop_count += 1
                     self.updated_at = sr._dm_now()
                 do_inbox = False
+                do_send = False
+                send_payload: Dict[str, Any] = {}
+                with self._send_req_lock:
+                    do_send = bool(self._send_pending)
+                    if do_send:
+                        send_payload = dict(self._send_payload or {})
                 with self._inbox_req_lock:
                     do_inbox = bool(self._inbox_pending)
-                if do_inbox:
+                if do_send:
+                    try:
+                        result = self._send_dm_on_page(page, send_payload)
+                        self.log(
+                            "复用盯号浏览器发送："
+                            + str(result.get("error") or ("ok" if result.get("sent") else "not_sent")),
+                            "ok" if result.get("sent") else "warn",
+                        )
+                    except Exception as send_exc:
+                        result = {
+                            "success": False,
+                            "opened": False,
+                            "prefilled": False,
+                            "sent": False,
+                            "error": str(send_exc),
+                            "failure_code": "monitor_send_error",
+                            "steps": [],
+                            "reused_monitor": True,
+                        }
+                        self.log("复用盯号发送异常：" + str(send_exc), "error")
+                    with self._send_req_lock:
+                        self._send_result = result
+                        self._send_pending = False
+                        self._send_payload = None
+                        self._send_done.set()
+                elif do_inbox:
                     try:
                         result = self._scan_inbox_snapshot_on_page(page)
                         self.log(
@@ -2123,7 +2331,7 @@ class DouyinConversationMonitor:
                         self._inbox_done.set()
                 else:
                     self._tick(page)
-                # Wait poll interval, but wake early for on-demand inbox or stop.
+                # Wait poll interval, but wake early for on-demand inbox/send or stop.
                 self._wake_event.clear()
                 deadline = time.time() + self.poll_seconds
                 while time.time() < deadline and not self.stop_event.is_set():

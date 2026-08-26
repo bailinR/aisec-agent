@@ -152,6 +152,10 @@ def build_douyin_account_verify_response(
     else:
         headless = True
     keep_open = sr._dm_bool_text(normalized.get("keep_browser_open", False))
+    try:
+        auto_close_after_ms = int(sr._payload_float(normalized, "auto_close_after_ms", 0))
+    except (TypeError, ValueError):
+        auto_close_after_ms = 0
 
     apply_payload = {
         "account_cookies": raw_cookies,
@@ -170,7 +174,18 @@ def build_douyin_account_verify_response(
         "screenshot_on_failure": sr._dm_bool_text(normalized.get("screenshot_on_failure", True)),
         "screenshot_dir": str(normalized.get("screenshot_dir") or sr.DM_DEBUG_ARTIFACT_DIR),
         "screenshot_prefix": str(normalized.get("screenshot_prefix") or normalized.get("task_id") or "dm-verify"),
+        "auto_close_after_ms": auto_close_after_ms,
+        "reuse_browser": sr._dm_bool_text(normalized.get("reuse_browser", False)),
     }
+
+    # Batch headed verify: cancel any pending auto-close so the shared window stays up.
+    if keep_open and (
+        sr._dm_bool_text(normalized.get("reuse_browser", False)) or auto_close_after_ms <= 0
+    ):
+        try:
+            sr._dm_cancel_auto_close_session(browser, apply_payload)
+        except Exception:
+            pass
 
     # Inject verify_login_first into options via a thin executor wrapper around apply.
     selected_executor = executor
@@ -193,4 +208,10 @@ def build_douyin_account_verify_response(
     # preserve skip flags from executor.
     if bool(apply_result.get("requires_login")) or bool(apply_result.get("account_type_skipped")):
         apply_result["account_type_skipped"] = True
+    if keep_open and auto_close_after_ms > 0 and bool(apply_result.get("opened") or apply_result.get("success")):
+        try:
+            sr._dm_schedule_auto_close_session(browser, apply_payload, auto_close_after_ms)
+            apply_result["auto_close_after_ms"] = auto_close_after_ms
+        except Exception:
+            pass
     return shape_douyin_account_verify_result(apply_result)

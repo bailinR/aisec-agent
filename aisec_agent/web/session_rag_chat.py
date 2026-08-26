@@ -9638,6 +9638,7 @@ def _dm_task_submit_runtime_fields(item: Dict[str, Any]) -> Dict[str, str]:
         normalized.get("persistent_context", (not headless) or normalized.get("user_data_dir"))
     )
     use_cdp = _dm_bool_text(normalized.get("use_cdp", not headless))
+    use_alive_monitor = _dm_bool_text(normalized.get("use_alive_monitor", False))
     if headless:
         use_cdp = False
         keep_browser_open = False
@@ -9661,6 +9662,7 @@ def _dm_task_submit_runtime_fields(item: Dict[str, Any]) -> Dict[str, str]:
         "auto_send": "true" if auto_send else "false",
         "auto_process": "true" if auto_process else "false",
         "force_resend": "true" if force_resend else "false",
+        "use_alive_monitor": "true" if use_alive_monitor else "false",
         "followup_message": followup_message,
     }
 
@@ -10134,7 +10136,71 @@ def _dm_drop_playwright_session(key: str) -> None:
     _dm_stop_playwright_session(session)
 
 
+_DM_AUTO_CLOSE_TIMERS: Dict[str, threading.Timer] = {}
+_DM_AUTO_CLOSE_LOCK = threading.Lock()
+
+
+def _dm_session_key_for_browser(browser_name: str, options: Dict[str, Any]) -> str:
+    user_data_dir = _dm_playwright_user_data_dir(browser_name, options)
+    return f"{str(browser_name or 'edge').lower()}|{user_data_dir.resolve()}"
+
+
+def _dm_schedule_auto_close_session(
+    browser_name: str,
+    options: Dict[str, Any],
+    delay_ms: int,
+) -> None:
+    """Close a kept-open headed verify browser after delay_ms."""
+    try:
+        delay_ms = int(delay_ms or 0)
+    except (TypeError, ValueError):
+        delay_ms = 0
+    if delay_ms <= 0:
+        return
+    if not _dm_bool_text(options.get("keep_browser_open", False)):
+        return
+    key = _dm_session_key_for_browser(browser_name, options)
+
+    def _close() -> None:
+        with _DM_AUTO_CLOSE_LOCK:
+            _DM_AUTO_CLOSE_TIMERS.pop(key, None)
+        try:
+            _dm_drop_playwright_session(key)
+        except Exception:
+            pass
+
+    with _DM_AUTO_CLOSE_LOCK:
+        old = _DM_AUTO_CLOSE_TIMERS.pop(key, None)
+        if old is not None:
+            try:
+                old.cancel()
+            except Exception:
+                pass
+        timer = threading.Timer(max(0.5, delay_ms / 1000.0), _close)
+        timer.daemon = True
+        _DM_AUTO_CLOSE_TIMERS[key] = timer
+        timer.start()
+
+
+def _dm_cancel_auto_close_session(browser_name: str, options: Dict[str, Any]) -> None:
+    key = _dm_session_key_for_browser(browser_name, options)
+    with _DM_AUTO_CLOSE_LOCK:
+        old = _DM_AUTO_CLOSE_TIMERS.pop(key, None)
+    if old is not None:
+        try:
+            old.cancel()
+        except Exception:
+            pass
+
+
 def _dm_reset_all_playwright_sessions() -> None:
+    with _DM_AUTO_CLOSE_LOCK:
+        for timer in list(_DM_AUTO_CLOSE_TIMERS.values()):
+            try:
+                timer.cancel()
+            except Exception:
+                pass
+        _DM_AUTO_CLOSE_TIMERS.clear()
     for key in list(_DM_PLAYWRIGHT_SESSIONS.keys()):
         _dm_drop_playwright_session(key)
     _dm_reset_sync_thread_runtime()
@@ -13842,21 +13908,48 @@ def process_douyin_dm_task_once(
         if run_mode in {"prefill", "send"}:
             auto_send = run_mode == "send" or _dm_bool_text(task.get("auto_send"))
             task_account_cookies = _dm_task_account_cookie_text(task)
-            demo_result = build_douyin_private_message_demo_response({
-                "task_id": task_id,
-                "profile_url": task.get("target_profile_url") or "",
-                "message": reply,
-                "browser": task.get("browser") or "edge",
-                "headless": _dm_bool_text(task.get("headless", True)),
-                "use_cdp": _dm_bool_text(task.get("use_cdp")),
-                "keep_browser_open": _dm_bool_text(task.get("keep_browser_open", not _dm_bool_text(task.get("headless", True)))),
-                "persistent_context": _dm_bool_text(task.get("persistent_context", (not _dm_bool_text(task.get("headless", True))) or task.get("user_data_dir"))),
-                "user_data_dir": task.get("user_data_dir") or "",
-                "auto_send": auto_send,
-                "followup_message": followup_message,
-                "account_cookies": task_account_cookies,
-                "screenshot_prefix": task_id,
-            }, executor=_web_douyin_private_message_playwright_executor)
+            demo_result = None
+            prefer_monitor = _dm_bool_text(task.get("use_alive_monitor", False))
+            if prefer_monitor:
+                try:
+                    from aisec_agent.web.douyin_conversation_monitor import find_alive_monitor_for_account
+
+                    controller = find_alive_monitor_for_account({
+                        "account_cookie": task_account_cookies,
+                        "account_cookies": task_account_cookies,
+                        "account_id": task.get("account_id") or account_id,
+                        "account_key": task.get("account_key") or task_account_key,
+                    })
+                except Exception:
+                    controller = None
+                if controller is not None:
+                    demo_result = controller.request_send_dm(
+                        {
+                            "profile_url": task.get("target_profile_url") or "",
+                            "target_profile_url": task.get("target_profile_url") or "",
+                            "message": reply,
+                            "followup_message": followup_message,
+                            "auto_send": auto_send,
+                            "timeout_ms": task.get("timeout_ms") or 45000,
+                        },
+                        timeout_seconds=max(30.0, float(task.get("timeout_ms") or 45000) / 1000.0 + 30.0),
+                    )
+            if demo_result is None:
+                demo_result = build_douyin_private_message_demo_response({
+                    "task_id": task_id,
+                    "profile_url": task.get("target_profile_url") or "",
+                    "message": reply,
+                    "browser": task.get("browser") or "edge",
+                    "headless": _dm_bool_text(task.get("headless", True)),
+                    "use_cdp": _dm_bool_text(task.get("use_cdp")),
+                    "keep_browser_open": _dm_bool_text(task.get("keep_browser_open", not _dm_bool_text(task.get("headless", True)))),
+                    "persistent_context": _dm_bool_text(task.get("persistent_context", (not _dm_bool_text(task.get("headless", True))) or task.get("user_data_dir"))),
+                    "user_data_dir": task.get("user_data_dir") or "",
+                    "auto_send": auto_send,
+                    "followup_message": followup_message,
+                    "account_cookies": task_account_cookies,
+                    "screenshot_prefix": task_id,
+                }, executor=_web_douyin_private_message_playwright_executor)
             sent = bool(demo_result.get("sent"))
             prefilled = bool(demo_result.get("prefilled"))
             if run_mode == "send" and not sent:
