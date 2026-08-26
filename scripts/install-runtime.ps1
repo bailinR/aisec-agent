@@ -40,14 +40,37 @@ function Invoke-Checked {
 }
 
 function Get-CachedFile {
-  param([string]$Url, [string]$Destination)
+  param(
+    [string[]]$Urls,
+    [string]$Destination,
+    [int]$MaxAttemptsPerUrl = 2
+  )
 
   if (Test-Path $Destination) {
     Write-Host "Using cached download: $Destination"
     return
   }
-  Write-Step "Downloading $Url"
-  Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing
+
+  $lastError = $null
+  foreach ($url in $Urls) {
+    for ($attempt = 1; $attempt -le $MaxAttemptsPerUrl; $attempt++) {
+      try {
+        Write-Step "Downloading $url (attempt $attempt/$MaxAttemptsPerUrl)"
+        $partial = "$Destination.partial"
+        if (Test-Path $partial) {
+          Remove-Item -LiteralPath $partial -Force -ErrorAction SilentlyContinue
+        }
+        Invoke-WebRequest -Uri $url -OutFile $partial -UseBasicParsing
+        Move-Item -LiteralPath $partial -Destination $Destination -Force
+        return
+      } catch {
+        $lastError = $_
+        Write-Warning "Download failed from $url : $($_.Exception.Message)"
+        Start-Sleep -Seconds (2 * $attempt)
+      }
+    }
+  }
+  throw "Failed to download after trying all mirrors. Last error: $lastError`nTried:`n - $($Urls -join "`n - ")`nWorkaround: place the zip at $Destination and re-run start.bat"
 }
 
 function Invoke-PythonPackageCommand {
@@ -129,8 +152,12 @@ function Install-PythonRuntime {
   Write-Step "Installing project-local Python $PythonVersion"
   $PythonZip = Join-Path $DownloadRoot "python-$PythonVersion-embed-amd64.zip"
   $GetPip = Join-Path $DownloadRoot "get-pip.py"
-  Get-CachedFile "https://www.python.org/ftp/python/$PythonVersion/python-$PythonVersion-embed-amd64.zip" $PythonZip
-  Get-CachedFile "https://bootstrap.pypa.io/get-pip.py" $GetPip
+  Get-CachedFile @(
+    "https://www.python.org/ftp/python/$PythonVersion/python-$PythonVersion-embed-amd64.zip"
+  ) $PythonZip
+  Get-CachedFile @(
+    "https://bootstrap.pypa.io/get-pip.py"
+  ) $GetPip
 
   Remove-RuntimeDirectory $PythonRoot
   New-Item -ItemType Directory -Force $PythonRoot | Out-Null
@@ -185,7 +212,14 @@ function Install-PlaywrightBrowser {
 function Install-RedisRuntime {
   Write-Step "Installing project-local Redis $RedisVersion"
   $RedisZip = Join-Path $DownloadRoot "Redis-x64-$RedisVersion.zip"
-  Get-CachedFile "https://github.com/tporadowski/redis/releases/download/v$RedisVersion/Redis-x64-$RedisVersion.zip" $RedisZip
+  $redisReleasePath = "tporadowski/redis/releases/download/v$RedisVersion/Redis-x64-$RedisVersion.zip"
+  # GitHub is often blocked on China networks; try mirrors first, then upstream.
+  Get-CachedFile @(
+    "https://ghfast.top/https://github.com/$redisReleasePath",
+    "https://mirror.ghproxy.com/https://github.com/$redisReleasePath",
+    "https://gitmirror.com/https://github.com/$redisReleasePath",
+    "https://github.com/$redisReleasePath"
+  ) $RedisZip
   Remove-RuntimeDirectory $RedisRoot
   New-Item -ItemType Directory -Force $RedisRoot | Out-Null
   Write-Step "Extracting Redis package"

@@ -9168,12 +9168,46 @@ DM_MIN_VIEWPORT_WIDTH = 1024
 DM_MIN_VIEWPORT_HEIGHT = 720
 DM_WINDOW_CHROME_HEIGHT = 48
 DM_PLAYWRIGHT_PROFILE_ROOT = Path(os.getenv("AISEC_DM_PLAYWRIGHT_PROFILE_ROOT", Path(__file__).resolve().parents[2] / "content" / "playwright_profiles"))
-_DM_PLAYWRIGHT_SESSIONS: Dict[str, Dict[str, Any]] = {}
+# Max concurrent account browsers (send pool). Same account reuses one browser and queues.
+DM_MAX_OPEN_BROWSERS = max(1, _env_int("AISEC_DM_MAX_OPEN_BROWSERS", 3))
+# Close kept-open send browser after this idle period (default 3 minutes).
+DM_BROWSER_IDLE_CLOSE_MS = max(0, _env_int("AISEC_DM_BROWSER_IDLE_CLOSE_MS", 180_000))
+# When enabled: per-account profile dirs, keep browser open, enforce max open browsers.
+DM_SEND_BROWSER_POOL = str(os.getenv("AISEC_DM_SEND_BROWSER_POOL", "1")).strip().lower() not in {
+    "0", "false", "no", "off", ""
+}
+# Playwright sync API is thread-bound. Sessions are thread-local so the send
+# worker can run up to DM_MAX_OPEN_BROWSERS account threads in parallel.
+_DM_PLAYWRIGHT_TLS = threading.local()
+_DM_INLINE_PLAYWRIGHT = threading.local()
 # Playwright's sync API is bound to the thread that starts its greenlet.  The
 # HTTP server is a ThreadingHTTPServer, so web requests must share one stable
 # execution thread when persistent contexts are kept alive between requests.
 _DM_WEB_PLAYWRIGHT_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="dm-web-playwright")
 _DM_PLAYWRIGHT_MANAGER = threading.local()
+
+
+def _dm_playwright_sessions() -> Dict[str, Dict[str, Any]]:
+    sessions = getattr(_DM_PLAYWRIGHT_TLS, "sessions", None)
+    if sessions is None:
+        sessions = {}
+        _DM_PLAYWRIGHT_TLS.sessions = sessions
+    return sessions
+
+
+def _dm_enable_inline_playwright(enabled: bool = True) -> None:
+    """Account send-pool threads run Playwright inline (no hop to web executor)."""
+    _DM_INLINE_PLAYWRIGHT.enabled = bool(enabled)
+
+
+def _dm_inline_playwright_enabled() -> bool:
+    return bool(getattr(_DM_INLINE_PLAYWRIGHT, "enabled", False))
+
+
+def _dm_account_send_user_data_dir(browser_name: str, account_key: str) -> Path:
+    browser_key = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(browser_name or "edge").strip().lower() or "edge")
+    safe_account_key = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(account_key or "default").strip() or "default")
+    return DM_PLAYWRIGHT_PROFILE_ROOT / "accounts" / browser_key / safe_account_key
 
 
 DM_FAILURE_PROFILES = {
@@ -9658,10 +9692,20 @@ def _dm_task_submit_runtime_fields(item: Dict[str, Any]) -> Dict[str, str]:
     )
     use_cdp = _dm_bool_text(normalized.get("use_cdp", not headless))
     use_alive_monitor = _dm_bool_text(normalized.get("use_alive_monitor", False))
-    if headless:
+    browser = str(normalized.get("browser") or normalized.get("browser_name") or "edge")
+    user_data_dir = str(normalized.get("user_data_dir") or "").strip()
+    if headless and not (DM_SEND_BROWSER_POOL and not use_alive_monitor):
         use_cdp = False
         keep_browser_open = False
         persistent_context = False
+    if DM_SEND_BROWSER_POOL and not use_alive_monitor and account_key:
+        # One persistent browser profile per account; pool keeps up to N warm.
+        if not user_data_dir:
+            user_data_dir = str(_dm_account_send_user_data_dir(browser, account_key))
+        keep_browser_open = True
+        persistent_context = True
+        if headless:
+            use_cdp = False
     return {
         "account_id": account_id,
         "account_name": account_name,
@@ -9672,12 +9716,12 @@ def _dm_task_submit_runtime_fields(item: Dict[str, Any]) -> Dict[str, str]:
         "target_key": _dm_normalized_target(str(normalized.get("target_profile_url") or "")),
         "run_mode": run_mode,
         "debug_mode": "true" if debug_mode else "false",
-        "browser": str(normalized.get("browser") or normalized.get("browser_name") or "edge"),
+        "browser": browser,
         "headless": "true" if headless else "false",
         "use_cdp": "true" if use_cdp else "false",
         "keep_browser_open": "true" if keep_browser_open else "false",
         "persistent_context": "true" if persistent_context else "false",
-        "user_data_dir": str(normalized.get("user_data_dir") or "").strip(),
+        "user_data_dir": user_data_dir,
         "auto_send": "true" if auto_send else "false",
         "auto_process": "true" if auto_process else "false",
         "force_resend": "true" if force_resend else "false",
@@ -9996,17 +10040,39 @@ def _dm_message_page(context: Any, profile_url: str) -> Any:
 
 
 def _dm_cleanup_closed_playwright_sessions() -> int:
+    sessions = _dm_playwright_sessions()
     stale_sessions = []
-    for key, session in list(_DM_PLAYWRIGHT_SESSIONS.items()):
+    for key, session in list(sessions.items()):
         if _dm_persistent_context_alive(session.get("context")):
             continue
-        removed = _DM_PLAYWRIGHT_SESSIONS.pop(key, None)
+        removed = sessions.pop(key, None)
         if removed is session:
             stale_sessions.append(session)
 
     for session in stale_sessions:
         _dm_stop_playwright_session(session)
     return len(stale_sessions)
+
+
+def _dm_enforce_max_open_browsers(retain_key: str = "") -> None:
+    """Keep at most DM_MAX_OPEN_BROWSERS persistent sessions on this thread (LRU)."""
+    if DM_MAX_OPEN_BROWSERS <= 0:
+        return
+    sessions = _dm_playwright_sessions()
+    _dm_cleanup_closed_playwright_sessions()
+    retain = str(retain_key or "")
+    while len(sessions) >= DM_MAX_OPEN_BROWSERS and retain not in sessions:
+        lru_key = min(
+            sessions.items(),
+            key=lambda item: float(item[1].get("last_used") or 0.0),
+        )[0]
+        _dm_drop_playwright_session(lru_key)
+    if retain and retain not in sessions and len(sessions) >= DM_MAX_OPEN_BROWSERS:
+        lru_key = min(
+            sessions.items(),
+            key=lambda item: float(item[1].get("last_used") or 0.0),
+        )[0]
+        _dm_drop_playwright_session(lru_key)
 
 
 def _dm_step_name_looks_like_send_stage(name: Any) -> bool:
@@ -10076,11 +10142,15 @@ def _dm_get_playwright_context(sync_playwright_factory: Any, browser_name: str, 
         _dm_cleanup_closed_playwright_sessions()
         user_data_dir = _dm_playwright_user_data_dir(browser_name, options)
         key = f"{str(browser_name or 'edge').lower()}|{user_data_dir.resolve()}"
-        session = _DM_PLAYWRIGHT_SESSIONS.get(key)
+        sessions = _dm_playwright_sessions()
+        session = sessions.get(key)
         if session and _dm_persistent_context_alive(session.get("context")):
+            session["last_used"] = time.time()
+            _dm_cancel_auto_close_session(browser_name, options)
             return session["playwright"], session["context"], None, keep_browser_open
         if session:
             _dm_drop_playwright_session(key)
+        _dm_enforce_max_open_browsers(retain_key=key)
         _dm_reset_sync_thread_runtime()
         manager = sync_playwright_factory()
         playwright = None
@@ -10091,11 +10161,13 @@ def _dm_get_playwright_context(sync_playwright_factory: Any, browser_name: str, 
         except Exception:
             _dm_stop_playwright_context(context, None, playwright)
             raise
-        _DM_PLAYWRIGHT_SESSIONS[key] = {
+        sessions[key] = {
             "manager": manager,
             "playwright": playwright,
             "context": context,
             "user_data_dir": str(user_data_dir),
+            "last_used": time.time(),
+            "account_key": str(options.get("account_key") or ""),
         }
         return playwright, context, None, keep_browser_open
 
@@ -10238,7 +10310,7 @@ def _dm_stop_playwright_session(session: Optional[Dict[str, Any]]) -> None:
 
 
 def _dm_drop_playwright_session(key: str) -> None:
-    session = _DM_PLAYWRIGHT_SESSIONS.pop(str(key or ""), None)
+    session = _dm_playwright_sessions().pop(str(key or ""), None)
     _dm_stop_playwright_session(session)
 
 
@@ -10256,7 +10328,7 @@ def _dm_schedule_auto_close_session(
     options: Dict[str, Any],
     delay_ms: int,
 ) -> None:
-    """Close a kept-open headed verify browser after delay_ms."""
+    """Close a kept-open browser after delay_ms (verify / send pool idle)."""
     try:
         delay_ms = int(delay_ms or 0)
     except (TypeError, ValueError):
@@ -10270,10 +10342,21 @@ def _dm_schedule_auto_close_session(
     def _close() -> None:
         with _DM_AUTO_CLOSE_LOCK:
             _DM_AUTO_CLOSE_TIMERS.pop(key, None)
+
+        def _drop() -> None:
+            try:
+                _dm_drop_playwright_session(key)
+            except Exception:
+                pass
+
+        # Prefer the Playwright-owning thread (web executor or inline account worker).
+        if _dm_inline_playwright_enabled():
+            _drop()
+            return
         try:
-            _dm_drop_playwright_session(key)
+            _DM_WEB_PLAYWRIGHT_EXECUTOR.submit(_drop).result(timeout=60)
         except Exception:
-            pass
+            _drop()
 
     with _DM_AUTO_CLOSE_LOCK:
         old = _DM_AUTO_CLOSE_TIMERS.pop(key, None)
@@ -10307,7 +10390,7 @@ def _dm_reset_all_playwright_sessions() -> None:
             except Exception:
                 pass
         _DM_AUTO_CLOSE_TIMERS.clear()
-    for key in list(_DM_PLAYWRIGHT_SESSIONS.keys()):
+    for key in list(_dm_playwright_sessions().keys()):
         _dm_drop_playwright_session(key)
     _dm_reset_sync_thread_runtime()
 
@@ -12366,6 +12449,10 @@ def _douyin_private_message_playwright_executor(
                         })
             if not keep_browser_open:
                 _dm_stop_playwright_context(context, browser, playwright)
+            elif DM_BROWSER_IDLE_CLOSE_MS > 0 and not _dm_inline_playwright_enabled():
+                # Web/single-thread path: idle timer closes on the Playwright executor thread.
+                # Account send-pool threads close via dispatcher idle timeout instead.
+                _dm_schedule_auto_close_session(browser_name, options, DM_BROWSER_IDLE_CLOSE_MS)
             return {
                 "success": True,
                 "opened": True,
@@ -12610,7 +12697,15 @@ _douyin_account_cookie_playwright_executor.needs_raw_cookies = True
 
 
 def _run_web_playwright_call(callable_obj: Any, *args: Any) -> Any:
-    """Run sync Playwright work on the stable web runtime thread."""
+    """Run sync Playwright work on the stable web runtime thread (or inline for send pool)."""
+    if _dm_inline_playwright_enabled():
+        try:
+            return callable_obj(*args)
+        except Exception as exc:
+            if not _dm_should_retry_playwright_runtime(str(exc)):
+                raise
+            _dm_reset_all_playwright_sessions()
+            return callable_obj(*args)
     future = _DM_WEB_PLAYWRIGHT_EXECUTOR.submit(callable_obj, *args)
     try:
         return future.result()
@@ -13840,6 +13935,7 @@ def process_douyin_dm_task_once(
     account_id: str = "",
     queue_name: str = "",
     block_timeout: int = 1,
+    task_id: str = "",
 ) -> Optional[Dict[str, Any]]:
     _dm_cleanup_closed_playwright_sessions()
     redis_conn = _redis_conn(redis_client)
@@ -13848,12 +13944,16 @@ def process_douyin_dm_task_once(
     account_selector_provided = bool(requested_account_key or str(account_cookie or "").strip() or str(account_id or "").strip())
     if not requested_account_key and account_selector_provided:
         requested_account_key = _dm_account_key_from_values(account_cookie, account_id)
-    pending_queue = str(queue_name or "").strip() or (_dm_pending_queue_for_account(requested_account_key) if account_selector_provided else DM_REDIS_PENDING_QUEUE)
-    popped = redis_conn.blpop(pending_queue, timeout=block_timeout) if block_timeout else None
-    if not popped:
-        return None
-    _, raw_task_id = popped
-    task_id = _dm_decode_scalar(raw_task_id)
+    forced_task_id = str(task_id or "").strip()
+    if forced_task_id:
+        task_id = forced_task_id
+    else:
+        pending_queue = str(queue_name or "").strip() or (_dm_pending_queue_for_account(requested_account_key) if account_selector_provided else DM_REDIS_PENDING_QUEUE)
+        popped = redis_conn.blpop(pending_queue, timeout=block_timeout) if block_timeout else None
+        if not popped:
+            return None
+        _, raw_task_id = popped
+        task_id = _dm_decode_scalar(raw_task_id)
     key = _dm_task_key(task_id)
     task = _dm_redis_hash_all(redis_conn, key)
     if not task:
@@ -14054,6 +14154,7 @@ def process_douyin_dm_task_once(
                     "keep_browser_open": _dm_bool_text(task.get("keep_browser_open", not _dm_bool_text(task.get("headless", True)))),
                     "persistent_context": _dm_bool_text(task.get("persistent_context", (not _dm_bool_text(task.get("headless", True))) or task.get("user_data_dir"))),
                     "user_data_dir": task.get("user_data_dir") or "",
+                    "account_key": task_account_key,
                     "auto_send": auto_send,
                     "followup_message": followup_message,
                     "account_cookies": task_account_cookies,

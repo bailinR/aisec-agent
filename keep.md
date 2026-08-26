@@ -30,6 +30,15 @@ Web：`0.0.0.0:7860` → `http://127.0.0.1:7860`
 
 ## 当前开发进度（2026-08-26）
 
+### 私信发送：多账号浏览器池
+
+- 不同账号打开不同浏览器（按 `account_key` 独立 profile：`content/playwright_profiles/accounts/{browser}/{account_key}`）
+- 最多同时打开 `AISEC_DM_MAX_OPEN_BROWSERS`（默认 3）个账号浏览器；同账号任务在该账号线程内排队
+- 发送结束后空闲 `AISEC_DM_BROWSER_IDLE_CLOSE_MS`（默认 180000ms / 3 分钟）无任务则关闭该账号浏览器并释放槽位
+- 开关：`AISEC_DM_SEND_BROWSER_POOL=1`（默认开）；worker 可用 `--no-browser-pool` 退回串行
+- 实现：`aisec_agent/worker/dm_account_browser_pool.py` + `douyin_dm_worker.py`；会话线程本地 + LRU 见 `session_rag_chat.py`
+- 测试：`tests/test_dm_send_browser_pool.py` 通过
+
 ### 回复池发信跨进程复用盯号浏览器
 
 - `POST /api/v1/douyin/private-message/conversation-monitors/send`：在 Web 进程内对 alive 盯号执行 `request_send_dm`
