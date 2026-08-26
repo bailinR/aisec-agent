@@ -8,6 +8,7 @@
 - 遇到“评论采集系统调用私信系统、Postman 提交后为什么没发送、异步任务、重试/死信、接口鉴权、HMAC、账号发送限流、生产化改造优先级”时，先读 `docs/私信任务联调与生产化要点.md`。
 - 遇到“本地启动、端口 7860、健康检查、本地日志、Windows 后台进程、局域网访问、192.168.x.x 访问不了、0.0.0.0、127.0.0.1、端口监听、Windows 防火墙、映射到局域网”时，先读 `docs/本地启动.md`。
 - 遇到“全新 Windows 电脑、无 Python/Redis、Git 拉取、一键部署、双击启动、项目内运行时、环境隔离、start.bat、stop.bat、Gitee”时，先读 `docs/Windows全新电脑一键部署.md`。
+- 遇到“离线 zip、发给其他电脑、开箱即用、部署包、build-deploy-package、不用 Git 拷贝部署”时，先读 `docs/离线部署包.md`。
 - 遇到“服务器部署、Docker、打包上传、Nginx、Redis URL、worker 容器、服务器时区”时，先读 `docs/部署.md`。
 - 遇到“接口怎么调、Postman、任务提交、任务查询、模型 key、HTTP 审计日志接口”时，先读 `docs/常用接口.md`。
 - 遇到“数据中台未读监控、按最近私信查回复、conversation-monitors/sync、conversations/read/batch、inbox 未读”时，先读 `docs/数据中台对接回复与未读.md`。

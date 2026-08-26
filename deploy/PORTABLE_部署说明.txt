@@ -1,0 +1,56 @@
+aisec-agent 一键部署包 — 开箱说明
+================================
+
+适用：Windows 10/11 64 位，无需预装 Python / Redis / Git。
+
+一、解压
+--------
+1. 将 zip 解压到任意目录，例如：D:\aisec-agent
+2. 路径尽量使用英文，避免过深的目录层级
+3. 不要只复制部分文件，请保留完整目录结构
+
+二、启动
+--------
+1. 双击 start.bat
+2. 等待脚本完成（轻量包首次约 5-10 分钟，需联网）
+3. 浏览器打开：http://127.0.0.1:7860
+4. 健康检查：http://127.0.0.1:7860/api/health
+
+三、配置
+--------
+1. 首次启动会自动从 .env.example 生成 .env
+2. 用记事本编辑 .env，填入实际 API Key / 模型地址
+3. 修改 .env 后重新双击 start.bat
+
+四、停止
+--------
+双击 stop.bat，会停止 Web、worker 和本项目 Redis。
+
+五、局域网访问
+--------------
+默认监听 0.0.0.0:7860，局域网其他电脑可访问：
+  http://<本机IP>:7860
+若访问不了，检查 Windows 防火墙是否放行 7860。
+
+六、日志位置
+------------
+runtime\logs\web.err.log
+runtime\logs\worker.err.log
+runtime\logs\redis.err.log
+
+七、常见问题
+------------
+Q: 页面打不开？
+A: 确认 start.bat 窗口无报错；看 runtime\logs\web.err.log
+
+Q: 任务只提交不发送？
+A: 必须同时运行 worker。start.bat 会一起启动；日志中应有：
+   Douyin DM worker started: mode=send once=False
+
+Q: 浏览器自动化失败？
+A: 检查 content\playwright_profiles 是否有有效 Cookie；验活/盯号需人工登录时按页面提示处理
+
+Q: 如何更新版本？
+A: 重新拿新 zip 解压到新目录，或覆盖后双击 start.bat（保留 .env 和 runtime 可加快启动）
+
+更多说明见 docs\Windows全新电脑一键部署.md

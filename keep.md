@@ -76,6 +76,7 @@ Web：`0.0.0.0:7860` → `http://127.0.0.1:7860`
 - [ ] 数据中台（comment-kit）按回复池协作文档接盯号 + inbox 明细 + tasks 跟进发送；本机可二需有效 Cookie 后复测同步
 - [x] 知识库文件树「打开本地文件夹」按钮：不再因局域网 IP 隐藏；按当前选中资料/模块打开对应目录
 - [x] 机 23 部署到 `9392049`（奥伯特截流话术入库 + 知识库打开本地文件夹；bundle 快进 + starc /IT 计划任务重启）
+- [x] 离线一键部署包：`build-deploy-package.bat` + `scripts/build-portable-package.ps1`（lite/full）；说明 `docs/离线部署包.md`
 
 ### 生产机（机 23 / ALEX001）
 
