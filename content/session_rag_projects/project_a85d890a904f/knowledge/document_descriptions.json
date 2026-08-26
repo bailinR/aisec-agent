@@ -1,7 +1,7 @@
 {
   "version": 1,
   "project_id": "project_a85d890a904f",
-  "updated_at": "2026-08-22T11:27:34",
+  "updated_at": "2026-08-26T11:45:36",
   "knowledge_bases": [
     {
       "kb_id": "kb_5bede326e3",
@@ -520,6 +520,25 @@
                   "knowledge_base": "空气能热泵烘干机",
                   "domain": "默认领域",
                   "section": "默认板块"
+                },
+                {
+                  "doc_id": "doc_3308ca051f75",
+                  "title": "奥伯特农用烘干机截流话术体系",
+                  "source_file_name": "奥伯特农用烘干机截流话术体系.md",
+                  "relative_path": "knowledge/files/空气能热泵烘干机/奥伯特农用烘干机截流话术体系.md",
+                  "description": "奥伯特农用烘干机截流话术体系；> 建议私信身份：运营顾问；奥伯特空气源热泵烘干机 · 农用赛道截流话术体系；> 来源：奥伯特农用烘干机截流话术体系.xlsx；> 适用：抖音/短视频评论截流 → 私信 → 进群/企微私域承接；> 建议私信身份：烘干顾问 / 农用设备顾问；> 品牌：奥伯特空气源热泵烘干机；--；1. 体系总览；按评论意向分三级：高意向（准备买）、中意向（犹豫对比）、低意向（刚被痛点戳中）。评论关键词决定话术档位，核心钩子决定私域诱饵，下钩子方式统一走「私信精简版 → 主页群聊完整版 → 企微成交/勘测。",
+                  "summary": "奥伯特农用烘干机截流话术体系；奥伯特空气源热泵烘干机 · 农用赛道截流话术体系；> 来源：奥伯特农用烘干机截流话术体系.xlsx；> 适用：抖音/短视频评论截流 → 私信 → 进群/企微私域承接；> 品牌：奥伯特空气源热泵烘干机；--；1. 体系总览；按评论意向分三级：高意向（准备买）、中意向（犹豫对比）、低意向（刚被痛点戳中）。评论关键词决定话术档位，核心钩子决定私域诱饵，下钩子方式统一走「私信精简版 → 主页群聊完整版 → 企微成交/勘测」。；| 意向等级 | 典型评论关键词 | 用户心理 | 核心钩子（诱饵）。",
+                  "tags": [
+                    "空气能热泵烘干机",
+                    "默认领域"
+                  ],
+                  "sender_identity": "运营顾问",
+                  "content_chars": 4117,
+                  "updated_at": "2026-08-26T10:28:09",
+                  "kb_id": "kb_9f2d412527",
+                  "knowledge_base": "空气能热泵烘干机",
+                  "domain": "默认领域",
+                  "section": "默认板块"
                 }
               ],
               "allow_empty_placeholder": true
@@ -580,6 +599,27 @@
                   "updated_at": "2026-08-22T11:26:20"
                 }
               ],
+              "allow_empty_placeholder": true
+            }
+          ],
+          "allow_empty_placeholder": true
+        }
+      ],
+      "allow_empty_placeholder": true
+    },
+    {
+      "kb_id": "kb_10e926c244",
+      "name": "公司基础资料板块",
+      "description": "",
+      "domains": [
+        {
+          "domain_id": "domain_a55d12fd95",
+          "name": "AI技术与智能硬件",
+          "sections": [
+            {
+              "section_id": "section_b182ec25b2",
+              "name": "默认板块",
+              "documents": [],
               "allow_empty_placeholder": true
             }
           ],

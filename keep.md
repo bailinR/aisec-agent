@@ -28,6 +28,15 @@ Web：`0.0.0.0:7860` → `http://127.0.0.1:7860`
 
 ---
 
+## 当前开发进度（2026-08-26）
+
+### 回复池发信跨进程复用盯号浏览器
+
+- `POST /api/v1/douyin/private-message/conversation-monitors/send`：在 Web 进程内对 alive 盯号执行 `request_send_dm`
+- DM worker 处理 `use_alive_monitor` 时：先本进程查找，再 HTTP 调 Web（`AISEC_WEB_BASE_URL` 默认 `127.0.0.1:7860`）
+- 测试：`tests/test_monitor_send_and_auto_close.py` 5 项通过
+- **部署后须同时重启 Web + worker**（只重启 worker 无效）
+
 ## 当前开发进度（2026-08-21）
 
 ### 已完成（aisec）
@@ -65,6 +74,7 @@ Web：`0.0.0.0:7860` → `http://127.0.0.1:7860`
 - [x] 盯号全量刷新 unread_conversations：紧凑行优先、列表滚顶、不因父节点含「群聊」丢白林；人数与明细条数分离便于 incomplete 提示
 - [x] 修 unread_details_missing：列表行 Y 聚类关联角标、面板抗 feed 误判、抑制 top_entry 虚高；明细空/不完整时 peek 补全
 - [ ] 数据中台（comment-kit）按回复池协作文档接盯号 + inbox 明细 + tasks 跟进发送；本机可二需有效 Cookie 后复测同步
+- [x] 知识库文件树「打开本地文件夹」按钮：不再因局域网 IP 隐藏；按当前选中资料/模块打开对应目录
 
 ### 生产机（机 23 / ALEX001）
 

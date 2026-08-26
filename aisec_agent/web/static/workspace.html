@@ -634,7 +634,7 @@
             <div class="panel-head">
               <div class="panel-title">知识库文件树</div>
               <div class="panel-actions">
-                <button id="knowledgeRootBtn" class="icon-button hidden" type="button" aria-label="打开当前知识库根目录" title="打开当前知识库根目录">
+                <button id="knowledgeRootBtn" class="icon-button" type="button" aria-label="打开当前知识库文件夹" title="打开当前知识库文件夹">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h4l2 2H18.5A2.5 2.5 0 0 1 21 10.5v6A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-8Z" stroke-linejoin="round"/><path d="M8 14h8" stroke-linecap="round"/></svg>
                 </button>
                 <button id="structureOpenBtn" class="compact-action" type="button" aria-expanded="false" aria-controls="knowledgeCreatePanel">
@@ -904,8 +904,6 @@
       "deleteTemplateBtn", "resetTemplateBtn", "saveTemplateBtn", "settingsView", "companySettingsPanel", "systemSettingsPanel", "status"
     ].forEach(id => els[id] = document.getElementById(id));
 
-    const isLocalRuntime = ["localhost", "127.0.0.1", "::1"].includes(location.hostname);
-
     const goalTypeLabels = {
       wechat: "加微信",
       phone: "留电话",
@@ -1099,20 +1097,67 @@
       return (clean || fallback).slice(0, 60);
     }
 
-    function selectedKnowledgeRootPath() {
+    function selectedKnowledgeFolderPath() {
+      const doc = selectedDoc();
+      if (doc && doc.relative_path) {
+        const parts = String(doc.relative_path).replace(/\\/g, "/").split("/").filter(Boolean);
+        if (parts.length > 1) return parts.slice(0, -1).join("/");
+        return "knowledge/files";
+      }
+      const business = selectedBusiness();
+      if (business) {
+        const sample = (business.documents || []).find(item => item && item.relative_path);
+        if (sample && sample.relative_path) {
+          const parts = String(sample.relative_path).replace(/\\/g, "/").split("/").filter(Boolean);
+          if (parts.length > 1) return parts.slice(0, -1).join("/");
+        }
+        const boardName = safePathSegment(business.business_board_name || business.knowledge_base || "业务板块");
+        const moduleName = safePathSegment(business.business_module_name || business.name || "业务模块");
+        return `knowledge/files/${boardName}/${moduleName}`;
+      }
       const board = selectedBoard();
-      if (!board) return "knowledge/files";
-      return "knowledge/files/" + safePathSegment(board.business_board_name || board.name);
+      if (board) {
+        return "knowledge/files/" + safePathSegment(board.business_board_name || board.name);
+      }
+      return "knowledge/files";
+    }
+
+    function updateKnowledgeFolderButton() {
+      const relativePath = selectedKnowledgeFolderPath();
+      const label = `打开本地文件夹：${relativePath}`;
+      els.knowledgeRootBtn.title = label;
+      els.knowledgeRootBtn.setAttribute("aria-label", label);
+      els.knowledgeRootBtn.dataset.relativePath = relativePath;
     }
 
     async function openSelectedKnowledgeRoot() {
-      const relativePath = selectedKnowledgeRootPath();
-      const data = await fetchJson("/api/admin/open-file-location", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({relative_path: relativePath, type: "folder"}),
-      });
-      setStatus("已打开知识库目录：" + (data.relative_path || relativePath), "ok");
+      const candidates = [];
+      const preferred = selectedKnowledgeFolderPath();
+      if (preferred) candidates.push(preferred);
+      const parts = preferred.split("/").filter(Boolean);
+      while (parts.length > 1) {
+        parts.pop();
+        const parent = parts.join("/");
+        if (parent && !candidates.includes(parent)) candidates.push(parent);
+      }
+      if (!candidates.includes("knowledge/files")) candidates.push("knowledge/files");
+
+      let lastError = null;
+      for (const relativePath of candidates) {
+        try {
+          const data = await fetchJson("/api/admin/open-file-location", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({relative_path: relativePath, type: "folder"}),
+          });
+          const shown = data.absolute_path || data.relative_path || relativePath;
+          setStatus("已打开知识库文件夹：" + shown, "ok");
+          return;
+        } catch (err) {
+          lastError = err;
+        }
+      }
+      throw lastError || new Error("打开本地文件夹失败");
     }
 
     function profileForBusiness(business) {
@@ -1192,12 +1237,7 @@
       const meta = tabMeta[state.tab] || tabMeta.knowledge;
       els.pageTitle.textContent = meta[0];
       els.pageSubtitle.textContent = meta[1];
-      if (isLocalRuntime) {
-        const board = selectedBoard();
-        const boardName = board && (board.business_board_name || board.name);
-        els.knowledgeRootBtn.title = boardName ? `打开“${boardName}”根目录` : "打开知识库根目录";
-        els.knowledgeRootBtn.setAttribute("aria-label", els.knowledgeRootBtn.title);
-      }
+      updateKnowledgeFolderButton();
     }
 
     function renderChrome() {
@@ -1877,7 +1917,7 @@
     });
 
     restoreSidebarState();
-    els.knowledgeRootBtn.classList.toggle("hidden", !isLocalRuntime);
+    updateKnowledgeFolderButton();
     load().catch(err => setStatus(err.message, "error"));
   </script>
 </body>
