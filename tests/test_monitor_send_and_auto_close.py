@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """Monitor DM reuse + headed-verify auto-close helpers."""
 
+import json
+
 from aisec_agent.web import session_rag_chat as sr
 
 
@@ -13,6 +15,53 @@ def test_task_runtime_preserves_use_alive_monitor_flag():
         'headless': False,
     })
     assert fields['use_alive_monitor'] == 'true'
+
+
+def test_monitor_send_response_without_alive_controller():
+    from aisec_agent.web import douyin_conversation_monitor as monitor
+
+    monitor.reset_conversation_monitors_for_tests()
+    data = monitor.build_douyin_conversation_monitor_send_response({
+        'account_id': 'missing',
+        'account_cookie': 'sessionid=abc',
+        'target_profile_url': 'https://www.douyin.com/user/x',
+        'message': 'hello',
+    })
+    assert data['failure_code'] == 'monitor_not_alive'
+    assert data['sent'] is False
+    assert data['reused_monitor'] is False
+
+
+def test_try_send_via_alive_monitor_http_skips_not_alive(monkeypatch):
+    class _Resp:
+        def read(self):
+            return json.dumps({
+                'ok': True,
+                'data': {'failure_code': 'monitor_not_alive', 'sent': False},
+            }).encode('utf-8')
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(
+        sr.SimpleLLMChatTools,
+        '_open_json_response',
+        lambda *a, **k: _Resp(),
+    )
+    result = sr._try_send_dm_via_alive_monitor_http(
+        account_cookies='sessionid=abc',
+        account_id='9',
+        account_key='k',
+        target_profile_url='https://www.douyin.com/user/x',
+        message='hi',
+        followup_message='',
+        auto_send=True,
+        timeout_ms=1000,
+    )
+    assert result is None
 
 
 def test_schedule_auto_close_ignores_non_positive_delay():

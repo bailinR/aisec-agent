@@ -2909,6 +2909,51 @@ def find_alive_monitor_for_account(payload: Dict[str, Any]) -> Optional[DouyinCo
     return None
 
 
+def build_douyin_conversation_monitor_send_response(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Send a DM on the alive conversation-monitor browser (Web process only).
+
+    Worker processes must call this via HTTP; in-memory controllers are not shared.
+    """
+    sr = _sr()
+    normalized = dict(payload or {})
+    controller = find_alive_monitor_for_account(normalized)
+    if controller is None:
+        return {
+            "success": False,
+            "opened": False,
+            "prefilled": False,
+            "sent": False,
+            "error": "未找到运行中的盯号浏览器",
+            "failure_code": "monitor_not_alive",
+            "reused_monitor": False,
+            "engine": "monitor",
+            "steps": [],
+        }
+    message = str(normalized.get("message") or normalized.get("reply") or "").strip()
+    if not message:
+        raise sr.WebInputError("message is required")
+    profile_url = str(
+        normalized.get("target_profile_url")
+        or normalized.get("profile_url")
+        or ""
+    ).strip()
+    if not profile_url:
+        raise sr.WebInputError("target_profile_url is required")
+    timeout_ms = int(sr._payload_float(normalized, "timeout_ms", 45000))
+    auto_send = True if normalized.get("auto_send") is None else sr._dm_bool_text(normalized.get("auto_send"))
+    return controller.request_send_dm(
+        {
+            "profile_url": profile_url,
+            "target_profile_url": profile_url,
+            "message": message,
+            "followup_message": str(normalized.get("followup_message") or "").strip(),
+            "auto_send": auto_send,
+            "timeout_ms": timeout_ms,
+        },
+        timeout_seconds=max(30.0, timeout_ms / 1000.0 + 30.0),
+    )
+
+
 def build_douyin_conversation_monitor_sync_response(
     payload: Dict[str, Any],
     logic: Optional[SessionRAGChatLogic] = None,

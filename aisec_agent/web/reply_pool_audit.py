@@ -41,6 +41,7 @@ _PATH_ACTIONS: Tuple[Tuple[str, str, str], ...] = (
     ("/conversation-monitors/start", "POST", "monitor_start"),
     ("/conversation-monitors/stop", "POST", "monitor_stop"),
     ("/conversation-monitors/probe-reply", "POST", "monitor_probe_reply"),
+    ("/conversation-monitors/send", "POST", "monitor_send"),
     ("/conversation-monitors", "GET", "monitor_list"),
     ("/accounts/inbox", "POST", "account_inbox"),
     ("/accounts/verify", "POST", "account_verify"),

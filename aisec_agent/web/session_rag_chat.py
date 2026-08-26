@@ -7843,6 +7843,13 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
             self._handle_douyin_conversation_monitor_probe_reply()
             return
 
+        if path in {
+            "/api/v1/douyin/private-message/conversation-monitors/send",
+            "/api/douyin/private-message/conversation-monitors/send",
+        }:
+            self._handle_douyin_conversation_monitor_send()
+            return
+
         if path == "/api/v1/douyin/private-message/tasks":
             self._handle_douyin_dm_task_submit()
             return
@@ -8764,6 +8771,18 @@ class SessionRAGRequestHandler(BaseHTTPRequestHandler):
         try:
             payload = self._read_json()
             data = build_douyin_cs_probe_reply_response(payload)
+            self._send_json({"ok": True, "data": data})
+        except WebInputError as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_douyin_conversation_monitor_send(self):
+        from aisec_agent.web.douyin_conversation_monitor import build_douyin_conversation_monitor_send_response
+
+        try:
+            payload = self._read_json()
+            data = build_douyin_conversation_monitor_send_response(payload)
             self._send_json({"ok": True, "data": data})
         except WebInputError as e:
             self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
@@ -9735,6 +9754,93 @@ def _dm_task_account_cookie_text(task: Dict[str, Any]) -> str:
     if raw is None or not str(raw).strip():
         raw = task.get("cookie") or task.get("cookies") or ""
     return _dm_cookie_text(raw)
+
+
+def _dm_web_base_url() -> str:
+    """Local Web base for worker→Web monitor reuse (separate process)."""
+    configured = str(os.environ.get("AISEC_WEB_BASE_URL") or "").strip().rstrip("/")
+    if configured:
+        return configured
+    return f"http://127.0.0.1:{DEFAULT_PORT}"
+
+
+def _try_send_dm_via_alive_monitor_local(
+    *,
+    account_cookies: str,
+    account_id: str,
+    account_key: str,
+    target_profile_url: str,
+    message: str,
+    followup_message: str,
+    auto_send: bool,
+    timeout_ms: int,
+) -> Optional[Dict[str, Any]]:
+    """In-process monitor send (only works inside the Web process)."""
+    try:
+        from aisec_agent.web.douyin_conversation_monitor import find_alive_monitor_for_account
+
+        controller = find_alive_monitor_for_account({
+            "account_cookie": account_cookies,
+            "account_cookies": account_cookies,
+            "account_id": account_id,
+            "account_key": account_key,
+        })
+    except Exception:
+        return None
+    if controller is None:
+        return None
+    return controller.request_send_dm(
+        {
+            "profile_url": target_profile_url,
+            "target_profile_url": target_profile_url,
+            "message": message,
+            "followup_message": followup_message,
+            "auto_send": auto_send,
+            "timeout_ms": timeout_ms,
+        },
+        timeout_seconds=max(30.0, float(timeout_ms) / 1000.0 + 30.0),
+    )
+
+
+def _try_send_dm_via_alive_monitor_http(
+    *,
+    account_cookies: str,
+    account_id: str,
+    account_key: str,
+    target_profile_url: str,
+    message: str,
+    followup_message: str,
+    auto_send: bool,
+    timeout_ms: int,
+) -> Optional[Dict[str, Any]]:
+    """Call Web conversation-monitors/send so worker can reuse the 盯号 browser."""
+    url = f"{_dm_web_base_url()}/api/v1/douyin/private-message/conversation-monitors/send"
+    payload = {
+        "account_cookie": account_cookies,
+        "account_cookies": account_cookies,
+        "account_id": account_id,
+        "account_key": account_key,
+        "target_profile_url": target_profile_url,
+        "profile_url": target_profile_url,
+        "message": message,
+        "followup_message": followup_message,
+        "auto_send": auto_send,
+        "timeout_ms": timeout_ms,
+    }
+    wait_s = max(60, int(timeout_ms / 1000) + 45)
+    try:
+        with SimpleLLMChatTools._open_json_response(url, payload, timeout=wait_s) as response:
+            body = json.loads(response.read().decode("utf-8", errors="replace"))
+    except Exception:
+        return None
+    if not isinstance(body, dict) or not body.get("ok"):
+        return None
+    data = body.get("data")
+    if not isinstance(data, dict):
+        return None
+    if str(data.get("failure_code") or "").strip() == "monitor_not_alive":
+        return None
+    return data
 
 
 def _dm_browser_channel(browser_name: str) -> str:
@@ -13911,28 +14017,31 @@ def process_douyin_dm_task_once(
             demo_result = None
             prefer_monitor = _dm_bool_text(task.get("use_alive_monitor", False))
             if prefer_monitor:
-                try:
-                    from aisec_agent.web.douyin_conversation_monitor import find_alive_monitor_for_account
-
-                    controller = find_alive_monitor_for_account({
-                        "account_cookie": task_account_cookies,
-                        "account_cookies": task_account_cookies,
-                        "account_id": task.get("account_id") or account_id,
-                        "account_key": task.get("account_key") or task_account_key,
-                    })
-                except Exception:
-                    controller = None
-                if controller is not None:
-                    demo_result = controller.request_send_dm(
-                        {
-                            "profile_url": task.get("target_profile_url") or "",
-                            "target_profile_url": task.get("target_profile_url") or "",
-                            "message": reply,
-                            "followup_message": followup_message,
-                            "auto_send": auto_send,
-                            "timeout_ms": task.get("timeout_ms") or 45000,
-                        },
-                        timeout_seconds=max(30.0, float(task.get("timeout_ms") or 45000) / 1000.0 + 30.0),
+                timeout_ms = int(task.get("timeout_ms") or 45000)
+                profile_url = str(task.get("target_profile_url") or "").strip()
+                account_id_for_monitor = str(task.get("account_id") or account_id or "").strip()
+                account_key_for_monitor = str(task.get("account_key") or task_account_key or "").strip()
+                demo_result = _try_send_dm_via_alive_monitor_local(
+                    account_cookies=task_account_cookies,
+                    account_id=account_id_for_monitor,
+                    account_key=account_key_for_monitor,
+                    target_profile_url=profile_url,
+                    message=reply,
+                    followup_message=followup_message,
+                    auto_send=auto_send,
+                    timeout_ms=timeout_ms,
+                )
+                if demo_result is None:
+                    # Worker is a separate process; monitors live in Web memory.
+                    demo_result = _try_send_dm_via_alive_monitor_http(
+                        account_cookies=task_account_cookies,
+                        account_id=account_id_for_monitor,
+                        account_key=account_key_for_monitor,
+                        target_profile_url=profile_url,
+                        message=reply,
+                        followup_message=followup_message,
+                        auto_send=auto_send,
+                        timeout_ms=timeout_ms,
                     )
             if demo_result is None:
                 demo_result = build_douyin_private_message_demo_response({
