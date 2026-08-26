@@ -730,15 +730,20 @@ def _dm_scan_inbox_summary(page: Any) -> Dict[str, Any]:
           const rect = el.getBoundingClientRect();
           const text = normalize(el.innerText || el.textContent || '');
           const style = window.getComputedStyle(el);
-          const rightSide = rect.left > window.innerWidth * 0.42 && rect.right > window.innerWidth * 0.62;
-          const panelSize = rect.width >= 220 && rect.width <= window.innerWidth * 0.72 &&
-            rect.height >= 220 && rect.height <= window.innerHeight * 0.99;
+          const rightSide = rect.left > window.innerWidth * 0.35 && rect.right > window.innerWidth * 0.55;
+          const panelSize = rect.width >= 200 && rect.width <= window.innerWidth * 0.78 &&
+            rect.height >= 200 && rect.height <= window.innerHeight * 0.99;
           const cls = String(el.className || '');
-          const hasPrivateHeader = /(消息|私信)/.test(text.slice(0, 120)) ||
-            /im-dialog|imContainer|imSaas|im-saas|imDark|semi-always-dark|conversation|Message/i.test(cls);
+          const hasImClass = /im-dialog|imContainer|imSaas|im-saas|imDark|semi-always-dark|conversation|Message/i.test(cls);
+          const hasPrivateHeader = /(消息|私信)/.test(text.slice(0, 120)) || hasImClass;
           if (!rightSide || !panelSize || !hasPrivateHeader || style.visibility === 'hidden' ||
               style.display === 'none' || style.opacity === '0') return null;
-          return {el, rect, text, score: 100 + rect.width - rect.height / 1000};
+          let score = 100 + rect.width - rect.height / 1000;
+          if (hasImClass) score += 80;
+          if (/^(消息|私信)/.test(text.slice(0, 12))) score += 40;
+          if (/(学习\\d|剪辑|vlog|点赞|推荐|关注|朋友|直播|#\\S)/i.test(text.slice(0, 100))) score -= 120;
+          if (score < 40) return null;
+          return {el, rect, text, score};
         })
         .filter(Boolean)
         .sort((a, b) => b.score - a.score || a.rect.left - b.rect.left);
@@ -793,28 +798,35 @@ def _dm_scan_inbox_summary(page: Any) -> Dict[str, Any]:
         source = 'panel';
       }
 
-      // Fallback: top-right 「消息」entry badge (global unread).
+      // Fallback: top-right 「消息」entry badge (global unread). Keep only compact
+      // low counts — feed timestamps like 「41」must not inflate unread_people.
       if (!unique.length) {
         unique = collectBadges((el) => {
           const rect = el.getBoundingClientRect();
           return rect.top >= 0 && rect.top < 220 && rect.left > window.innerWidth * 0.55;
         }).filter((b) => {
-          // Prefer badges near a 消息/私信 control.
-          return true;
+          const count = Number(b.count) || 0;
+          const w = Number(b.rect.width) || 0;
+          const h = Number(b.rect.height) || 0;
+          if (b.kind === 'dot') return true;
+          return count > 0 && count <= 9 && w <= 28 && h <= 28;
         });
         if (unique.length) source = 'top_entry';
       }
 
       const unreadCount = unique.reduce((sum, item) => sum + (Number(item.count) || 0), 0);
+      // top_entry is a single bubble — people is at most 1 unless panel scan succeeded.
+      const unreadPeople = source === 'top_entry' ? Math.min(1, unique.length) : unique.length;
       return {
         ok: true,
         detail: panel
           ? (`scanned ${source}; panel=` + normalize(panel.text).slice(0, 40))
           : (`scanned ${source}; panel missing`),
-        unreadCount,
-        unreadPeople: unique.length,
+        unreadCount: source === 'top_entry' ? Math.min(unreadCount, 9) : unreadCount,
+        unreadPeople,
         badgeSample: unique.slice(0, 8).map((b) => ({text: b.text, count: b.count, kind: b.kind})),
         panelFound: Boolean(panel),
+        source,
       };
     }
     """
@@ -1012,15 +1024,21 @@ def _dm_scan_unread_conversations(page: Any) -> Dict[str, Any]:
           const rect = el.getBoundingClientRect();
           const text = normalize(el.innerText || el.textContent || '');
           const style = window.getComputedStyle(el);
-          const rightSide = rect.left > window.innerWidth * 0.38 && rect.right > window.innerWidth * 0.58;
+          const rightSide = rect.left > window.innerWidth * 0.35 && rect.right > window.innerWidth * 0.55;
           const panelSize = rect.width >= 200 && rect.width <= window.innerWidth * 0.78 &&
             rect.height >= 200 && rect.height <= window.innerHeight * 0.99;
           const cls = String(el.className || '');
-          const hasPrivateHeader = /(消息|私信)/.test(text.slice(0, 160)) ||
-            /im-dialog|imContainer|imSaas|im-saas|imDark|semi-always-dark|conversation|Message|chat-list|ChatList/i.test(cls);
+          const hasImClass = /im-dialog|imContainer|imSaas|im-saas|imDark|semi-always-dark|conversation|Message|chat-list|ChatList/i.test(cls);
+          const hasPrivateHeader = /(消息|私信)/.test(text.slice(0, 160)) || hasImClass;
           if (!rightSide || !panelSize || !hasPrivateHeader || style.visibility === 'hidden' ||
               style.display === 'none' || style.opacity === '0') return null;
-          return {el, rect, text, score: 100 + rect.width - rect.height / 1000};
+          let score = 100 + rect.width - rect.height / 1000;
+          if (hasImClass) score += 80;
+          if (/^(消息|私信)/.test(text.slice(0, 12))) score += 40;
+          // Reject feed / recommendation chrome mistaken as DM drawer.
+          if (/(学习\\d|剪辑|vlog|点赞|推荐|关注|朋友|直播|#\\S)/i.test(text.slice(0, 100))) score -= 120;
+          if (score < 40) return null;
+          return {el, rect, text, score};
         })
         .filter(Boolean)
         .sort((a, b) => b.score - a.score || a.rect.left - b.rect.left);
@@ -1035,14 +1053,25 @@ def _dm_scan_unread_conversations(page: Any) -> Dict[str, Any]:
           rect.top >= panelRect.top + 12 && rect.bottom <= panelRect.bottom + 12;
       };
       const isTightRow = (rect, text) => (
-        rect.width >= panelRect.width * 0.42 &&
-        rect.width <= panelRect.width * 1.08 &&
-        rect.height >= 40 &&
-        rect.height <= 130 &&
-        text.length >= 1 &&
-        text.length <= 180 &&
-        !/^(消息|私信|全部|未读|陌生人|联系人)$/.test(text)
+        rect.width >= panelRect.width * 0.35 &&
+        rect.width <= panelRect.width * 1.15 &&
+        rect.height >= 28 &&
+        rect.height <= 160 &&
+        text.length >= 2 &&
+        text.length <= 320 &&
+        !/^(消息|私信|全部|未读|陌生人|联系人|抖音|通知)$/.test(text)
       );
+      const rowScore = (row) => {
+        let score = 0;
+        const text = row.text || '';
+        if (/(刚刚|\\d+\\s*秒前|\\d+\\s*分钟前|\\d+\\s*小时前|昨天|\\d{1,2}:\\d{2}|周[一二三四五六日])/.test(text)) score += 50;
+        if (/·/.test(text)) score += 8;
+        score += Math.max(0, 50 - Math.abs((row.rect.height || 0) - 72));
+        if ((row.rect.height || 0) > 120) score -= 25;
+        if (text.length > 160) score -= 12;
+        if (text.length < 6) score -= 8;
+        return score;
+      };
       const isBadgeEl = (el) => {
         if (!isVisible(el, 3, 3) || !withinPanel(el)) return null;
         const rect = el.getBoundingClientRect();
@@ -1078,30 +1107,40 @@ def _dm_scan_unread_conversations(page: Any) -> Dict[str, Any]:
         });
         if (!dup) uniqueBadges.push(badge);
       }
-      const tightRows = [];
+      // Prefer mid-size conversation rows clustered by Y — leaf-only filter often
+      // drops the real row (nickname+preview) when nested avatar/text nodes score as leaves.
+      const candidateRows = [];
       for (const el of allNodes) {
-        if (!isVisible(el, 36, 30) || !withinPanel(el)) continue;
+        if (!isVisible(el, 28, 24) || !withinPanel(el)) continue;
         const rect = el.getBoundingClientRect();
         const text = normalize(el.innerText || el.textContent || '');
         if (!isTightRow(rect, text)) continue;
-        tightRows.push({node: el, rect, text, area: rect.width * rect.height});
+        candidateRows.push({node: el, rect, text, area: rect.width * rect.height});
       }
-      const leafRows = tightRows.filter((row) => {
-        return !tightRows.some((other) => other.node !== row.node &&
-          other.rect.top >= row.rect.top - 1 &&
-          other.rect.bottom <= row.rect.bottom + 1 &&
-          other.rect.left >= row.rect.left - 1 &&
-          other.rect.right <= row.rect.right + 1 &&
-          other.area < row.area * 0.92);
-      }).sort((a, b) => a.rect.top - b.rect.top || a.area - b.area);
+      candidateRows.sort((a, b) => a.rect.top - b.rect.top || a.area - b.area);
+      const leafRows = [];
+      for (const row of candidateRows) {
+        const hit = leafRows.find((item) => Math.abs(item.rect.top - row.rect.top) < 24);
+        if (!hit) {
+          leafRows.push(row);
+          continue;
+        }
+        if (rowScore(row) > rowScore(hit)) {
+          hit.node = row.node;
+          hit.rect = row.rect;
+          hit.text = row.text;
+          hit.area = row.area;
+        }
+      }
+      leafRows.sort((a, b) => a.rect.top - b.rect.top);
 
       const badgeInside = (rowEl, rowRect) => {
         let best = null;
         for (const badge of uniqueBadges) {
           const by = badge.rect.top + badge.rect.height / 2;
           const bx = badge.rect.left + badge.rect.width / 2;
-          if (by < rowRect.top - 4 || by > rowRect.bottom + 4) continue;
-          if (bx < rowRect.left - 8 || bx > rowRect.right + 8) continue;
+          if (by < rowRect.top - 8 || by > rowRect.bottom + 8) continue;
+          if (bx < rowRect.left - 12 || bx > rowRect.right + 12) continue;
           if (!best || badge.count > best.count) best = badge;
         }
         if (best) return best;
@@ -1117,23 +1156,33 @@ def _dm_scan_unread_conversations(page: Any) -> Dict[str, Any]:
       };
       const rowForBadge = (badge) => {
         let best = null;
+        const by = badge.rect.top + badge.rect.height / 2;
         for (const row of leafRows) {
-          const by = badge.rect.top + badge.rect.height / 2;
-          if (by < row.rect.top - 6 || by > row.rect.bottom + 6) continue;
+          if (by < row.rect.top - 10 || by > row.rect.bottom + 10) continue;
           const dy = Math.abs(by - (row.rect.top + row.rect.height / 2));
-          const score = 1000 - row.area / 100 - dy * 8;
+          const score = rowScore(row) + 1000 - dy * 10;
           if (!best || score > best.score) best = Object.assign({}, row, {score});
         }
         if (best) return best;
         let node = badge.el;
         let ancestor = null;
-        for (let depth = 0; node && depth < 12; depth += 1, node = node.parentElement) {
+        for (let depth = 0; node && depth < 14; depth += 1, node = node.parentElement) {
           if (!withinPanel(node)) continue;
           const rect = node.getBoundingClientRect();
           const text = normalize(node.innerText || node.textContent || '');
-          if (!isTightRow(rect, text)) continue;
+          const looseOk = (
+            rect.width >= panelRect.width * 0.30 &&
+            rect.height >= 24 &&
+            rect.height <= 200 &&
+            text.length >= 2 &&
+            text.length <= 400
+          );
+          if (!looseOk) continue;
           const area = rect.width * rect.height;
-          if (!ancestor || area < ancestor.area) ancestor = {node, rect, text, area};
+          const cand = {node, rect, text, area};
+          if (!ancestor || rowScore(cand) > rowScore(ancestor) || area < ancestor.area * 0.85) {
+            ancestor = cand;
+          }
         }
         return ancestor;
       };
@@ -1170,7 +1219,7 @@ def _dm_scan_unread_conversations(page: Any) -> Dict[str, Any]:
           .replace(/^转发\\[.*?\\]:\\s*/, '')
           .replace(/\\s*·\\s*$/, '')
           .trim();
-        if (!nickname || nickname.length > 32 || /^[1-9]\\d?$/.test(nickname)) {
+        if (!nickname || nickname.length > 48 || /^[1-9]\\d?$/.test(nickname)) {
           nickname = '';
         }
         if (/^[1-9]\\d?$|^99\\+?$/.test(lastMessage)) {
@@ -1293,6 +1342,64 @@ def _dm_scan_unread_conversations(page: Any) -> Dict[str, Any]:
     }
 
 
+def _dm_supplement_unread_conversations_from_peek(
+    page: Any,
+    conversations: List[Dict[str, Any]],
+    *,
+    unread_count: int = 1,
+    unread_people: int = 1,
+) -> List[Dict[str, Any]]:
+    """When badge says unread but details lag, peek list rows (no click) to fill gaps."""
+    existing = list(conversations or [])
+    need = max(1, int(unread_people or 0), 1 if int(unread_count or 0) > 0 else 0)
+    if existing and len(existing) >= need:
+        return existing
+    peek = _dm_click_unread_or_latest_chat(page, click=False)
+    if not peek.get("ok"):
+        return existing
+    preview = _dm_normalize_text(peek.get("preview_text"))
+    detail = _dm_normalize_text(peek.get("detail"))
+    message = preview or detail
+    if not message or re.fullmatch(r"[1-9]\d?|99\+?", message):
+        return existing
+    peer_key = _dm_peer_key_from_row(detail, preview or message)
+    fallback_rows = _dm_normalize_unread_conversation_items(
+        [
+            {
+                "peer_nickname": peer_key,
+                "last_message": preview or message,
+                "unread_count": max(1, int(unread_count or 1) if int(unread_people or 0) <= 1 else 1),
+                "row_text": detail,
+            }
+        ]
+    )
+    if not fallback_rows:
+        return existing
+    known = {
+        (
+            _dm_normalize_text(item.get("peer_nickname")),
+            _dm_normalize_text(item.get("conversation_id")),
+        )
+        for item in existing
+    }
+    for row in fallback_rows:
+        key = (
+            _dm_normalize_text(row.get("peer_nickname")),
+            _dm_normalize_text(row.get("conversation_id")),
+        )
+        if key in known:
+            continue
+        if any(
+            _dm_normalize_text(item.get("peer_nickname")) == key[0]
+            and key[0]
+            for item in existing
+        ):
+            continue
+        existing.append(row)
+        known.add(key)
+    return existing
+
+
 def _dm_click_unread_or_latest_chat(page: Any, timeout_ms: int = 5000, *, click: bool = True) -> Dict[str, Any]:
     sr = _sr()
     script = """
@@ -1311,14 +1418,17 @@ def _dm_click_unread_or_latest_chat(page: Any, timeout_ms: int = 5000, *, click:
           const rect = el.getBoundingClientRect();
           const text = normalize(el.innerText || el.textContent || '');
           const style = window.getComputedStyle(el);
-          const rightSide = rect.left > window.innerWidth * 0.48 && rect.right > window.innerWidth * 0.72;
-          const panelSize = rect.width >= 240 && rect.width <= window.innerWidth * 0.6 &&
-            rect.height >= 260 && rect.height <= window.innerHeight * 0.98;
+          const rightSide = rect.left > window.innerWidth * 0.35 && rect.right > window.innerWidth * 0.55;
+          const panelSize = rect.width >= 200 && rect.width <= window.innerWidth * 0.78 &&
+            rect.height >= 200 && rect.height <= window.innerHeight * 0.99;
           const hasPrivateHeader = /(消息|私信)/.test(text.slice(0, 80)) ||
             /im-dialog|imContainer|imSaas|im-saas|imDark|semi-always-dark/i.test(String(el.className || ''));
           if (!rightSide || !panelSize || !hasPrivateHeader || style.visibility === 'hidden' ||
               style.display === 'none' || style.opacity === '0') return null;
-          return {el, rect, text, score: 100 + rect.width - rect.height / 1000};
+          let score = 100 + rect.width - rect.height / 1000;
+          if (/(学习\\d|剪辑|vlog|点赞|推荐)/i.test(text.slice(0, 80))) score -= 120;
+          if (score < 40) return null;
+          return {el, rect, text, score};
         })
         .filter(Boolean)
         .sort((a, b) => b.score - a.score || a.rect.left - b.rect.left);
@@ -1831,37 +1941,35 @@ class DouyinConversationMonitor:
         unread_count = int(conversations_scan.get("unread_count") or 0)
         unread_people = int(conversations_scan.get("unread_people") or 0)
         if inbox.get("ok"):
-            unread_count = max(unread_count, int(inbox.get("unread_count") or 0))
-            unread_people = max(unread_people, int(inbox.get("unread_people") or 0))
+            # Prefer panel-sourced counts; top_entry alone is a weak signal.
+            inbox_detail = str(inbox.get("detail") or "")
+            if "top_entry" not in inbox_detail or conversations or inbox.get("panel_found"):
+                unread_count = max(unread_count, int(inbox.get("unread_count") or 0))
+                unread_people = max(unread_people, int(inbox.get("unread_people") or 0))
+            elif int(inbox.get("unread_count") or 0) > 0 and unread_count <= 0:
+                unread_count = max(unread_count, 1)
+                unread_people = max(unread_people, 1)
         if conversations:
             unread_people = max(unread_people, len(conversations))
             unread_count = max(
                 unread_count,
                 sum(int(item.get("unread_count") or 0) for item in conversations),
             )
-        elif unread_people > 0 or unread_count > 0:
-            peek = _dm_click_unread_or_latest_chat(page, click=False)
-            if peek.get("ok"):
-                preview = str(peek.get("preview_text") or "").strip()
-                detail = str(peek.get("detail") or "").strip()
-                peer_key = _dm_peer_key_from_row(detail, preview)
-                fallback = _dm_normalize_unread_conversation_items(
-                    [
-                        {
-                            "peer_nickname": peer_key,
-                            "last_message": preview or detail,
-                            "unread_count": max(1, unread_count if unread_people <= 1 else 1),
-                            "row_text": detail,
-                        }
-                    ]
+        if (not conversations and (unread_people > 0 or unread_count > 0)) or (
+            unread_people > len(conversations)
+        ):
+            conversations = _dm_supplement_unread_conversations_from_peek(
+                page,
+                conversations,
+                unread_count=unread_count,
+                unread_people=unread_people,
+            )
+            if conversations:
+                unread_people = max(unread_people, len(conversations))
+                unread_count = max(
+                    unread_count,
+                    sum(int(item.get("unread_count") or 0) for item in conversations),
                 )
-                if fallback:
-                    conversations = fallback
-                    unread_people = max(unread_people, len(conversations))
-                    unread_count = max(
-                        unread_count,
-                        sum(int(item.get("unread_count") or 0) for item in conversations),
-                    )
         with self.lock:
             self.inbox_unread_count = unread_count
             self.inbox_unread_people = unread_people
@@ -2078,14 +2186,21 @@ class DouyinConversationMonitor:
         conversations = list(conversations_scan.get("conversations") or [])
         if inbox.get("ok") or conversations_scan.get("ok"):
             unread_count = max(
-                int(inbox.get("unread_count") or 0),
                 int(conversations_scan.get("unread_count") or 0),
+                int(inbox.get("unread_count") or 0) if "top_entry" not in str(inbox.get("detail") or "") or conversations or inbox.get("panel_found") else 0,
             )
             unread_people = max(
-                int(inbox.get("unread_people") or 0),
                 int(conversations_scan.get("unread_people") or 0),
+                int(inbox.get("unread_people") or 0) if "top_entry" not in str(inbox.get("detail") or "") or conversations or inbox.get("panel_found") else 0,
                 len(conversations),
             )
+            if (
+                not conversations
+                and (int(inbox.get("unread_count") or 0) > 0 or int(inbox.get("unread_people") or 0) > 0)
+                and "top_entry" in str(inbox.get("detail") or "")
+            ):
+                unread_count = max(unread_count, 1)
+                unread_people = max(unread_people, 1)
             # Prefer list-row detail when present, but never hide badge incompleteness.
             if conversations:
                 unread_count = max(
@@ -2093,6 +2208,30 @@ class DouyinConversationMonitor:
                     sum(int(item.get("unread_count") or 0) for item in conversations),
                 )
                 unread_people = max(unread_people, len(conversations))
+            if (not conversations and (unread_people > 0 or unread_count > 0)) or (
+                unread_people > len(conversations)
+            ):
+                before = len(conversations)
+                conversations = _dm_supplement_unread_conversations_from_peek(
+                    page,
+                    conversations,
+                    unread_count=unread_count,
+                    unread_people=unread_people,
+                )
+                if len(conversations) > before:
+                    unread_people = max(unread_people, len(conversations))
+                    unread_count = max(
+                        unread_count,
+                        sum(int(item.get("unread_count") or 0) for item in conversations),
+                    )
+                    self.log(
+                        "未读明细已补全："
+                        + ",".join(
+                            str(item.get("peer_nickname") or "")[:12]
+                            for item in conversations[:6]
+                        ),
+                        "ok",
+                    )
             # Always full-replace snapshot from this tick (no merge with stale rows).
             with self.lock:
                 self.inbox_unread_count = unread_count
