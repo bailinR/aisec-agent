@@ -75,11 +75,12 @@ Web：`0.0.0.0:7860` → `http://127.0.0.1:7860`
 - [x] 修 unread_details_missing：列表行 Y 聚类关联角标、面板抗 feed 误判、抑制 top_entry 虚高；明细空/不完整时 peek 补全
 - [ ] 数据中台（comment-kit）按回复池协作文档接盯号 + inbox 明细 + tasks 跟进发送；本机可二需有效 Cookie 后复测同步
 - [x] 知识库文件树「打开本地文件夹」按钮：不再因局域网 IP 隐藏；按当前选中资料/模块打开对应目录
+- [x] 机 23 部署到 `9392049`（奥伯特截流话术入库 + 知识库打开本地文件夹；bundle 快进 + starc /IT 计划任务重启）
 
 ### 生产机（机 23 / ALEX001）
 
 - 路径：`C:\sixin\aisec\new\aisec-agent`
-- 分支：`master` @ `e67fba8`
+- 分支：`master` @ `9392049`
 - 访问：`http://192.168.18.100:7860`
 - 启停：便携运行时；远程重启须以交互用户 `starc` 跑 `start.ps1 -SkipGitUpdate`（可用 `/IT` 计划任务），**禁止** `schtasks /RU SYSTEM`（SYSTEM 下 Playwright 会 `browser_closed`）
 - Gitee HTTPS 在机 23 无交互凭证，更新代码用 git bundle 快进
